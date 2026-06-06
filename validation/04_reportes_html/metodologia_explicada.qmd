@@ -1,0 +1,624 @@
+---
+title: "SeMiLLa × Validación — Metodología Explicada"
+subtitle: "Guía técnica clara de cada función y proceso"
+author: "Dr. José Ventura-León"
+date: today
+date-format: "DD MMMM YYYY"
+lang: es
+format:
+  html:
+    theme: cosmo
+    toc: true
+    toc-location: left
+    toc-depth: 3
+    number-sections: true
+    code-fold: true
+    code-summary: "Ver código"
+    fig-width: 9
+    fig-height: 5
+    embed-resources: true
+    page-layout: full
+title-block-banner: "#16a085"
+title-block-banner-color: white
+execute:
+  echo: false
+  warning: false
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, eval = FALSE)
+```
+
+# ¿Qué es SeMiLLa y qué problema resuelve?
+
+**SeMiLLa** (**SE**mantic **M**easurement **I**tems via **LL**M **A**ssistance) es una librería de R que aplica *embeddings* de modelos de lenguaje a los **textos de los ítems** de una escala psicométrica para inferir su estructura latente **sin recolectar datos**. Donde la psicometría clásica necesita una muestra de respondientes para estimar α de Cronbach, cargas factoriales o coherencia entre ítems, SeMiLLa parte exclusivamente del **contenido semántico** de cada enunciado y produce métricas paralelas: similitud intra-dimensión, precisión de clasificación por *ensemble*, ω semántico, congruencia con la estructura teórica.
+
+El problema que ataca es práctico: cuando un investigador construye o adapta una escala, suele tener que esperar al *piloto empírico* para descubrir si un ítem cae fuera de su dimensión, si dos ítems son redundantes, o si la dimensión teórica tiene coherencia interna. SeMiLLa intenta anticipar esas señales **antes de recolectar datos**, leyendo el contenido de los ítems con un modelo que entiende el español/inglés/portugués.
+
+::: {.callout-note}
+**¿Por qué embeddings sirven para psicometría?**
+Un *embedding* es una representación numérica de alta dimensión (típicamente 1024 o 3072) de un fragmento de texto. Dos ítems que comparten constructo —por ejemplo, "Realmente comprendo lo que yo siento" y "Tengo un buen entendimiento de mis propias emociones"— viven cerca en ese espacio. Esa cercanía es **la materia prima** que SeMiLLa convierte en similitud intra-dimensión, cargas factoriales semánticas y precisión de *clustering*. La intuición psicométrica es la misma que sostiene la consistencia interna: ítems que miden lo mismo deben **estar cerca** —semánticamente en lugar de en respuestas observadas.
+:::
+
+Este reporte de validación cruzada (9 papers + 8 datasets) responde a una pregunta cuantitativa: **¿cuánto se parece la psicometría semántica a la psicometría empírica?** El objetivo no es reemplazar al CFA sino entender en qué condiciones SeMiLLa adelanta evidencia útil.
+
+---
+
+# El pipeline general en 5 pasos
+
+El flujo completo, tanto en Fase 1 (PDF de paper validado) como en Fase 2 (datos crudos de una muestra), se reduce a estos pasos:
+
+```
+                Fase 1                                 Fase 2
+        ┌──────────────────┐                  ┌────────────────────┐
+        │   PDF del paper  │                  │  Datos crudos      │
+        │   de validación  │                  │  (CSV/RDS de N≥200)│
+        └────────┬─────────┘                  └─────────┬──────────┘
+                 │                                       │
+                 ▼                                       ▼
+   ┌──────────────────────────┐         ┌─────────────────────────────┐
+   │ extraer_psicometria_pdf  │         │ calcular_psicometria_       │
+   │ (pdftools + LLM JSON)    │         │ empirica (psych::fa+alpha+  │
+   │                          │         │  omega + ITC)               │
+   └────────────┬─────────────┘         └──────────────┬──────────────┘
+                │                                       │
+                └─────────┬─────────────────────────────┘
+                          ▼
+            ┌────────────────────────────┐
+            │  Objeto psicometria_       │
+            │  extraida (formato común)  │
+            └────────────────┬───────────┘
+                             │
+                             ▼
+        ┌─────────────────────────────────────────┐
+        │ semilla(fuente='usuario')               │
+        │   ── lee Excel de items                 │
+        │   ── pide embeddings al LLM             │
+        │   ── arma matriz de similitud           │
+        └─────────────────┬───────────────────────┘
+                          │
+                          ▼
+        ┌─────────────────────────────────────────┐
+        │ precision_clasificacion(ensemble)       │
+        │   k-means + Ward + PAM, 20 réplicas     │
+        │   → consenso + items_mal_clasificados   │
+        └─────────────────┬───────────────────────┘
+                          │
+                          ▼
+        ┌─────────────────────────────────────────┐
+        │ comparar_con_semilla()                  │
+        │   α/ω r, Tucker, ítem-level κ, F1       │
+        └─────────────────┬───────────────────────┘
+                          ▼
+            CSV + RDS + figuras + reporte
+```
+
+```{r tabla-pipeline, eval=TRUE, echo=FALSE}
+tab <- data.frame(
+  Paso = 1:5,
+  Funcion = c("extraer_psicometria_pdf() / calcular_psicometria_empirica()",
+              "psicometria_a_excel()",
+              "semilla(fuente='usuario')",
+              "precision_clasificacion(metodo='ensemble')",
+              "comparar_con_semilla()"),
+  `Que hace` = c("Construye el 'ground truth empirico' (alpha, omega, cargas, ITC).",
+                 "Convierte items a Excel listo para SeMiLLa.",
+                 "Pide embeddings, arma matriz de similitud entre items.",
+                 "Clusteriza con 3 algoritmos x 20 replicas, marca items mal clasificados.",
+                 "Compara empirico vs semantico: alpha r, Tucker, kappa, F1."),
+  Devuelve = c("Objeto psicometria_extraida (S3).",
+               "Archivo .xlsx.",
+               "Objeto semilla (S3) con $similitud y $items.",
+               "Lista con precision_por_dimension, consenso, items_mal_clasificados.",
+               "Objeto comparacion_psicometrica + CSVs en disco."),
+  check.names = FALSE
+)
+knitr::kable(tab, caption = "Pipeline en 5 pasos.")
+```
+
+---
+
+# Función 1: `extraer_psicometria_pdf()` — el parser PDF
+
+**Archivo:** `R/extraer_psicometria_pdf.R`
+
+## ¿Qué problema resuelve?
+
+Cuando uno quiere validar SeMiLLa contra papers ya publicados, tiene que extraer **a mano** los α, las cargas factoriales y los textos de los ítems —tarea tediosa y propensa a error. Esta función automatiza la extracción usando un **LLM con esquema JSON fijo**: lee el PDF con `pdftools`, le pasa el texto a GPT-4.1-mini y le pide que devuelva un JSON estructurado con escala, dimensiones, ítems, α, cargas, Tucker y meta-información.
+
+## ¿Cómo funciona internamente?
+
+1. `pdftools::pdf_text()` extrae el texto plano del PDF (puede filtrarse a páginas con el parámetro `paginas`).
+2. Si el texto excede `max_chars` (60 000 por defecto), se trunca para no superar el *context window*.
+3. Un *system prompt* le instruye al LLM: extraer valores numéricos exactos, no inventar números, y respetar dos reglas críticas:
+   - **Items iniciales vs finales:** si el paper reporta una escala original de N ítems y una versión final de N–k, debe incluir los N originales y marcar los k eliminados con `problematico = TRUE`.
+   - **Items no publicados:** si el paper omite los textos pero la escala es estandarizada y publicada (WLEIS, DASS-21, PSS-10…), el LLM puede completar los ítems con los textos canónicos y registrar `meta.items_completados_por_llm = true`.
+4. El parámetro `response_format = list(type = "json_object")` fuerza una salida JSON parseable.
+5. `jsonlite::fromJSON()` parsea el JSON; `to_matrix()` convierte las correlaciones latentes/observadas a matrices.
+
+## Inputs y outputs
+
+```{r}
+emp <- extraer_psicometria_pdf(
+  archivo_pdf = "WLEIS_Merino_2016.pdf",
+  api_key     = Sys.getenv("OPENAI_API_KEY"),
+  modelo      = "gpt-4.1-mini",
+  paginas     = 2:8,           # opcional: solo metodos+resultados
+  verbose     = TRUE
+)
+```
+
+Devuelve un objeto S3 `psicometria_extraida` con: `$escala`, `$constructo`, `$dimensiones`, `$items`, `$cor_latentes`, `$cor_observadas`, `$meta`, `$raw_json`.
+
+::: {.callout-tip}
+**Casos especiales que el parser maneja bien:**
+
+- **Papers que reportan ω en vez de α:** se guarda el valor en `$dimensiones$omega` y `comparar_con_semilla()` lo detecta automáticamente.
+- **Papers que omiten los ítems:** el prompt instruye al LLM a usar el texto canónico publicado si la escala es estandarizada (WLEIS, MBI-HSS, etc.).
+- **Escalas con ítems eliminados en la versión final:** se incluyen los N originales con `problematico = TRUE` para los k descartados.
+:::
+
+## Doble extracción con consenso (`n_extracciones`)
+
+Cuando se quiere robustez extra (validez convergente del extractor), se llama con `n_extracciones = 2`:
+
+```{r}
+emp <- extraer_psicometria_pdf(
+  archivo_pdf = "paper.pdf",
+  api_key = ...,
+  n_extracciones = 2,    # corre 2 veces
+  tol_consenso = 0.01    # rango aceptable entre extracciones
+)
+```
+
+El helper `.consensuar_extracciones()` compara los valores numéricos:
+
+- Si la diferencia entre extracciones es ≤ `tol_consenso` para campos como α o carga, se acepta el valor.
+- Si discrepan, ese valor se marca como `NA` y la discrepancia se anota en `attr(consenso, "discrepancias")`.
+- Los textos de ítems se aceptan por identidad exacta; si hay variantes, se conserva la más frecuente.
+
+::: {.callout-note}
+**Cuándo usarlo:** Fase 1 del pipeline (`pipeline_caso()`), un PDF por caso. Es la vía natural cuando los datos crudos no están disponibles pero sí el paper publicado.
+:::
+
+---
+
+# Función 2: `calcular_psicometria_empirica()` — el calculador desde datos crudos
+
+**Archivo:** `R/calcular_psicometria_empirica.R`
+
+## ¿Qué problema resuelve?
+
+Los PDFs tienen tres limitaciones serias:
+
+1. No siempre reportan todos los α o cargas relevantes.
+2. Pueden omitir ítems eliminados o describirlos en prosa ambigua.
+3. Los criterios de "ítem problemático" cambian de paper a paper (algunos usan carga < .30, otros < .40, otros índices de modificación CFA…).
+
+Cuando se cuenta con los datos crudos —la base de respuestas— se puede recalcular **todo desde cero con un criterio uniforme**. Esa es la Fase 2 del estudio.
+
+## Qué calcula
+
+Por cada dimensión teórica del *mapping*:
+
+- **α de Cronbach** (`psych::alpha`).
+- **ω de McDonald** (`psych::omega`, unifactorial; sólo si k ≥ 3 ítems).
+- **Cargas factoriales** vía EFA unifactorial con `psych::fa(nfactors = 1, fm = "minres", rotate = "none")`.
+- **Item-Total Correlation corregida** (`alpha_obj$item.stats$r.drop`).
+- **Reliability if deleted** (`alpha_obj$alpha.drop$raw_alpha`).
+
+## El criterio uniforme de "ítem problemático"
+
+Un ítem se marca como problemático si:
+
+`abs(carga) < umbral_carga_problematico` **O** `itc_corregida < umbral_itc_problematico`
+
+Los valores por defecto son **carga < .40** y **ITC < .30**, dos puntos de corte clásicos en validación de escalas. Aplicarlos uniformemente a todos los datasets (en lugar de heredar el criterio idiosincrásico de cada paper) garantiza una comparación equitativa con el flag semántico de SeMiLLa.
+
+## Inputs y outputs
+
+```{r}
+emp <- calcular_psicometria_empirica(
+  respuestas    = df_respuestas,    # filas=sujetos, cols=items
+  mapping       = df_mapping,       # codigo, item, dimension
+  escala_nombre = "WLEIS",
+  idioma        = "es",
+  umbral_carga_problematico = 0.40,
+  umbral_itc_problematico   = 0.30
+)
+```
+
+Devuelve un objeto `psicometria_extraida` **idéntico en estructura** al de `extraer_psicometria_pdf()`. Esto permite usar el mismo `comparar_con_semilla()` sin condicional alguno —es polimorfismo de S3 a la R.
+
+::: {.callout-tip}
+**Cuándo usarla:** Fase 2 del pipeline (`pipeline_dataset()`), un dataset crudo por caso.
+
+**Detalle de implementación importante:** la columna `df_items_full` del resultado conserva ITC y *reliability if deleted* para inspección posterior, aunque la tabla `$items` que va al comparador sólo lleva los campos comunes con la salida del PDF.
+:::
+
+---
+
+# Función 3: `comparar_con_semilla()` — el comparador
+
+**Archivo:** `R/comparar_con_semilla.R`
+
+Es el corazón del estudio. Recibe (a) un objeto empírico (de PDF o de datos crudos) y (b) un objeto `semilla` con un *ensemble* clusterizado, y produce un objeto `comparacion_psicometrica` con todas las métricas de concordancia.
+
+## Las tres partes que computa
+
+### Concordancia α/ω por dimensión
+
+- Empareja las dimensiones empíricas con las semánticas (matching tolerante: por nombre exacto, por código entre paréntesis o por substring).
+- Detecta automáticamente si el paper reporta α o ω y elige la métrica correspondiente.
+- Si el paper reporta **ω**, el lado semántico se calcula con `omega_semantico()` para garantizar **comparación homogénea ω–ω**.
+- Computa **Pearson r**, **Spearman ρ** y **MAE** sobre los pares (`alpha_emp`, `alpha_sem`).
+
+### Estructura factorial (Tucker vs Precisión ensemble)
+
+- Toma la congruencia de Tucker que el paper reporta por dimensión.
+- La compara con la **precisión del ensemble** (`escala$efa$precision_por_dimension`).
+- Correlación Pearson sobre los pares.
+
+### Item-level: tabla 2 × 2
+
+Cruza dos clasificaciones binarias:
+
+|                                | SeMiLLa: OK | SeMiLLa: Problem |
+|--------------------------------|-------------|------------------|
+| **Empírico: OK**               | TN          | FP               |
+| **Empírico: Problemático**     | FN          | TP               |
+
+De aquí se derivan **Cohen κ**, **Sensibilidad**, **Especificidad**, **PPV (Precisión)**, **F1** y **Accuracy**.
+
+## Los dos modos: "sensible" y "conservador"
+
+El parámetro `modo` activa dos presets pensados para usos distintos:
+
+```{r}
+# Modo conservador (DEFAULT — usado en el reporte v8)
+comp <- comparar_con_semilla(emp, escala, modo = "conservador")
+# - umbral_por_dimension = TRUE  (Q15 calculado por dimension)
+# - logica_flagged = "OR"
+# - umbral_consenso_ens = 0.70   (solo cuentan items con acuerdo >=70% en el ensemble)
+
+# Modo sensible
+comp <- comparar_con_semilla(emp, escala, modo = "sensible")
+# - umbral_por_dimension = FALSE (Q15 calculado sobre todos los items)
+# - logica_flagged = "OR"
+# - umbral_consenso_ens = 0      (todos los items_mal cuentan)
+```
+
+::: {.callout-warning}
+**Analogía del detector de humo**
+
+El **modo sensible** es como un detector de humo que se dispara al primer indicio. Su prioridad es no perder ninguna alarma real (alta **sensibilidad**), aun a costa de falsas alarmas (menor **especificidad**). Útil cuando uno está construyendo una escala y prefiere revisar ítems de más.
+
+El **modo conservador** es el detector calibrado para una zona industrial: sólo dispara cuando hay coincidencia entre múltiples sensores (carga baja + consenso firme en el ensemble + coherencia bajo el umbral local de la dimensión). Su prioridad es no generar falsas alarmas (alta **especificidad** y **PPV**), aun a costa de perder algún ítem dudoso. Es el modo que el reporte ejecutivo v8 utiliza por defecto.
+:::
+
+## El score continuo de problematicidad (0–1)
+
+Además de la clasificación binaria, cada ítem recibe un `score_problematicidad` que combina tres señales normalizadas:
+
+- **s1 — Señal de mal-clasificación con consenso:** `1` si el ítem aparece en `items_mal_clasificados`, ponderado por su consenso (0 a 1) en el ensemble. Un ítem que el ensemble clasifica mal con 90% de acuerdo pesa más que uno con 60%.
+- **s2 — Señal de baja coherencia intra-dimensión:** `max(0, 1 - similitud_intra / umbral)`. Mientras menos coherencia tenga el ítem respecto al umbral de su dimensión, más alto el score. Si la coherencia iguala o supera el umbral, s2 = 0.
+- **s3 — Señal de carga empírica baja:** `1` si `carga_convergente < umbral_carga_emp` (0.40 por defecto). Solo se activa si el dato empírico está disponible.
+
+El score final es `pmax(s1, s2, s3)` —el máximo de las tres. Esto evita penalizar dos veces y resalta la señal más fuerte. El score se conserva en `comp$df_items$score_problematicidad` para uso en *ranking* o gráficas de severidad.
+
+## Soporte automático α vs ω
+
+La lógica es:
+
+1. Si el paper tiene α → usar α empírico vs α semántico (Spearman-Brown).
+2. Si **no** tiene α pero tiene ω → usar ω empírico vs **ω semántico de McDonald** (`omega_semantico()`).
+3. Si no tiene ninguno → comparación de fiabilidad imposible; el resto (estructura + ítem-level) sigue funcionando.
+
+Esto se decide en una sola línea: `if (metrica_emp_tipo == "omega") { ... omega_semantico ... } else { ... fiabilidad_semantica ... }`.
+
+## El umbral adaptativo Q15
+
+`umbral_coherencia = "adaptivo"` calcula el umbral como un **percentil de la distribución de similitud intra-ítem** (por dimensión cuando `umbral_por_dimension = TRUE`, o global si no). El default `percentil_adaptivo = 0.15` significa: "considera baja coherencia el 15% inferior de los ítems en su dimensión".
+
+¿Por qué Q15? Porque es el resultado del **grid de calibración** (Sección 10). Q15 es Pareto-óptimo: maximiza F1 y Youden simultáneamente sobre los 9 casos del estudio.
+
+::: {.callout-note}
+**Protección hard-coded:** si el percentil entregado produce un umbral > 0.60 (lo cual indicaría una dimensión muy coherente donde el percentil bajo sigue siendo alto), el código fuerza el umbral a 0.50 para no inflar artificialmente la cuenta de flags.
+:::
+
+---
+
+# Función 4: `pipeline_caso()` — orquestador Fase 1
+
+**Archivo:** `R/pipeline_caso.R`
+
+Encapsula los pasos 1–5 del pipeline cuando la entrada es un PDF.
+
+## Pasos que ejecuta automáticamente
+
+1. `extraer_psicometria_pdf()` sobre el PDF; guarda JSON y RDS.
+2. Normaliza los códigos de dimensión a *uppercase*.
+3. `psicometria_a_excel()` para generar `items.xlsx`.
+4. Activa el caché de SeMiLLa (`cache("enable", path = ...)`).
+5. `semilla(fuente = "usuario", archivo = "items.xlsx", ...)` arma la escala semántica.
+6. `precision_clasificacion(metodo = "ensemble", algoritmos = c("kmeans","ward","pam"), n_replicas = 20)`.
+7. `comparar_con_semilla()` y guarda CSVs + RDS.
+
+## Archivos que produce
+
+En `dir_caso/resultados/`:
+
+- `empirico_extraido.json` — JSON crudo del LLM.
+- `empirico_extraido.rds` — Objeto `psicometria_extraida`.
+- `escala_semilla.rds` — Objeto `semilla` con `$efa` (ensemble).
+- `comparacion_alpha.csv` — Pares α empírico vs α semántico por dimensión.
+- `comparacion_estructura.csv` — Tucker vs Precisión.
+- `comparacion_items.csv` — Tabla ítem-level con flags.
+- `comparacion_fila_resumen.csv` — Una fila resumen para consolidar.
+- `comparacion.rds` — Objeto `comparacion_psicometrica`.
+
+En `dir_caso/`:
+
+- `items.xlsx` — Excel de ítems para SeMiLLa.
+
+---
+
+# Función 5: `pipeline_dataset()` — orquestador Fase 2
+
+**Archivo:** `02_codigos_R/funciones/pipeline_dataset.R`
+
+Encapsula el pipeline cuando la entrada son datos crudos.
+
+## Diferencias clave vs `pipeline_caso()`
+
+- Reemplaza `extraer_psicometria_pdf()` por `calcular_psicometria_empirica()`.
+- Construye el Excel directamente desde el *mapping* (sin pasar por `psicometria_a_excel()`).
+- Acepta parámetros adicionales: `umbral_carga`, `umbral_itc`, `modo_comparacion` (por defecto `"conservador"`).
+- No necesita LLM para la parte empírica (sólo para los embeddings de SeMiLLa).
+
+## Archivos que produce
+
+En `dir_dataset/resultados/`:
+
+- `empirico_calculado.rds` — Objeto `psicometria_extraida` desde datos crudos.
+- `escala_semilla.rds` — Igual que Fase 1.
+- `comparacion_fase2_*.csv` — CSVs paralelos con prefijo `comparacion_fase2`.
+- `comparacion_fase2.rds` — Objeto comparación.
+
+::: {.callout-note}
+La separación de prefijos (`comparacion` vs `comparacion_fase2`) facilita el consolidado posterior: el script `05_consolidar_fase2.R` distingue las dos fases sin ambigüedad.
+:::
+
+---
+
+# Función 6: `omega_semantico()` — el ω derivado de embeddings
+
+**Archivo:** `D:/14. LIBRERIAS/SeMiLLa/02_codigos_R/funciones/omega_semantico.R`
+
+## Por qué necesitábamos un ω semántico verdadero
+
+`fiabilidad_semantica()` (función previa de SeMiLLa) calcula la fiabilidad semántica como un α de Spearman-Brown sobre la similitud media:
+
+$$
+\alpha = \frac{k \cdot \bar{r}}{1 + (k-1)\bar{r}}
+$$
+
+Esto asume **τ-equivalencia**: que todos los ítems tienen la misma carga. Cuando las cargas son heterogéneas (es lo habitual), Spearman-Brown sobreestima.
+
+`omega_semantico()` estima las cargas reales **sobre la matriz de similitud** y aplica la fórmula de McDonald (1999):
+
+$$
+\omega = \frac{(\sum \lambda_i)^2}{(\sum \lambda_i)^2 + \sum (1-\lambda_i^2)}
+$$
+
+## Cómo se calcula
+
+1. Para cada dimensión, extrae la submatriz de similitud `sim_d` (k × k).
+2. Si k ≥ 3, corre `psych::fa(r = sim_d, nfactors = 1, fm = "minres", rotate = "none")` y toma las cargas λᵢ del único factor.
+3. Si k = 2, usa `sqrt(|r|)` como aproximación.
+4. Trunca las cargas a [0, 1].
+5. Aplica la fórmula de McDonald arriba.
+6. Reporta también el α de Spearman-Brown para comparar y la **heterogeneidad** (coeficiente de variación de las cargas).
+
+## Cuándo importa la distinción
+
+Cuando la `heterogeneidad` (CV) es alta —digamos > 0.20— la diferencia ω – α puede llegar a varias centésimas. En dimensiones muy homogéneas (CV ≈ 0) ambos coinciden. La librería lo reporta explícitamente para que el usuario decida.
+
+::: {.callout-tip}
+En este estudio, `comparar_con_semilla()` invoca `omega_semantico()` **solo cuando el paper reporta ω y no α**. Eso garantiza que la correlación α–ω no se mezcle (que sería estadísticamente sesgado).
+:::
+
+---
+
+# El test sintético "Adversarial Item Probing"
+
+**Archivo:** `04_reportes_html/02_test_envenenamiento.R`
+
+## Qué es y por qué se hace
+
+Las nueve validaciones contra papers reales sufren de un problema metodológico: el "ground truth" empírico (ítems problemáticos según el paper) no siempre es perfecto —los criterios cambian, algunos ítems eliminados lo fueron por razones de modelo (índices de modificación) y no de calidad semántica. Para tener un *ground truth* **controlado** se diseñó un test con ítems envenenados.
+
+## Cómo se inyectan ítems envenenados
+
+Sobre el WLEIS canónico (16 ítems, 4 dimensiones), se añaden ítems con etiqueta de dimensión **mentirosa**. Hay tres tipos de envenenamiento:
+
+**Tipo A — Cross-dim:** un ítem real de una dimensión (p.ej. SEA) se etiqueta como otra (p.ej. UOE). Esperado: el ensemble lo clasifica con su dimensión real → flag.
+
+> *"Reconozco con claridad las emociones que estoy sintiendo en cada momento."* (es SEA, marcado como UOE)
+
+**Tipo B — Constructo distinto:** ítem que mide otra cosa (ansiedad, motivación física) etiquetado como una dimensión emocional. Esperado: baja coherencia intra-dim.
+
+> *"Hago ejercicio físico tres veces por semana."* (marcado como UOE)
+
+**Tipo C — Redacción alterada:** un ítem reescrito para sonar como otra dimensión y luego etiquetado con esa otra. Esperado: cross-loading detectable.
+
+> *"Entiendo claramente las emociones de las personas cercanas a mí."* (referente OEA, marcado como SEA)
+
+## Cómo se interpreta el resultado
+
+Se construyen 4 versiones (V1 a V4) con creciente dosis de veneno (1, 2, 4, 6 ítems envenenados). Para cada versión:
+
+- TP = ítems envenenados detectados (flagged).
+- FN = envenenados no detectados.
+- FP = ítems sanos erróneamente flagged.
+- TN = sanos no flagged.
+
+Métricas: Sensibilidad, Especificidad, PPV, F1.
+
+::: {.callout-note}
+La sensibilidad **real** del detector se mide contra una ground truth perfecta (porque el experimentador es quien definió qué ítem es veneno). Si SeMiLLa detecta consistentemente los envenenados con baja tasa de falsos positivos, gana validez como herramienta.
+:::
+
+---
+
+# Calibración del umbral (grid Q15–Q35)
+
+**Archivo:** `04_reportes_html/03_grid_umbrales.R`
+
+## Qué es el umbral adaptativo de coherencia
+
+`comparar_con_semilla()` necesita decidir, ítem a ítem, si la similitud intra-dimensión es "baja". En lugar de fijar un valor absoluto (que dependería de la escala), se usa un percentil de la distribución observada. El default es Q15 (15% inferior).
+
+## Por qué probamos varios percentiles
+
+Para no clavar Q15 por capricho, se corre `comparar_con_semilla()` con `percentil_adaptivo = c(0.15, 0.20, 0.25, 0.30, 0.35)` sobre los 9 casos. Cada percentil produce un par (Sensibilidad media, Especificidad media). Mientras más alto el percentil, más ítems se marcan como bajo-coherencia → mayor sensibilidad pero menor especificidad.
+
+## Cómo se eligió Q15
+
+Para cada percentil, se calculan:
+
+- **F1 promedio cross-caso.**
+- **Youden's J = Sens + Esp − 1** (resume el trade-off en un solo número).
+- **Distancia al óptimo** en el plano ROC: $\sqrt{(1-\text{Sens})^2 + (1-\text{Esp})^2}$.
+
+El percentil que **maximiza F1** y **maximiza Youden simultáneamente** —es decir, Pareto-óptimo— resulta ser Q15. Los gráficos `14_grid_umbrales_roc.png` y `15_grid_umbrales_f1.png` documentan esta elección.
+
+::: {.callout-tip}
+Q15 quedó como default en `comparar_con_semilla()` (`percentil_adaptivo = 0.15`). El usuario puede sobreescribirlo si su caso es muy distinto al promedio cross-escala.
+:::
+
+---
+
+# Glosario de términos psicométricos
+
+::: {.callout-note collapse="false"}
+- **α de Cronbach:** índice de consistencia interna basado en correlaciones inter-ítem; rango [0, 1], > .70 aceptable.
+- **ω de McDonald:** índice de fiabilidad que no asume τ-equivalencia; usa cargas factoriales reales. Suele ser ligeramente menor o igual a α.
+- **Tucker congruence:** medida de similitud entre dos vectores de cargas (típicamente entre la solución obtenida y la teórica). > .95 = congruencia excelente.
+- **ITC (Item-Total Correlation):** correlación entre el ítem y la suma de los otros ítems de su dimensión. La versión corregida excluye el ítem en cuestión del total.
+- **Reliability if deleted:** α/ω que tendría la dimensión si se eliminara ese ítem. Si crece al eliminar un ítem, ese ítem está bajando la consistencia interna.
+- **Carga factorial (λ):** correlación entre el ítem y el factor latente. Tradicionalmente se considera λ > .40 como aceptable, > .60 como fuerte.
+- **Dimensión / factor:** sub-constructo que agrupa ítems supuestamente miden lo mismo. WLEIS tiene 4 dimensiones: SEA, OEA, UOE, ROE.
+- **Embedding:** representación numérica densa (vector de 1024–3072 dimensiones) de un texto, producida por un modelo de lenguaje.
+- **Ensemble clustering:** estrategia que corre varios algoritmos de *clustering* (k-means, Ward, PAM) varias veces y combina resultados por consenso. Más robusto que un único método.
+- **Coherencia intra-dimensión:** promedio de similitudes de un ítem con los demás ítems de su misma dimensión teórica.
+- **Cohen κ:** índice de acuerdo entre dos clasificaciones categóricas, corrigiendo por azar. > .60 = sustancial, > .80 = casi perfecto.
+- **Sensibilidad (recall):** TP / (TP + FN). Proporción de positivos reales detectados.
+- **Especificidad:** TN / (TN + FP). Proporción de negativos reales correctamente identificados.
+- **PPV (Precisión):** TP / (TP + FP). Proporción de los flags que son verdaderos.
+- **F1:** media armónica de Sensibilidad y Precisión. Equilibra ambas cuando hay desbalance de clases.
+- **Youden's J:** Sens + Esp − 1. Resume el trade-off en un escalar; 0 = aleatorio, 1 = perfecto.
+- **MAE (Mean Absolute Error):** promedio de las diferencias absolutas entre dos medidas. Métrica de cercanía sin signo.
+:::
+
+---
+
+# Reproducir el estudio en 5 pasos
+
+## Paso 1 — Clonar o abrir el proyecto
+
+El proyecto vive en:
+
+```
+D:/1. INVESTIGACIONES/3. ARTICULOS PENDIENTES/2026/43_ART_WLEIS_SeMiLLa_usuario/
+├── R/                          # Funciones (pipeline_caso, extraer_pdf, comparar, etc.)
+├── casos/                      # 9 casos Fase 1 (PDF de paper)
+│   ├── 01_WLEIS_Merino_2016/
+│   ├── 02_DASS21/
+│   └── ...
+├── fase2_datos_crudos/         # Datasets Fase 2
+│   ├── R/pipeline_dataset.R
+│   └── datasets/
+└── 04_reportes_html/             # Scripts de consolidado + reportes
+```
+
+La librería SeMiLLa está separada en `D:/14. LIBRERIAS/SeMiLLa/`.
+
+## Paso 2 — Configurar la API key
+
+Definir la variable de entorno (en `.Renviron` o por sesión):
+
+```{r}
+Sys.setenv(OPENAI_API_KEY = "sk-proj-...")
+```
+
+GPT-4.1-mini se usa para (a) extraer el PDF y (b) generar embeddings vía `text-embedding-3-large`.
+
+## Paso 3 — Correr Fase 1
+
+Para un caso individual:
+
+```{r}
+source("R/pipeline_caso.R")
+pipeline_caso(
+  dir_caso    = "casos/01_WLEIS_Merino_2016",
+  pdf_archivo = "WLEIS_Merino_2016.pdf",
+  api_key     = Sys.getenv("OPENAI_API_KEY")
+)
+```
+
+Para los 9 casos en bloque: el script `04_reportes_html/01_recomparar_todos.R` itera sobre todos.
+
+## Paso 4 — Correr Fase 2
+
+```{r}
+source("02_codigos_R/funciones/pipeline_dataset.R")
+pipeline_dataset(
+  dir_dataset   = "01_bases_de_datos/fase2_openpsych_en/wleis",
+  respuestas    = readRDS(".../respuestas.rds"),
+  mapping       = readRDS(".../mapping.rds"),
+  escala_nombre = "WLEIS",
+  api_key       = Sys.getenv("OPENAI_API_KEY"),
+  modo_comparacion = "conservador"
+)
+```
+
+## Paso 5 — Consolidar y re-renderizar el reporte ejecutivo
+
+```{r, eval=FALSE}
+# Consolidados
+source("04_reportes_html/00_consolidar.R")          # Fase 1
+source("04_reportes_html/05_consolidar_fase2.R")    # Fase 2
+source("04_reportes_html/03_grid_umbrales.R")       # Grid Q15-Q35
+source("04_reportes_html/02_test_envenenamiento.R") # Adversarial probing
+```
+
+```bash
+cd "04_reportes_html"
+QUARTO_R="C:/Program Files/02_codigos_R/funciones/R-4.4.1/bin/Rscript.exe" \
+  quarto render reporte_ejecutivo.qmd --to html
+```
+
+::: {.callout-note}
+**Notas operativas:**
+
+- El caché de embeddings vive en `<dir_caso>/.semilla_cache/`. Se reutiliza entre corridas, así que la segunda vuelta es mucho más rápida.
+- Las dimensiones se *uppercase* dentro del pipeline para evitar problemas de matching (`SEA` vs `sea`). El bloque `03_grid_umbrales.R` además normaliza `UEO` → `UOE` (typo en una de las extracciones de WLEIS).
+- Las semillas (`set.seed(2026)`) garantizan reproducibilidad del ensemble cluster.
+:::
+
+---
+
+# Cierre
+
+Este documento explica **qué hace cada pieza** del pipeline SeMiLLa × Validación. El reporte ejecutivo paralelo (`reporte_ejecutivo.qmd`) reúne los **resultados numéricos** sobre los 17 casos (9 Fase 1 + 8 Fase 2) y permite contrastar la psicometría semántica con la empírica de forma sistemática.
+
+Las decisiones de diseño que más impactan la calidad de las comparaciones son:
+
+1. **Soporte automático α/ω** en el comparador para no mezclar métricas heterogéneas.
+2. **Umbral adaptativo Q15 por dimensión** (modo conservador), calibrado por grid sobre los 9 casos.
+3. **Filtro de consenso ensemble ≥ 0.70** para reducir falsos positivos sin perder sensibilidad real.
+4. **Score continuo de problematicidad** que combina tres señales (consenso, coherencia, carga) y permite priorizar la inspección manual.
+5. **Test sintético "adversarial item probing"** como ground truth controlado paralelo al ground truth empírico.
+
+Cualquier extensión del trabajo (otra escala, otro idioma, otro modelo de embeddings) puede operarse cambiando dos parámetros en `pipeline_caso()` o `pipeline_dataset()` sin tocar `comparar_con_semilla()`.

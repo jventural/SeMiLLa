@@ -1,0 +1,36 @@
+# R specific
+.Rhistory
+.Rdata
+.RData
+.Ruserdata
+.httr-oauth
+
+# RStudio
+.Rproj.user/
+
+# Package build files
+*.tar.gz
+*.Rcheck/
+
+# IDE
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Compiled files
+*.o
+*.so
+*.dll
+
+# Temp files
+*.tmp
+*.temp
+
+# Datos crudos pesados del estudio de validacion (descargar de la fuente; ver validation/README.md)
+validation/01_bases_de_datos/
+validation/**/*.sav

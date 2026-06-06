@@ -1,0 +1,63 @@
+Package: SeMiLLa
+Type: Package
+Title: SEmantic Measurement of Items via LLM Assistance
+Version: 2.1.0
+Date: 2026-06-05
+Authors@R: c(
+    person("Jose", "Ventura-Leon",
+           email = "jventuraleon@gmail.com",
+           role = c("aut", "cre"),
+           comment = c(ORCID = "0000-0003-2996-4244"))
+    )
+Description: Automatic generation of psychometric scale items from psychological
+    constructs using Large Language Models (LLMs). SeMiLLa searches for scientific
+    information about a concept, extracts theoretical dimensions and attributes,
+    generates high-quality items, calculates semantic embeddings, and performs
+    Exploratory Factor Analysis (EFA) to validate the factorial structure.
+    The package implements a complete workflow: from planting a concept (sembrar)
+    to harvesting a validated scale (cosechar).
+License: MIT + file LICENSE
+URL: https://github.com/jventural/SeMiLLa
+BugReports: https://github.com/jventural/SeMiLLa/issues
+Encoding: UTF-8
+Roxygen: list(markdown = TRUE)
+RoxygenNote: 7.3.2
+Depends:
+    R (>= 4.0.0)
+Imports:
+    reticulate,
+    jsonlite,
+    psych,
+    ggplot2,
+    httr,
+    lavaan,
+    MASS,
+    digest
+Suggests:
+    testthat (>= 3.0.0),
+    apcluster,
+    catR,
+    cluster,
+    flextable,
+    ggalluvial,
+    ggrepel,
+    glmnet,
+    igraph,
+    jpeg,
+    kernlab,
+    kohonen,
+    magick,
+    mclust,
+    mirt,
+    officer,
+    openxlsx,
+    patchwork,
+    png,
+    RColorBrewer,
+    readxl,
+    rmarkdown,
+    Rtsne,
+    scales,
+    umap,
+    writexl
+Config/testthat/edition: 3

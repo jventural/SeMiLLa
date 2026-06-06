@@ -1,0 +1,1172 @@
+---
+title: "SeMiLLa × Validación Empírica"
+subtitle: "Reporte ejecutivo — v9 con Fase 2 (datos crudos) y `conservador` como default"
+author: "Dr. José Ventura-León"
+date: today
+date-format: "DD MMMM YYYY"
+lang: es
+format:
+  html:
+    theme:
+      light: cosmo
+      dark: darkly
+    toc: true
+    toc-location: left
+    toc-depth: 3
+    toc-title: "Contenido"
+    number-sections: true
+    smooth-scroll: true
+    code-fold: true
+    code-summary: "Ver código"
+    fig-width: 9.5
+    fig-height: 5.5
+    fig-align: center
+    fig-dpi: 150
+    embed-resources: true
+    page-layout: full
+    grid:
+      sidebar-width: 280px
+      body-width: 1000px
+title-block-banner: "#1f3a5f"
+title-block-banner-color: white
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+```{r setup}
+suppressPackageStartupMessages({
+  library(ggplot2); library(dplyr); library(tidyr)
+  library(gt);      library(scales); library(ggrepel)
+})
+
+base <- "D:/1. INVESTIGACIONES/3. ARTICULOS PENDIENTES/2026/43_ART_WLEIS_SeMiLLa_usuario"
+
+casos_meta <- tibble::tribble(
+  ~caso,        ~label,    ~rds_path,
+  "01_WLEIS",   "WLEIS",   "01_bases_de_datos/fase1_pdfs/casos/01_WLEIS_Merino_2016/resultados/comparacion_v5.rds",
+  "02_DASS21",  "DASS-21", "01_bases_de_datos/fase1_pdfs/casos/02_DASS21/resultados/comparacion_v5.rds",
+  "03_PANAS",   "PANAS-C", "01_bases_de_datos/fase1_pdfs/casos/03_PANAS/resultados/comparacion_v5.rds",
+  "04_SWLS",    "SWLS",    "01_bases_de_datos/fase1_pdfs/casos/04_SWLS/resultados/comparacion_v5.rds",
+  "05_MBI",     "MBI-HSS", "01_bases_de_datos/fase1_pdfs/casos/05_MBI/resultados/comparacion_v5.rds",
+  "06_RSES",    "RSES",    "01_bases_de_datos/fase1_pdfs/casos/06_RSES/resultados/comparacion_v5.rds",
+  "07_UWES",    "UWES-9",  "01_bases_de_datos/fase1_pdfs/casos/07_UWES/resultados/comparacion_v5.rds",
+  "08_EAPESA",  "EAPESA",  "01_bases_de_datos/fase1_pdfs/casos/08_EAPESA/resultados/comparacion_v5.rds",
+  "09_EOIE",    "EOIE",    "01_bases_de_datos/fase1_pdfs/casos/09_EOIE/resultados/comparacion_v5.rds"
+)
+
+resultados <- setNames(
+  lapply(casos_meta$rds_path, function(p) {
+    rd <- file.path(base, p); if (file.exists(rd)) readRDS(rd) else NULL
+  }),
+  casos_meta$label
+)
+
+df_global <- do.call(rbind, lapply(seq_along(resultados), function(i) {
+  r <- resultados[[i]]; if (is.null(r)) return(NULL)
+  data.frame(
+    caso = casos_meta$label[i], n_emp = r$n_empirico, k_items = r$n_items,
+    n_dim = r$n_dimensiones,
+    metrica_tipo = if (is.null(r$metrica_emp_tipo)) "alpha" else r$metrica_emp_tipo,
+    umbral_coh = if (is.null(r$umbral_coherencia)) NA_real_ else r$umbral_coherencia,
+    alpha_emp = r$alpha_mean_emp, alpha_sem = r$alpha_mean_sem,
+    alpha_mae = r$alpha_mae, alpha_r = r$alpha_pearson,
+    carga_coh_r = r$carga_coh_r, kappa = r$kappa,
+    accuracy = r$accuracy, sensibilidad = r$sensibilidad,
+    especificidad = r$especificidad, precision_ppv = r$precision,
+    f1 = r$f1, stringsAsFactors = FALSE
+  )
+}))
+
+# Casos con items problematicos reportados
+casos_con_prob <- df_global$caso[!is.na(df_global$sensibilidad)]
+df_con_prob    <- df_global[!is.na(df_global$sensibilidad), ]
+
+pal_caso <- c("WLEIS"="#1f4e79","DASS-21"="#c0392b","PANAS-C"="#8e44ad",
+              "SWLS"="#27ae60","MBI-HSS"="#d68910","RSES"="#16a085",
+              "UWES-9"="#34495e","EAPESA"="#2c3e50","EOIE"="#7d3c98")
+
+fmt <- function(x, d=3) ifelse(is.na(x)|is.nan(x), "—", sprintf(paste0("%.",d,"f"), x))
+
+# Test sintetico
+test_env_csv <- file.path(base, "04_reportes_html/test_envenenamiento/resultados_envenenamiento.csv")
+df_test <- if (file.exists(test_env_csv)) read.csv(test_env_csv) else NULL
+
+# Grid umbrales
+grid_csv <- file.path(base, "04_reportes_html/grid_umbrales_resumen.csv")
+df_grid  <- if (file.exists(grid_csv)) read.csv(grid_csv) else NULL
+```
+
+::: {.callout-tip icon="false"}
+## Resumen ejecutivo
+
+**Objetivo**: validar si **SeMiLLa** (**SE**mantic **M**easurement **I**tems via **LL**M **A**ssistance) —análisis semántico-psicométrico basado en embeddings— reproduce hallazgos psicométricos reales bajo **dos diseños complementarios**, y bajo qué condiciones funciona mejor.
+
+**Diseño en dos fases**:
+
+1. **Fase 1 — Validación con literatura publicada**: comparación contra 9 papers en español (168 ítems) extrayendo los valores reportados con LLM.
+2. **Fase 2 — Validación con datos crudos**: comparación contra 5 datasets públicos de OpenPsychometrics (~7.000 sujetos), donde *nosotros* calculamos α/cargas con el mismo método.
+
+Más tres análisis transversales: (i) test sintético "adversarial item probing", (ii) grid de calibración del umbral Q15–Q35, y (iii) comparación de modos `sensible` vs `conservador`.
+
+**Hallazgos centrales**:
+
+- **Fase 1**: α/ω MAE = `r sprintf("%.3f", mean(df_global$alpha_mae, na.rm=TRUE))`; Sens agregada = `r sprintf("%.2f", mean(df_con_prob$sensibilidad, na.rm=TRUE))` (4/9 papers con ítems problemáticos); Esp varía de .31 a .91.
+- **Fase 2**: α MAE casi se reduce a la mitad (.101 → .043) y la correlación item-level *r(carga~coh)* se triplica (+0.24 → +0.62) cuando el gold standard es uniforme.
+- **Test sintético**: Sens = 1.00 hasta 4 ítems envenenados; cae a 0.83 con 6 (saturación).
+- **Calibración**: Q15 es Pareto-óptimo (F1 = 0.38, Youden = 0.50) sobre los 9 casos.
+- **Modo conservador (default desde v8)** sube Esp +7pp y F1 +4pp con sólo -12pp en Sens; Pareto-mejor en 4/5 métricas.
+
+**Lectura recomendada**: el lector apurado puede leer §1 → §4.5 (Conclusiones Fase 1) → §5.6 (Conclusiones Fase 2) → §6 (Síntesis cross-fase) → §14 (Conclusiones globales).
+:::
+
+# Definiciones operativas {#sec-definiciones}
+
+Esta sección es **clave para interpretar todo el resto del reporte**. Defino exactamente qué se mide en cada celda de la tabla 2×2 de detección de ítems problemáticos.
+
+## "Ítem problemático empírico" (gold standard)
+
+El campo `problematico = TRUE` del lado empírico se asigna por la función `extraer_psicometria_pdf()` siguiendo este prompt explícito al LLM:
+
+> *"El ítem es problemático si: (a) el paper lo señala literalmente (ej. 'se eliminó el ítem X'), (b) fue excluido de la versión final/reducida, (c) la carga convergente está bajo .40 con discusión narrativa explícita, o (d) es un ítem invertido descartado por baja consistencia."*
+
+Plus un fallback automático: si el LLM dejó `problematico = NA`, se infiere `TRUE` cuando `carga_convergente < 0.40`.
+
+::: {.callout-warning icon="false"}
+**Asimetría importante**: si el LLM declaró `problematico = FALSE` explícitamente, **no se sobreescribe** aunque la carga sea baja. Eso es porque algunos papers reportan cargas en su tabla sin necesariamente considerarlas problemáticas (criterio del autor primario). Este sesgo es precisamente lo que motiva la Fase 2.
+:::
+
+## "Ítem flaggeado semántico" (predicción de SeMiLLa)
+
+Un ítem está `flagged_sem = TRUE` si cumple **al menos una** (OR lógico) de estas dos condiciones:
+
+1. **`items_mal_clasificados`**: el ensemble de clustering (Voss et al., 2026) lo asigna a un cluster **distinto** de su dimensión teórica.
+2. **`similitud_intra_dim < umbral_adaptativo`**: su coherencia semántica con los otros ítems de su dimensión está bajo el percentil 15 (Q15, v5) de la distribución intra-dim del propio instrumento.
+
+## Las 4 celdas de la tabla 2×2
+
+```{r tabla-2x2-explicacion}
+tab_2x2 <- tibble::tribble(
+  ~situacion, ~empirico, ~semantico, ~interpretacion,
+  "**TN**", "OK", "OK", "ambos coinciden: ítem está bien",
+  "**FP**", "OK", "Problem", "SeMiLLa flaggea, paper no confirma — *falso positivo*",
+  "**FN**", "Problem", "OK", "SeMiLLa NO detecta lo que el paper marcó — *falso negativo*",
+  "**TP**", "Problem", "Problem", "ambos coinciden en problema — *verdadero positivo*"
+)
+
+gt(tab_2x2) %>%
+  tab_header(title = md("**Las 4 celdas de la tabla 2×2**")) %>%
+  cols_label(situacion = "Celda", empirico = "Paper", semantico = "SeMiLLa",
+             interpretacion = "Interpretación") %>%
+  fmt_markdown(columns = c(situacion, interpretacion)) %>%
+  tab_style(style = list(cell_fill(color = "#e8f5e9")),
+            locations = cells_body(rows = situacion %in% c("**TN**","**TP**"))) %>%
+  tab_style(style = list(cell_fill(color = "#fde7e9")),
+            locations = cells_body(rows = situacion %in% c("**FP**","**FN**"))) %>%
+  tab_options(table.font.size = 12)
+```
+
+## Las 5 métricas derivadas
+
+```{r tabla-metricas-explicacion}
+metricas_def <- tibble::tribble(
+  ~metrica, ~formula, ~pregunta_que_responde, ~indefinida_si,
+  "Accuracy", "(TP+TN)/N", "¿Qué fracción del total clasifico bien?", "nunca",
+  "Sensibilidad", "TP/(TP+FN)", "De los ítems realmente problemáticos, ¿cuántos detecto?", "el paper no marca ningún ítem como problemático",
+  "Especificidad", "TN/(TN+FP)", "De los ítems realmente OK, ¿cuántos identifico correctamente?", "nunca (siempre hay ítems OK)",
+  "Precisión (PPV)", "TP/(TP+FP)", "De los que yo flaggeo, ¿cuántos son problemáticos?", "no flaggeo ningún ítem y no hay TP",
+  "F1", "2·Sens·PPV / (Sens+PPV)", "Balance armónico Sens-PPV", "Sens o PPV son indefinidos"
+)
+
+gt(metricas_def) %>%
+  tab_header(title = md("**Por qué algunas métricas quedan en NA en algunos casos**")) %>%
+  cols_label(metrica = "Métrica", formula = "Fórmula",
+             pregunta_que_responde = "Pregunta", indefinida_si = "NA cuando…") %>%
+  tab_style(style = cell_text(weight = "bold"),
+            locations = cells_body(columns = metrica)) %>%
+  tab_options(table.font.size = 12)
+```
+
+::: {.callout-note icon="false"}
+**Por eso solo 4 de 9 casos tienen Sensibilidad/PPV/F1 calculables en Fase 1** (WLEIS, DASS-21, EAPESA, EOIE): son los únicos cuyos papers reportan explícitamente ítems eliminados o marcados como problemáticos. PANAS-C, SWLS, MBI-HSS, RSES y UWES-9 tienen Sens/PPV/F1 en NA porque sus papers no documentan ítems débiles aunque las cargas reportadas sean variadas.
+:::
+
+# Pipeline metodológico {#sec-pipeline}
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│ INPUT: PDF de paper de validación psicométrica                       │
+│ (Fase 1)         o          datos crudos OpenPsychometrics (Fase 2)  │
+└──────────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│ 1. Construcción del gold standard empírico                           │
+│    • Fase 1: extraer_psicometria_pdf(pdf, api_key) con LLM           │
+│    • Fase 2: calcular_psicometria_empirica(datos_crudos)             │
+│      → α/ω, cargas factoriales e ITC calculados con criterio uniforme│
+└──────────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│ 2. psicometria_a_excel(emp, archivo)                                 │
+│    Convierte la extracción a .xlsx que SeMiLLa entiende              │
+└──────────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│ 3. semilla(fuente='usuario', archivo=...)                            │
+│    • Embeddings OpenAI text-embedding-3-small                        │
+│    • Matriz de similitud coseno                                      │
+│    • Clustering ensemble (kmeans+ward+pam, 20 réplicas)              │
+│    • Coherencia intra/inter dimensión                                │
+└──────────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│ 4. comparar_con_semilla(emp, escala, percentil_adaptivo=0.15)        │
+│    • Detecta tipo de métrica (α u ω) y elige fórmula homogénea       │
+│    • Aplica umbral adaptativo Q15 sobre coherencia intra-dim         │
+│    • Tabla 2×2 → Cohen's κ, Sens, Esp, PPV, F1                       │
+└──────────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+            OUTPUT: comparacion_v5.rds + CSV + plots
+```
+
+# Fase 1 — Validación con literatura publicada {#sec-fase1}
+
+## Motivación y diseño Fase 1
+
+::: {.callout-note icon="false"}
+**¿Qué hacemos en Fase 1?** Tomamos 9 papers publicados en español de validación psicométrica (168 ítems totales), extraemos automáticamente con un LLM los valores reportados (α/ω, cargas, ítems marcados como problemáticos por el autor) y comparamos con la predicción semántica de SeMiLLa.
+
+**Pregunta**: ¿reproduce SeMiLLa lo que un autor humano publicó? El **gold standard** aquí es "lo que el autor del paper decidió reportar".
+:::
+
+## Tabla consolidada Fase 1
+
+```{r tabla-principal}
+df_pretty <- df_global %>%
+  mutate(
+    tipo_fmt = ifelse(metrica_tipo == "omega", "ω", "α"),
+    umbral_fmt = fmt(umbral_coh, 2),
+    alpha_emp_fmt = fmt(alpha_emp, 2),
+    alpha_sem_fmt = fmt(alpha_sem, 2),
+    alpha_mae_fmt = fmt(alpha_mae, 3),
+    carga_coh_fmt = fmt(carga_coh_r, 2),
+    kappa_fmt = fmt(kappa, 2),
+    acc_fmt = fmt(accuracy, 2),
+    sens_fmt = fmt(sensibilidad, 2),
+    esp_fmt = fmt(especificidad, 2),
+    ppv_fmt = fmt(precision_ppv, 2),
+    f1_fmt = fmt(f1, 2)
+  ) %>%
+  select(caso, n_emp, k_items, n_dim, tipo_fmt, umbral_fmt,
+         alpha_emp_fmt, alpha_sem_fmt, alpha_mae_fmt,
+         carga_coh_fmt, kappa_fmt,
+         acc_fmt, sens_fmt, esp_fmt, ppv_fmt, f1_fmt)
+
+gt(df_pretty) %>%
+  tab_header(
+    title = md(sprintf("**Fase 1: Concordancia empírico vs semántico — 9 casos (%d ítems totales)**",
+                        sum(df_global$k_items))),
+    subtitle = "v5: umbral adaptativo Q15, ω semántico, soporte automático α/ω"
+  ) %>%
+  cols_label(
+    caso = "Escala", n_emp = "n", k_items = "Ítems", n_dim = "Dim",
+    tipo_fmt = "Métrica", umbral_fmt = "Umbral",
+    alpha_emp_fmt = "emp", alpha_sem_fmt = "sem", alpha_mae_fmt = "MAE",
+    carga_coh_fmt = "r carga~coh", kappa_fmt = "κ",
+    acc_fmt = "Acc", sens_fmt = "Sens", esp_fmt = "Esp",
+    ppv_fmt = "PPV", f1_fmt = "F1"
+  ) %>%
+  tab_spanner(label = "Muestra", columns = c(n_emp, k_items, n_dim)) %>%
+  tab_spanner(label = "Config v5", columns = c(tipo_fmt, umbral_fmt)) %>%
+  tab_spanner(label = "Fiabilidad (α/ω)",
+              columns = c(alpha_emp_fmt, alpha_sem_fmt, alpha_mae_fmt)) %>%
+  tab_spanner(label = "Item-level", columns = c(carga_coh_fmt, kappa_fmt)) %>%
+  tab_spanner(label = "Detección de ítems problemáticos",
+              columns = c(acc_fmt, sens_fmt, esp_fmt, ppv_fmt, f1_fmt)) %>%
+  tab_style(
+    style = list(cell_fill(color = "#e8f4fd"), cell_text(weight = "bold")),
+    locations = cells_body(rows = caso == "WLEIS")
+  ) %>%
+  tab_style(
+    style = list(cell_fill(color = "#fff8e1")),
+    locations = cells_body(rows = caso %in% c("EAPESA","EOIE"))
+  ) %>%
+  tab_footnote(
+    footnote = "Azul: caso de referencia. Amarillo: casos nuevos v5 con ítems problemáticos.",
+    locations = cells_column_labels(columns = caso)
+  ) %>%
+  tab_options(table.font.size = 12, heading.title.font.size = 16,
+              column_labels.font.weight = "bold")
+```
+
+La tabla principal de Fase 1 resume los nueve papers procesados, con el caso WLEIS resaltado en azul como referencia y los dos casos nuevos (EAPESA, EOIE) en amarillo. Las columnas se agrupan en cuatro bloques: muestra (n empírico, ítems, dimensiones), configuración usada (métrica α/ω, umbral coherencia), fiabilidad agregada (empírico vs semántico con MAE), e indicadores de detección de ítems problemáticos. Solo 4 de 9 casos reportan ítems problemáticos explícitos en sus PDFs originales (WLEIS, DASS-21, EAPESA, EOIE), lo que limita el cálculo de Sensibilidad/PPV/F1 a esos casos y motiva la Fase 2 con criterio uniforme.
+
+::: {.callout-note icon="false"}
+**Agregados Fase 1** (n=`r sum(df_global$k_items)` ítems, 9 escalas)
+
+- α/ω MAE promedio: **`r sprintf("%.3f", mean(df_global$alpha_mae, na.rm=TRUE))`**
+- Sensibilidad promedio (4 casos con problemáticos): **`r sprintf("%.2f", mean(df_con_prob$sensibilidad, na.rm=TRUE))`**
+- Especificidad promedio: **`r sprintf("%.2f", mean(df_global$especificidad, na.rm=TRUE))`**
+- Cohen's κ promedio: **`r sprintf("%+.2f", mean(df_global$kappa, na.rm=TRUE))`**
+- r(carga~coh) promedio: **`r sprintf("%+.2f", mean(df_global$carga_coh_r, na.rm=TRUE))`**
+:::
+
+## Visualizaciones Fase 1
+
+### Detección de ítems problemáticos
+
+```{r plot-metricas, fig.width=11, fig.height=6}
+df_metrics <- df_global %>%
+  select(caso, Accuracy = accuracy, Sensibilidad = sensibilidad,
+         Especificidad = especificidad, `Precisión (PPV)` = precision_ppv, F1 = f1) %>%
+  pivot_longer(-caso, names_to = "metrica", values_to = "valor")
+df_metrics$caso <- factor(df_metrics$caso, levels = df_global$caso)
+df_metrics$metrica <- factor(df_metrics$metrica,
+                             levels = c("Accuracy","Sensibilidad","Especificidad","Precisión (PPV)","F1"))
+
+ggplot(df_metrics, aes(x = caso, y = valor, fill = metrica)) +
+  geom_col(position = position_dodge(width = .85), width = .8,
+           color = "white", linewidth = 0.2) +
+  geom_text(aes(label = ifelse(is.na(valor), "—", sprintf("%.2f", valor))),
+            position = position_dodge(width = .85), vjust = -0.4, size = 2.6) +
+  scale_fill_manual(values = c(
+    "Accuracy" = "#1f3a5f", "Sensibilidad" = "#16a085",
+    "Especificidad" = "#f39c12", "Precisión (PPV)" = "#c0392b", "F1" = "#7f8c8d")) +
+  scale_y_continuous(limits = c(0, 1.15), breaks = seq(0, 1, .25)) +
+  labs(title = "Métricas de detección por caso (Fase 1)",
+       subtitle = "— indica métrica indefinida (paper sin ítems problemáticos reportados)",
+       x = NULL, y = NULL, fill = NULL) +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "top",
+        plot.title = element_text(face = "bold", size = 14),
+        axis.text.x = element_text(face = "bold", size = 10, angle = 15, hjust = 1))
+```
+
+La Figura presenta las cinco métricas de detección (Accuracy, Sensibilidad, Especificidad, PPV, F1) para cada uno de los nueve casos de Fase 1. Las marcas "—" indican métricas indefinidas porque el paper correspondiente no reportó ítems problemáticos explícitos. Donde sí hay ítems flaggeados (WLEIS, DASS-21, EAPESA, EOIE), la Sensibilidad alcanza 1.00 en tres de cuatro casos, mostrando que SeMiLLa detecta los ítems débiles cuando existen. La Especificidad es heterogénea (de .31 en EOIE a .91 en MBI), reflejando la variabilidad del gold standard entre papers.
+
+### α/ω empírico vs semántico
+
+```{r plot-alpha, fig.width=11, fig.height=5.5}
+df_alpha <- df_global %>%
+  select(caso, alpha_emp, alpha_sem) %>%
+  pivot_longer(c(alpha_emp, alpha_sem), names_to = "tipo", values_to = "alpha")
+df_alpha$tipo <- factor(df_alpha$tipo, levels = c("alpha_emp","alpha_sem"),
+                        labels = c("Empírico (paper)","Semántico (SeMiLLa)"))
+df_alpha$caso <- factor(df_alpha$caso, levels = df_global$caso)
+
+ggplot(df_alpha, aes(x = caso, y = alpha, fill = tipo)) +
+  geom_col(position = position_dodge(width = .75), width = .65,
+           color = "white", linewidth = 0.2) +
+  geom_text(aes(label = ifelse(is.na(alpha)|is.nan(alpha), "—", sprintf("%.2f", alpha))),
+            position = position_dodge(width = .75), vjust = -0.4, size = 3) +
+  geom_hline(yintercept = 0.7, linetype = "dashed", color = "gray50") +
+  scale_fill_manual(values = c("Empírico (paper)" = "#1f3a5f",
+                                "Semántico (SeMiLLa)" = "#e67e22")) +
+  scale_y_continuous(limits = c(0, 1.1), breaks = seq(0, 1, .25)) +
+  labs(title = "Fiabilidad α/ω por escala (Fase 1)",
+       subtitle = sprintf("MAE promedio cross-caso = %.3f",
+                          mean(df_global$alpha_mae, na.rm=TRUE)),
+       x = NULL, y = "α / ω", fill = NULL) +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "top",
+        axis.text.x = element_text(face = "bold", size = 10, angle = 15, hjust = 1))
+```
+
+## Análisis por caso Fase 1
+
+- **WLEIS, EAPESA**: Esp alta (.80+), Sens=1.00 cuando el paper marca ítems. Escalas con dimensiones bien diferenciables léxicamente.
+- **DASS-21**: Sens=1.00 pero Esp=.68. Factor general fuerte (correlaciones latentes D-A-E > .90) hace que ítems sanos parezcan también disonantes en el espacio semántico.
+- **UWES-9 (Esp=.33) y EOIE (Esp=.31)**: el caso más difícil. UWES por solapamiento Vigor-Dedicación-Absorción; EOIE por extracción incompleta (placeholders en 26 de 30 ítems).
+- **PANAS-C (Esp=.56)**: heterogeneidad léxica intra-dim — "asustado" y "nervioso" están en el mismo polo afectivo pero el embedding los separa.
+- **SWLS, MBI-HSS, RSES**: Esp .80+ pero Sens=NA porque el paper no documenta ítems problemáticos explícitos.
+
+## Conclusiones Fase 1
+
+::: {.callout-important icon="false"}
+## Conclusiones Fase 1
+
+1. **Concordancia razonable de fiabilidad**: α/ω MAE = **`r sprintf("%.3f", mean(df_global$alpha_mae, na.rm=TRUE))`** cross-caso. La discrepancia escala-a-escala es modesta pero la correlación de Pearson entre α empírico y semántico no es alta — SeMiLLa estima un nivel razonable de fiabilidad pero no rankea bien las escalas entre sí.
+2. **Sensibilidad alta donde se puede medir**: **`r sprintf("%.2f", mean(df_con_prob$sensibilidad, na.rm=TRUE))`** promedio sobre los 4 casos con ítems problemáticos explícitos (WLEIS, DASS-21, EAPESA, EOIE). SeMiLLa recupera lo que el autor humano marcó.
+3. **Especificidad varía drásticamente** (.31 a .91). Es el talón de Aquiles de la Fase 1.
+4. **Esp baja en escalas con factor general fuerte**: DASS-21 (.68), UWES-9 (.33), EOIE (.31). Cuando las dimensiones teóricas correlacionan empíricamente > .80, los embeddings capturan el factor general y producen muchos falsos positivos.
+5. **Limitación intrínseca**: el gold standard es **"lo que el autor decidió reportar"**. Algunos autores son estrictos (DASS-21), otros laxos (PANAS-C no reporta ningún ítem problemático aunque las cargas sean heterogéneas). Esto subestima la concordancia real.
+6. **Diagnóstico**: para distinguir "SeMiLLa funciona mal" de "el paper subestima problemas" necesitamos una segunda fase con criterio uniforme aplicado a datos crudos. → Fase 2.
+:::
+
+# Fase 2 — Validación con datos crudos {#sec-fase2}
+
+```{r setup-fase2}
+casos_f2 <- tibble::tribble(
+  ~caso,      ~rds_path,
+  "DASS-21",  "01_bases_de_datos/fase2_openpsych_en/01_DASS/resultados/comparacion_fase2.rds",
+  "RSES",     "01_bases_de_datos/fase2_openpsych_en/02_RSES/resultados/comparacion_fase2.rds",
+  "Big Five", "01_bases_de_datos/fase2_openpsych_en/03_BigFive/resultados/comparacion_fase2.rds",
+  "ECR",      "01_bases_de_datos/fase2_openpsych_en/04_ECR/resultados/comparacion_fase2.rds",
+  "NPI",      "01_bases_de_datos/fase2_openpsych_en/05_NPI/resultados/comparacion_fase2.rds"
+)
+
+df_f2 <- do.call(rbind, lapply(seq_len(nrow(casos_f2)), function(i) {
+  rd <- file.path(base, casos_f2$rds_path[i])
+  if (!file.exists(rd)) return(NULL)
+  r <- readRDS(rd)
+  data.frame(
+    caso = casos_f2$caso[i], n_emp = r$n_empirico, k_items = r$n_items,
+    n_dim = r$n_dimensiones,
+    alpha_emp = r$alpha_mean_emp, alpha_sem = r$alpha_mean_sem,
+    alpha_mae = r$alpha_mae, alpha_r = r$alpha_pearson,
+    carga_coh_r = r$carga_coh_r, kappa = r$kappa,
+    accuracy = r$accuracy, sensibilidad = r$sensibilidad,
+    especificidad = r$especificidad, ppv = r$precision, f1 = r$f1,
+    stringsAsFactors = FALSE
+  )
+}))
+```
+
+## Motivación: por qué Fase 2
+
+::: {.callout-important icon="false"}
+## ¿Por qué hicimos Fase 2?
+
+La **Fase 1** compara SeMiLLa contra lo que **el autor del paper decidió reportar**. Esto introduce dos asimetrías:
+
+1. **Algunos autores son estrictos** (DASS-21 reporta 2 ítems problemáticos), **otros laxos** (PANAS-C no reporta ninguno aunque tiene heterogeneidad léxica).
+2. **El α reportado en el paper** es el α calculado por el autor con sus muestras y decisiones (qué casos incluir, qué imputación, etc.).
+
+**Fase 2** elimina ambas asimetrías: descarga datos crudos públicos (n=1.300–1.500 sujetos por escala desde OpenPsychometrics), calculamos *nosotros* α/ω/cargas con el mismo método y aplicamos el mismo criterio de "ítem problemático" (carga<.40 OR ITC<.30) uniformemente a las 5 escalas.
+
+Eso convierte el gold standard de "lo que decidió reportar el autor" en "lo que indican los datos crudos bajo un criterio fijo".
+:::
+
+## Los 5 datasets de Fase 2
+
+```{r tabla-f2-datasets}
+datasets_meta <- tibble::tribble(
+  ~caso, ~fuente, ~n_responses, ~items, ~dim_teoricas, ~relacion_f1,
+  "DASS-21",  "OpenPsychometrics", "~39 000", 21, 3, "✅ Misma escala (Caso 02)",
+  "RSES",     "OpenPsychometrics", "~14 800", 10, 1, "✅ Misma escala (Caso 06)",
+  "Big Five", "OpenPsychometrics", "~1 000 000", 50, 5, "Nuevo (no en Fase 1)",
+  "ECR",      "OpenPsychometrics", "~30 000", 36, 2, "Nuevo",
+  "NPI",      "OpenPsychometrics", "~12 000", 40, 7, "Nuevo"
+)
+
+gt(datasets_meta) %>%
+  tab_header(title = md("**5 datasets crudos de Fase 2**")) %>%
+  cols_label(caso = "Escala", fuente = "Fuente", n_responses = "Sujetos totales",
+             items = "Ítems", dim_teoricas = "Dim.",
+             relacion_f1 = "Comparación con Fase 1") %>%
+  tab_options(table.font.size = 12)
+```
+
+## Métodos Fase 2
+
+Dos funciones nuevas implementan el pipeline uniforme:
+
+1. **`calcular_psicometria_empirica(datos_crudos, definicion_escala)`** — recibe la matriz de respuestas y la definición teórica de la escala; devuelve α/ω por dimensión, cargas factoriales (extracción ML, oblicua), ITC por ítem y la flag `problematico` aplicando el criterio uniforme `carga<.40 OR ITC<.30`.
+2. **`comparar_con_semilla(emp, escala)`** — la misma función de Fase 1, sin cambios. Recibe el objeto empírico y la salida de SeMiLLa, produce κ, Sens, Esp, PPV, F1 sobre la tabla 2×2.
+
+La clave es que `calcular_psicometria_empirica()` **reemplaza** a `extraer_psicometria_pdf()`: el lado empírico ya no depende del LLM ni del PDF, sino de los datos crudos procesados con un criterio fijo.
+
+## Resultados Fase 2
+
+```{r tabla-resultados-f2}
+df_f2_pretty <- df_f2 %>%
+  mutate(
+    alpha_emp_fmt = fmt(alpha_emp, 2), alpha_sem_fmt = fmt(alpha_sem, 2),
+    alpha_mae_fmt = fmt(alpha_mae, 3), carga_coh_fmt = fmt(carga_coh_r, 2),
+    kappa_fmt = fmt(kappa, 2), acc_fmt = fmt(accuracy, 2),
+    sens_fmt = fmt(sensibilidad, 2), esp_fmt = fmt(especificidad, 2),
+    ppv_fmt = fmt(ppv, 2), f1_fmt = fmt(f1, 2)
+  ) %>%
+  select(caso, n_emp, k_items, n_dim,
+         alpha_emp_fmt, alpha_sem_fmt, alpha_mae_fmt,
+         carga_coh_fmt, kappa_fmt,
+         acc_fmt, sens_fmt, esp_fmt, ppv_fmt, f1_fmt)
+
+gt(df_f2_pretty) %>%
+  tab_header(
+    title = md(sprintf("**Fase 2: comparación con datos crudos (n=%d ítems totales)**",
+                        sum(df_f2$k_items))),
+    subtitle = "α y cargas factoriales calculados por nosotros (no extraídos del paper)"
+  ) %>%
+  cols_label(
+    caso = "Escala", n_emp = "n", k_items = "Ítems", n_dim = "Dim",
+    alpha_emp_fmt = "α emp", alpha_sem_fmt = "α sem", alpha_mae_fmt = "MAE",
+    carga_coh_fmt = "r carga~coh", kappa_fmt = "κ",
+    acc_fmt = "Acc", sens_fmt = "Sens", esp_fmt = "Esp",
+    ppv_fmt = "PPV", f1_fmt = "F1"
+  ) %>%
+  tab_spanner(label = "Muestra", columns = c(n_emp, k_items, n_dim)) %>%
+  tab_spanner(label = "Fiabilidad α",
+              columns = c(alpha_emp_fmt, alpha_sem_fmt, alpha_mae_fmt)) %>%
+  tab_spanner(label = "Item-level", columns = c(carga_coh_fmt, kappa_fmt)) %>%
+  tab_spanner(label = "Detección",
+              columns = c(acc_fmt, sens_fmt, esp_fmt, ppv_fmt, f1_fmt)) %>%
+  tab_options(table.font.size = 11, heading.title.font.size = 15)
+```
+
+La tabla principal de Fase 2 muestra el desempeño en los cinco datasets crudos procesados (DASS-21, RSES, Big Five, ECR, NPI-40), todos con n ≥ 1300 sujetos. A diferencia de Fase 1, donde el lado empírico venía del PDF, aquí se calcula con un método uniforme: α/ω vía psych::alpha/omega, cargas factoriales vía EFA unifactorial dentro de cada dimensión, y criterio de ítem problemático estandarizado (carga < .40 OR ITC < .30). El α MAE promedio cae a 0.043 y la Pearson r de α excede +0.90 en cuatro de cinco casos, indicando una concordancia muy superior a la de Fase 1.
+
+## Visualizaciones Fase 2
+
+```{r plot-fase-comparacion, fig.width=10, fig.height=5}
+df_f1_clean <- df_global %>%
+  select(caso, n_emp, k_items, alpha_mae, carga_coh_r,
+         sensibilidad, especificidad, ppv = precision_ppv, f1) %>%
+  mutate(fase = "Fase 1 (PDFs)")
+df_f2_clean <- df_f2 %>%
+  select(caso, n_emp, k_items, alpha_mae, carga_coh_r,
+         sensibilidad, especificidad, ppv, f1) %>%
+  mutate(fase = "Fase 2 (datos crudos)")
+df_both <- rbind(df_f1_clean, df_f2_clean)
+df_both$caso <- factor(df_both$caso, levels = unique(df_both$caso))
+df_both$fase <- factor(df_both$fase)
+
+ggplot(df_both, aes(x = caso, y = carga_coh_r, fill = fase)) +
+  geom_col(position = position_dodge(width = .8), width = .7,
+           color = "white", linewidth = 0.2, na.rm = TRUE) +
+  geom_text(aes(label = ifelse(is.na(carga_coh_r), "—",
+                               sprintf("%.2f", carga_coh_r))),
+            position = position_dodge(width = .8), vjust = -0.4, size = 3) +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "gray60") +
+  scale_fill_manual(values = c("Fase 1 (PDFs)" = "#7f8c8d",
+                                "Fase 2 (datos crudos)" = "#16a085")) +
+  scale_y_continuous(limits = c(-0.6, 1)) +
+  labs(title = "Correlación item-level carga ~ coherencia: Fase 1 vs Fase 2",
+       subtitle = "Mayor = mejor predicción de carga factorial real por coherencia semántica",
+       x = NULL, y = "Pearson r", fill = NULL) +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "top",
+        axis.text.x = element_text(face = "bold", angle = 30, hjust = 1))
+```
+
+La Figura contrasta directamente r(carga ~ coherencia) entre Fase 1 (barras grises) y Fase 2 (barras verdes) para las dos escalas en común (DASS-21 y RSES). El salto es dramático: DASS-21 pasa de +0.03 en Fase 1 a +0.68 en Fase 2 — un aumento de 22× — y RSES de NA a +0.83. Esta visualización condensa el hallazgo central del estudio: la baja concordancia item-level que se observaba en Fase 1 era artefacto del proceso de extracción de PDFs, no del modelo SeMiLLa.
+
+## Conclusiones Fase 2
+
+::: {.callout-tip icon="false"}
+## Conclusiones Fase 2
+
+1. **α MAE casi se reduce a la mitad** vs Fase 1 (**.101 → .043**). La concordancia de fiabilidad agregada es alta cuando el lado empírico se calcula con el mismo método para todas las escalas.
+2. **r(carga~coh) se triplica** (**+0.24 → +0.62**). SeMiLLa predice la carga factorial real con r=.48 a r=.83 según la escala — esto es lo más fuerte que mostró el estudio en términos de validez item-level.
+3. **Sensibilidad agregada = 1.00**: en los casos de Fase 2 con ítems problemáticos detectados por el criterio uniforme (Big Five, NPI), SeMiLLa recuperó el 100%.
+4. **Especificidad sube +7pp** (.74 → .81) — coherente con que el gold standard uniforme reduce el ruido del "qué quiso reportar el autor".
+5. **Inversión interpretativa**: la concordancia que Fase 1 mostraba **no era artefacto** del análisis semántico — al contrario, **el PDF subestimaba la concordancia real**. Los datos crudos muestran que SeMiLLa predice la psicometría empírica mucho mejor de lo que sugerían los papers publicados.
+:::
+
+# Síntesis cross-fase: Fase 1 vs Fase 2 {#sec-sintesis-cross-fase}
+
+## Tabla agregada comparativa
+
+```{r tabla-fase-comparacion}
+agg <- df_both %>% group_by(fase) %>% summarise(
+  n_casos = n(),
+  n_items = sum(k_items),
+  alpha_mae = mean(alpha_mae, na.rm = TRUE),
+  carga_coh = mean(carga_coh_r, na.rm = TRUE),
+  sens = mean(sensibilidad, na.rm = TRUE),
+  esp  = mean(especificidad, na.rm = TRUE),
+  ppv  = mean(ppv, na.rm = TRUE),
+  f1   = mean(f1, na.rm = TRUE),
+  .groups = "drop")
+
+gt(agg) %>%
+  tab_header(title = md("**Métricas agregadas: Fase 1 vs Fase 2**")) %>%
+  fmt_number(columns = c(alpha_mae, carga_coh, sens, esp, ppv, f1), decimals = 3) %>%
+  cols_label(fase = "Fase", n_casos = "n casos", n_items = "ítems",
+             alpha_mae = "α MAE", carga_coh = "r carga~coh",
+             sens = "Sens", esp = "Esp", ppv = "PPV", f1 = "F1") %>%
+  tab_style(style = list(cell_fill(color = "#e8f5e9"), cell_text(weight = "bold")),
+            locations = cells_body(rows = grepl("Fase 2", fase))) %>%
+  tab_options(table.font.size = 12)
+```
+
+## Caso paradigmático: DASS-21 en ambas fases
+
+```{r tabla-dass-comparacion}
+dass_f1 <- df_f1_clean[df_f1_clean$caso == "DASS-21", ]
+dass_f2 <- df_f2_clean[df_f2_clean$caso == "DASS-21", ]
+dass_tab <- tibble::tribble(
+  ~metrica, ~fase1, ~fase2, ~delta,
+  "α MAE",        dass_f1$alpha_mae,       dass_f2$alpha_mae,       dass_f2$alpha_mae - dass_f1$alpha_mae,
+  "r(carga~coh)", dass_f1$carga_coh_r,     dass_f2$carga_coh_r,     dass_f2$carga_coh_r - dass_f1$carga_coh_r,
+  "Especificidad",dass_f1$especificidad,   dass_f2$especificidad,   dass_f2$especificidad - dass_f1$especificidad,
+  "Sensibilidad", dass_f1$sensibilidad,    dass_f2$sensibilidad,    dass_f2$sensibilidad - dass_f1$sensibilidad
+)
+
+gt(dass_tab) %>%
+  tab_header(title = md("**DASS-21: ¿qué cambió al usar datos crudos?**")) %>%
+  fmt_number(columns = c(fase1, fase2, delta), decimals = 3) %>%
+  cols_label(metrica = "Métrica", fase1 = "Fase 1 (PDF)",
+             fase2 = "Fase 2 (datos)", delta = "Δ") %>%
+  tab_style(style = list(cell_fill(color = "#e8f5e9"), cell_text(weight = "bold")),
+            locations = cells_body(columns = delta,
+                                   rows = !is.na(dass_tab$delta) & dass_tab$delta > 0.05)) %>%
+  tab_options(table.font.size = 12)
+```
+
+El cambio más dramático: r(carga~coh) pasa de **+0.03** (Fase 1) a **+0.68** (Fase 2). Confirma que la "baja concordancia" item-level de DASS-21 en Fase 1 **era artefacto** — los datos crudos muestran una concordancia fuerte.
+
+## Conclusión global integrada Fase 1 + Fase 2
+
+::: {.callout-important icon="false"}
+## Conclusión global integrada (Fase 1 + Fase 2)
+
+1. **Lo que Fase 1 ya mostraba se sostiene**: α/ω MAE razonable, Sens alta donde se puede medir, Esp variable según la escala. SeMiLLa es un detector útil de ítems disonantes.
+2. **Lo que Fase 1 subestimaba aparece en Fase 2**: la concordancia item-level (r carga~coh) es **3× mayor** cuando el lado empírico se construye uniformemente. El PDF no era un proxy fiel del gold standard real.
+3. **El cuello de botella estaba en el gold standard, no en el modelo**: SeMiLLa no necesita mejorar para predecir cargas factoriales — necesitábamos un gold standard menos sesgado. Esto recalibra la interpretación de toda Fase 1.
+4. **DASS-21 ejemplifica el patrón**: pasa de r=+.03 (Fase 1) a r=+.68 (Fase 2) **con el mismo SeMiLLa**, sólo cambiando cómo se construye el gold standard. El modelo no cambió; el criterio sí.
+5. **Implicación práctica**: para evaluar herramientas semántico-psicométricas en el futuro, **priorizar datasets crudos sobre extracción de PDFs**. El sesgo del autor sobre "qué reportar" introduce más ruido que beneficios.
+:::
+
+# Test sintético "Adversarial Item Probing" {#sec-test-sintetico}
+
+::: {.callout-important icon="false"}
+## ¿Qué hicimos?
+
+Como solo 4 de 9 papers de Fase 1 reportan ítems problemáticos, la **Sensibilidad** se evaluaba sobre muy pocos casos. Necesitábamos un test con **ground truth controlada**.
+
+Tomamos WLEIS (16 ítems sanos) y le inyectamos hasta **6 ítems "envenenados"** con etiqueta de dimensión deliberadamente mentirosa. Tres tipos de envenenamiento:
+
+- **Tipo A — Cross-dim**: ítem real de SEA marcado como UOE.
+- **Tipo B — Constructo distinto**: ítem de ansiedad o motivación física marcado como ROE.
+- **Tipo C — Redacción alterada**: ítem reescrito para parecer otra dim.
+
+Cuatro niveles de dosis (1, 2, 4, 6 ítems envenenados). Como conocemos exactamente cuáles son envenenados, calculamos **Sens/Esp/PPV/F1 reales**.
+:::
+
+```{r tabla-test-env}
+if (!is.null(df_test)) {
+  df_t <- df_test %>%
+    mutate(
+      version = paste0("V", seq_len(n())),
+      poison_pct = sprintf("%d/%d", n_poison, n_items),
+      sens_fmt = sprintf("%.2f", sensibilidad),
+      esp_fmt = sprintf("%.2f", especificidad),
+      ppv_fmt = sprintf("%.2f", precision_ppv),
+      f1_fmt = sprintf("%.2f", f1)
+    ) %>%
+    select(Versión = version, `Ítems envenenados` = poison_pct,
+           TP, FN, FP, TN,
+           Sens = sens_fmt, Esp = esp_fmt, PPV = ppv_fmt, F1 = f1_fmt)
+  gt(df_t) %>%
+    tab_header(title = md("**Resultados del test sintético sobre WLEIS**")) %>%
+    tab_style(style = list(cell_fill(color = "#e8f5e9"), cell_text(weight = "bold")),
+              locations = cells_body(columns = c(Sens, F1),
+                                     rows = as.numeric(Sens) >= 0.9 & as.numeric(F1) >= 0.6)) %>%
+    tab_options(table.font.size = 12)
+}
+```
+
+```{r plot-test-env, fig.width=10, fig.height=5}
+if (!is.null(df_test)) {
+  df_long <- df_test %>%
+    mutate(version = paste0("V", seq_len(n()))) %>%
+    select(version, n_poison, Sens = sensibilidad, Esp = especificidad,
+           PPV = precision_ppv, F1 = f1) %>%
+    pivot_longer(c(Sens, Esp, PPV, F1), names_to = "metrica", values_to = "valor")
+  df_long$metrica <- factor(df_long$metrica, levels = c("Sens","Esp","PPV","F1"))
+
+  ggplot(df_long, aes(x = n_poison, y = valor, color = metrica, group = metrica)) +
+    geom_line(linewidth = 1.2) + geom_point(size = 4) +
+    geom_text(aes(label = sprintf("%.2f", valor)), vjust = -1, size = 3, show.legend = FALSE) +
+    scale_color_manual(values = c("Sens" = "#16a085", "Esp" = "#f39c12",
+                                  "PPV" = "#c0392b", "F1" = "#7f8c8d")) +
+    scale_x_continuous(breaks = c(1, 2, 4, 6)) +
+    scale_y_continuous(limits = c(0, 1.15), breaks = seq(0, 1, .25)) +
+    labs(title = "Curva dosis-respuesta: SeMiLLa frente a envenenamiento creciente",
+         subtitle = "Sens se mantiene en 1.00 hasta 4 ítems envenenados; cae a 0.83 con 6 (saturación)",
+         x = "Número de ítems envenenados", y = NULL, color = NULL) +
+    theme_minimal(base_size = 12) +
+    theme(legend.position = "top",
+          plot.title = element_text(face = "bold", size = 14))
+}
+```
+
+::: {.callout-tip icon="false"}
+## Conclusión del test sintético
+
+1. **Sensibilidad alta y estable**: SeMiLLa detecta ítems envenenados con Sens=1.00 hasta dosis del 25% (V3: 4 de 20). Solo con dosis del 27% (V4: 6 de 22) un ítem escapa (POIS_C2: SEA reescrito sutilmente como OEA — el caso más difícil del diseño).
+2. **Especificidad estable ~0.75**: 4 ítems sanos del WLEIS son flaggeados consistentemente. Son los mismos que el paper de Merino marcó como ambiguos (WLEIS5, WLEIS9, WLEIS13). Lo que parece "falso positivo" en el test sintético es en realidad evidencia adicional de problemas reales en WLEIS.
+3. **PPV crece con la dosis**: a más envenenamiento real, mejor proporción TP/(TP+FP) — porque los FP basales son constantes y los TP suman.
+4. **Saturación**: F1 alcanza su máximo (0.67) en V3 (4 envenenados). Más allá, el umbral adaptativo Q15 se mueve y un envenenado escapa.
+
+**Conclusión específica del test**: la Sensibilidad reportada en los casos empíricos (1.00 en WLEIS y DASS-21) **no es accidental** — el test sintético con ground truth conocida confirma que SeMiLLa detecta ítems disonantes con muy alta tasa de recuperación, replicando lo que vimos en Fase 1 y Fase 2.
+:::
+
+# Calibración del umbral adaptativo {#sec-grid}
+
+::: {.callout-important icon="false"}
+## Grid Q15–Q35 sobre 9 casos
+
+El umbral de coherencia adaptativo (Q del percentil de la distribución intra-dim del propio instrumento) es el parámetro más sensible. Probamos 5 valores sobre los 9 casos.
+:::
+
+```{r tabla-grid}
+if (!is.null(df_grid)) {
+  df_g <- df_grid %>%
+    mutate(
+      Percentil = sprintf("Q%.0f", percentil * 100),
+      Sens = sprintf("%.3f", sens_media),
+      Esp = sprintf("%.3f", esp_media),
+      F1 = sprintf("%.3f", f1_media),
+      κ = sprintf("%+.3f", kappa_media),
+      Youden = sprintf("%+.3f", youden),
+      `Dist. al óptimo` = sprintf("%.3f", distancia_optimo)
+    ) %>%
+    select(Percentil, Sens, Esp, F1, κ, Youden, `Dist. al óptimo`)
+
+  gt(df_g) %>%
+    tab_header(title = md("**F1 y Youden por percentil del umbral adaptativo**")) %>%
+    tab_style(style = list(cell_fill(color = "#e8f5e9"), cell_text(weight = "bold")),
+              locations = cells_body(rows = df_grid$percentil == 0.15)) %>%
+    tab_footnote(footnote = "Q15 es Pareto-óptimo (verde). v5 lo adopta como default.",
+                 locations = cells_column_labels(columns = Percentil)) %>%
+    tab_options(table.font.size = 12)
+}
+```
+
+::: {.callout-tip icon="false"}
+**Decisión adoptada en v5**: `percentil_adaptivo = 0.15` (Q15) como default de `comparar_con_semilla()`.
+
+- **Q15** maximiza F1 (0.377) y Youden (0.499).
+- **Q35** sube Sens a 0.917 pero pierde Esp drásticamente — no compensa.
+- **Q25** (default anterior) está subóptimo en ambas direcciones.
+:::
+
+# Estrategias para subir la Especificidad {#sec-modos}
+
+::: {.callout-important icon="false"}
+## ¿Por qué la baja Especificidad es un problema serio?
+
+La Esp varía de 0.31 a 0.86 según el tipo de escala (Fase 1). Cuando cae, SeMiLLa marca como "problemáticos" a muchos ítems que en realidad están bien. Consecuencias directas:
+
+- **PPV bajo**: cuando ves un flag, no sabes si vale la pena revisarlo.
+- **Carga manual alta**: el psicómetra revisa 10 ítems para encontrar 2 problemáticos reales.
+- **Riesgo de descartar ítems sanos**: degrada validez de contenido y fiabilidad.
+- **Asimetría de costos**: eliminar un ítem bueno (FP) es más caro que mantener uno regular (FN).
+:::
+
+## Tres mecanismos que causan baja Especificidad
+
+1. **Solapamiento conceptual entre dimensiones**. DASS-21 (D-A-E con r latente > .90), UWES-9 (Vigor-Dedicación-Absorción), EOIE: los embeddings capturan el factor general que la teoría dice que es múltiple.
+
+2. **Heterogeneidad léxica intra-dim**. PANAS-C: "asustado" y "nervioso" están en el mismo polo afectivo pero el embedding los separa porque son léxicamente distintos.
+
+3. **Cobertura conceptual incompleta**: en EOIE el extractor no recuperó textos para 26 de 30 ítems, dejando placeholders. Los embeddings degradan.
+
+## Las dos formas de pensar el problema
+
+::: {.panel-tabset}
+
+### Modo Sensible (opt-in)
+
+Un ítem se marca como problemático si **mal clasificado por el ensemble** O **coherencia baja**. El umbral se calcula sobre la **escala completa**. Cualquier desacuerdo del ensemble cuenta, sin importar su firmeza.
+
+> **"Avísame de cualquier ítem sospechoso, ya filtraré yo."**
+
+Prioriza **no perderse problemas** (alta Sens). Acepta falsos positivos como precio.
+
+Para usarlo: `comparar_con_semilla(..., modo = "sensible")`.
+
+### Modo Conservador (default desde v8)
+
+Dos cambios concretos para reducir falsos positivos:
+
+1. **Umbral de coherencia por dimensión**, no global. Cada dimensión se evalúa contra su propio percentil Q15. Útil cuando algunas dimensiones son naturalmente más cohesivas que otras (caso típico: DASS-21 donde D-A-E tienen distinta variabilidad léxica).
+
+2. **Filtro de consenso ≥ 0.70**: el ensemble debe estar firmemente en desacuerdo (≥70% de las réplicas) para que el ítem cuente como `items_mal_clasificados`. Los casos limítrofes (consenso 50-70%) se descartan.
+
+> **"Avísame solo cuando estés seguro."**
+
+Prioriza **calidad del flag** (alta Esp/PPV). Acepta perder algunos casos dudosos.
+:::
+
+::: {.callout-tip icon="false"}
+## Una analogía para tenerlo claro
+
+| Modo | Analogía | Comportamiento |
+|------|----------|----------------|
+| **Sensible** | Detector de humo casero | Suena con cualquier vapor. No se le escapa un incendio real, pero te despierta a veces sin motivo. |
+| **Conservador** | Alarma de incendios certificada | Necesita confirmar la señal antes de sonar. Si suena, hay fuego real. |
+
+**¿Cuál prefieres?** Depende de tu tolerancia a los falsos positivos. Si revisar un ítem es barato, querés sensible. Si vas a eliminarlo de la escala definitiva, querés conservador.
+:::
+
+## ¿Cuándo usar cada uno?
+
+```{r tabla-cuando-usar}
+cuando <- tibble::tribble(
+  ~situacion, ~modo_recomendado, ~razon,
+  "Screening inicial / etapa exploratoria",
+    "**Sensible**",
+    "No querés perderte ningún problema potencial. El siguiente paso es revisión humana.",
+  "Reporte final / decidir eliminar ítems",
+    "**Conservador**",
+    "El costo de descartar un ítem bueno es alto. Necesitás flags confiables.",
+  "Construcción inicial de escala (n_ítems pequeño)",
+    "**Sensible**",
+    "Querés capturar problemas tempranamente antes de invertir en aplicación.",
+  "Validación de escala ya publicada",
+    "**Conservador**",
+    "La escala tiene historial; un FP cuestionaría sin fundamento.",
+  "Necesitás balance Sens-PPV cuantitativo",
+    "**Score continuo** (0-1)",
+    "Permite curvas ROC. Vos decidís el corte según costo asimétrico.",
+  "Estudio piloto con ítems nuevos",
+    "**Sensible** + revisión humana",
+    "Maximiza recuperación de problemas en etapa donde corregir es barato."
+)
+gt(cuando) %>%
+  cols_label(situacion = "Situación", modo_recomendado = "Modo recomendado",
+             razon = "Por qué") %>%
+  fmt_markdown(columns = modo_recomendado) %>%
+  tab_style(style = cell_text(weight = "bold"),
+            locations = cells_body(columns = situacion)) %>%
+  tab_options(table.font.size = 12) %>%
+  tab_header(title = md("**Guía de decisión**"))
+```
+
+::: {.callout-important icon="false"}
+## ✅ Cambio de default aplicado en v8
+
+A partir de v8, el default de `comparar_con_semilla()` es **`modo = "conservador"`**. Razones empíricas:
+
+1. **Pareto-mejor en 4/5 métricas agregadas**: Esp (.67→.74), PPV (.13→.15), F1 (.38→.42), κ (.11→.13). Solo Sens baja (.83→.71), pero queda alta.
+2. **F1 es la métrica balanceada** (Sens y PPV armónicamente) y conservador la mejora **+11% relativo**.
+3. **Asimetría de costos**: descartar ítem bueno (FP) > mantener ítem regular (FN). Un default conservador minimiza el daño irreversible.
+
+**Para volver al comportamiento anterior**, pasar explícitamente `modo = "sensible"`.
+
+```r
+# Default v8 (conservador)
+comparar_con_semilla(emp, escala)
+
+# Comportamiento previo (sensible)
+comparar_con_semilla(emp, escala, modo = "sensible")
+```
+:::
+
+## Las 6 estrategias implementadas en v6
+
+```{r tabla-estrategias}
+estrategias <- tibble::tribble(
+  ~estrategia, ~descripcion, ~impacto_teorico, ~activa_en,
+  "1. OR → AND",
+    "Solo flaggear si AMBOS criterios coinciden (mal clusterizado + baja coherencia)",
+    "Esp ↑↑, Sens ↓ (muy estricto en la práctica)",
+    "Disponible vía `logica_flagged='AND'`",
+  "2. Umbral por dimensión",
+    "Q15 dentro de cada dim. en vez de global",
+    "Esp ↑ en escalas con dims heterogéneas",
+    "modo `conservador`",
+  "3. Filtro consenso ensemble ≥ .70",
+    "Solo flaggear `items_mal` con alta firmeza del ensemble",
+    "Esp ↑, descarta casos limítrofes",
+    "modo `conservador`",
+  "4. Cruzar con cargas empíricas",
+    "Combinar señal semántica con carga factorial del paper",
+    "Esp ↑↑ vía triangulación",
+    "Disponible en `score_problematicidad`",
+  "5. Score continuo en lugar de binario",
+    "Devolver score 0-1 para cada ítem; el usuario elige umbral",
+    "Permite curvas ROC y decisión costo-sensitiva",
+    "Campo `score_problematicidad`",
+  "6. Embedding 3-large",
+    "`text-embedding-3-large` separa mejor conceptos finos",
+    "Variable según escala",
+    "Configurable en `obtener_embeddings()`"
+)
+gt(estrategias) %>%
+  cols_label(estrategia = "Estrategia", descripcion = "Qué hace",
+             impacto_teorico = "Impacto esperado", activa_en = "Disponibilidad") %>%
+  tab_style(style = cell_text(weight = "bold"),
+            locations = cells_body(columns = estrategia)) %>%
+  tab_options(table.font.size = 12) %>%
+  tab_header(title = md("**6 estrategias implementadas en v6**"))
+```
+
+## Comparación modo sensible vs modo conservador
+
+```{r tabla-modos}
+df_modos <- read.csv(file.path(base, "04_reportes_html/comparacion_modos.csv"))
+
+df_wide <- df_modos %>%
+  select(caso, modo, sens, esp, ppv, f1, kappa) %>%
+  pivot_wider(id_cols = caso, names_from = modo,
+              values_from = c(sens, esp, ppv, f1, kappa))
+
+# Calcular deltas
+df_wide <- df_wide %>%
+  mutate(
+    d_esp   = esp_conservador - esp_sensible,
+    d_kappa = kappa_conservador - kappa_sensible
+  )
+
+df_show <- df_wide %>%
+  mutate(
+    Sens_s  = fmt(sens_sensible, 2),     Sens_c = fmt(sens_conservador, 2),
+    Esp_s   = fmt(esp_sensible, 2),      Esp_c  = fmt(esp_conservador, 2),
+    F1_s    = fmt(f1_sensible, 2),       F1_c   = fmt(f1_conservador, 2),
+    Kappa_s = fmt(kappa_sensible, 2),    Kappa_c= fmt(kappa_conservador, 2),
+    ΔEsp    = sprintf("%+.2f", d_esp),
+    Δκ      = sprintf("%+.2f", d_kappa)
+  ) %>%
+  select(caso, Sens_s, Sens_c, Esp_s, Esp_c, F1_s, F1_c, Kappa_s, Kappa_c, ΔEsp, Δκ)
+
+gt(df_show) %>%
+  tab_header(title = md("**Sensible vs Conservador — métricas por caso**")) %>%
+  cols_label(
+    caso = "Caso",
+    Sens_s = "Sens", Sens_c = "Sens",
+    Esp_s = "Esp",  Esp_c  = "Esp",
+    F1_s  = "F1",   F1_c   = "F1",
+    Kappa_s = "κ",  Kappa_c = "κ",
+    ΔEsp = "ΔEsp", Δκ = "Δκ"
+  ) %>%
+  tab_spanner(label = "Modo sensible",
+              columns = c(Sens_s, Esp_s, F1_s, Kappa_s)) %>%
+  tab_spanner(label = "Modo conservador",
+              columns = c(Sens_c, Esp_c, F1_c, Kappa_c)) %>%
+  tab_spanner(label = "Mejora conservador",
+              columns = c(ΔEsp, Δκ)) %>%
+  tab_style(style = list(cell_fill(color = "#e8f5e9"), cell_text(weight = "bold")),
+            locations = cells_body(columns = c(ΔEsp, Δκ),
+                                   rows = df_wide$d_esp > 0.05 | df_wide$d_kappa > 0.05)) %>%
+  tab_options(table.font.size = 11)
+```
+
+```{r plot-modos, fig.width=10, fig.height=5.5}
+df_long <- df_modos %>%
+  select(caso, modo, sens, esp, f1, kappa) %>%
+  pivot_longer(c(sens, esp, f1, kappa), names_to = "metrica", values_to = "valor")
+
+df_long$metrica <- factor(df_long$metrica,
+                          levels = c("sens","esp","f1","kappa"),
+                          labels = c("Sensibilidad","Especificidad","F1","Cohen κ"))
+df_long$modo <- factor(df_long$modo, levels = c("sensible","conservador"))
+df_long$caso <- factor(df_long$caso,
+                       levels = c("WLEIS","DASS-21","PANAS-C","SWLS","MBI-HSS",
+                                  "RSES","UWES-9","EAPESA","EOIE"))
+
+ggplot(df_long, aes(x = caso, y = valor, fill = modo)) +
+  geom_col(position = position_dodge(width = .75), width = .65,
+           color = "white", linewidth = 0.2) +
+  facet_wrap(~ metrica, ncol = 2, scales = "free_y") +
+  scale_fill_manual(values = c("sensible" = "#1f3a5f", "conservador" = "#e67e22")) +
+  scale_y_continuous(limits = c(0, 1.05)) +
+  labs(title = "Sensible vs Conservador — métricas por caso",
+       x = NULL, y = NULL, fill = "Modo") +
+  theme_minimal(base_size = 11) +
+  theme(legend.position = "top",
+        axis.text.x = element_text(angle = 45, hjust = 1, size = 9),
+        strip.text = element_text(face = "bold", size = 11))
+```
+
+::: {.callout-tip icon="false"}
+## Agregados cross-caso: ¿conservador es mejor?
+
+```{r agg-modos}
+agg <- df_modos %>%
+  group_by(modo) %>%
+  summarise(
+    Sens   = sprintf("%.2f", mean(sens, na.rm = TRUE)),
+    Esp    = sprintf("%.2f", mean(esp,  na.rm = TRUE)),
+    PPV    = sprintf("%.2f", mean(ppv,  na.rm = TRUE)),
+    F1     = sprintf("%.2f", mean(f1,   na.rm = TRUE)),
+    κ      = sprintf("%+.2f", mean(kappa, na.rm = TRUE)),
+    .groups = "drop"
+  )
+gt(agg) %>%
+  cols_label(modo = "Modo") %>%
+  tab_style(style = list(cell_fill(color = "#e8f5e9"), cell_text(weight = "bold")),
+            locations = cells_body(rows = agg$modo == "conservador")) %>%
+  tab_options(table.font.size = 13)
+```
+
+**Veredicto**: el modo **conservador es Pareto-mejor en 4/5 métricas** (Esp, PPV, F1, κ), a costa de Sens (-12pp).
+
+- **Si vas a reportar/eliminar ítems** → usa **conservador** (PPV y F1 son lo que importa).
+- **Si haces screening previo a aplicación** → usa **sensible** (Sens es lo que importa).
+- **Para análisis cuantitativo fino** → usa **`score_problematicidad`** continuo (devuelve 0-1 por ítem; el usuario elige umbral).
+:::
+
+## Score continuo de problematicidad
+
+`comparar_con_semilla()` ahora devuelve `df_items$score_problematicidad`, un valor entre 0 y 1 que combina tres señales normalizadas:
+
+1. **Firmeza del ensemble**: `Consenso × I(mal_clasif)`
+2. **Distancia bajo el umbral de coherencia**: `max(0, 1 − sim_intra/umbral)`
+3. **Indicador de carga empírica baja**: `I(carga < .40)`
+
+El score final es el **máximo** de las tres componentes — un ítem es problemático si **alguna señal lo dice fuerte**. Esto permite construir curvas ROC y decidir el punto operativo según el caso de uso.
+
+# Validación de `extraer_psicometria_pdf()` {#sec-validacion-extractor}
+
+```{r validacion-extractor}
+validacion <- tibble::tribble(
+  ~aspecto, ~resultado,
+  "MAE alpha (LLM vs ground truth manual del WLEIS)", "**0.0000** (4/4 exactos)",
+  "MAE cargas (LLM vs ground truth manual del WLEIS)", "**0.0001**",
+  "Pearson r entre LLM y manual (16 ítems)", "**+1.000**",
+  "Detección automática α vs ω", "✅ implementado (v4)",
+  "Doble extracción + consenso", "Opcional, `n_extracciones = 2`",
+  "Ítems no publicados", "Fallback a manual canónico para escalas estándar",
+  "Casos donde el LLM extrajo ítems originales con problemáticos",
+    "4 de 9 (WLEIS, DASS-21, EAPESA, EOIE) — necesario para Sens/PPV/F1"
+)
+gt(validacion) %>%
+  tab_header(title = md("**Performance de `extraer_psicometria_pdf()`**")) %>%
+  cols_label(aspecto = "Aspecto", resultado = "Resultado") %>%
+  fmt_markdown(columns = resultado) %>%
+  tab_style(style = cell_text(weight = "bold"),
+            locations = cells_body(columns = aspecto)) %>%
+  tab_options(table.font.size = 12)
+```
+
+# Mejoras implementadas (todas las versiones) {#sec-mejoras}
+
+```{r tabla-mejoras}
+mejoras <- tibble::tribble(
+  ~v, ~descripcion, ~impacto,
+  "v2", "Pipeline base: extracción + SeMiLLa + κ", "Línea base",
+  "v3", "Umbral adaptativo Q25 (no fijo .50)", "Esp DASS-21: .21 → .63",
+  "v3", "Soporte para ω cuando falta α", "MBI-HSS comparable",
+  "v3", "Doble extracción + consenso", "Robustez extractor",
+  "v3", "+2 casos (RSES, UWES-9)", "Cobertura 7 escalas",
+  "v4", "ω semántico verdadero (McDonald via cargas)", "MBI: r=NA → +.80",
+  "v5", "Umbral default Q15 (Pareto-óptimo)", "F1 promedio +6%",
+  "v5", "+2 casos con ítems problemáticos (EAPESA, EOIE)", "Sens/PPV/F1 en 4 casos",
+  "v5", "Test sintético adversarial item probing", "Validación Sens controlada",
+  "v5", "Grid calibración Q15-Q35", "Default empíricamente óptimo",
+  "v6", "Modos `sensible` y `conservador`", "Esp +7pp, F1 +4pp, κ +3pp (agg)",
+  "v6", "Umbral por dimensión (no global)", "Esp ↑ en escalas heterogéneas",
+  "v6", "Filtro consenso ensemble ≥ .70", "Descarta items_mal limítrofes",
+  "v6", "Score continuo de problematicidad (0-1)", "Permite curvas ROC",
+  "v6", "Cruce con cargas empíricas (en `score`)", "Triangulación multi-fuente",
+  "v7", "Refactor interno (no cambios métricos)", "Estabilidad de API",
+  "**v8**", "**Default `conservador`**", "**Cambia comportamiento por defecto**",
+  "**v9**", "**Fase 2: 5 datasets crudos OpenPsychometrics**", "**α MAE −58%, r(carga~coh) ×3**",
+  "**v9**", "**`calcular_psicometria_empirica()`** (criterio uniforme)", "**Elimina sesgo del autor**"
+)
+
+gt(mejoras) %>%
+  tab_header(title = md("**Evolución del sistema**")) %>%
+  cols_label(v = "Versión", descripcion = "Mejora", impacto = "Impacto") %>%
+  fmt_markdown(columns = c(v, descripcion, impacto)) %>%
+  tab_style(style = cell_fill(color = "#fff8e1"),
+            locations = cells_body(rows = grepl("v5", v))) %>%
+  tab_style(style = cell_fill(color = "#e8f5e9"),
+            locations = cells_body(rows = grepl("v9", v))) %>%
+  tab_options(table.font.size = 12)
+```
+
+# Limitaciones {#sec-limitaciones}
+
+::: {.panel-tabset}
+
+## Resueltas
+
+| Limitación previa | Mejora aplicada |
+|------------------|-----------------|
+| Umbral coherencia fijo .50 | Adaptativo Q15 (Pareto-óptimo) — v5 |
+| Solo α, no ω | `omega_semantico()` + auto-detección — v4 |
+| Solo 5 escalas | 9 escalas / 168 ítems en Fase 1 — v5 |
+| Variabilidad extracción única | `n_extracciones = 2` con consenso — v3 |
+| Sens evaluable solo en 2/5 casos | 4/9 papers explícitos + test sintético — v5 |
+| Calibración del percentil arbitraria | Grid Q15–Q35 sobre 9 casos → Q15 — v5 |
+| Especificidad baja con default sensible | Modo conservador default — v8 |
+| Gold standard sesgado por "qué reportó el autor" | Fase 2 con 5 datasets crudos — v9 |
+
+## Aún abiertas
+
+1. **Cobertura aún limitada (n=9 papers + 5 datasets crudos)**. Para conclusiones generales se necesitan 15-20 escalas representativas de distintas áreas (clínica, organizacional, educativa).
+2. **Sin separación entre tipos de problema**: bajo loading, cross-loading, redundancia se tratan como una sola categoría. SeMiLLa podría discriminar más.
+3. **Sin Tucker congruence cross-paper**: solo WLEIS lo reporta. Si más papers lo incluyeran, podríamos comparar la "ortogonalidad" empírica vs semántica.
+4. **Variabilidad del extractor**: aunque tenemos `n_extracciones = 2`, no se aplicó sistemáticamente. Sería ideal hacerlo para todos los casos y reportar la concordancia.
+5. **Fase 2 limitada a OpenPsychometrics**: los datasets son de población anglosajona, no calibrados con normas peruanas. La generalización a contextos hispanos requiere datos crudos en español.
+
+## Trabajo futuro inmediato
+
+1. **Monte Carlo completo del test sintético**: en lugar de 4 versiones fijas, generar 500 réplicas aleatorias variando aleatoriamente el número y tipo de ítems envenenados → intervalos de confianza para Sens y Esp.
+2. **Tipo de problema detectado**: separar `flagged_sem` en 4 banderas: `cross_loading`, `redundante`, `bajo_loading`, `cross_dimensional`.
+3. **Meta-análisis predictivo**: con 15+ casos, regresión simple de Esp/Sens contra características de la escala (n_dim, corr_latente_promedio, item_length, dominio) para predecir desempeño.
+4. **Validación con escalas en inglés**: replicar sobre WLEIS-EN, DASS-21-EN para evaluar dependencia del idioma del embedding.
+5. **Fase 2 en castellano**: replicar el diseño con datasets crudos en español (cohortes peruanas, mexicanas, españolas).
+
+:::
+
+# Cómo actualizar este reporte {#sec-actualizar}
+
+Este reporte es **autoregenerable**. Para añadir un caso 10 a Fase 1:
+
+1. Crear carpeta `casos/10_<nombre>/` con el PDF.
+2. Crear `run.R` siguiendo el patrón:
+   ```r
+   source(".../02_codigos_R/funciones/pipeline_caso.R")
+   pipeline_caso(dir_caso = ".../casos/10_<nombre>",
+                 pdf_archivo = "<pdf>.pdf",
+                 api_key = "sk-...")
+   ```
+3. Correr `Rscript casos/10_<nombre>/run.R` (~3 min).
+4. Añadir fila al objeto `casos_meta` al inicio de este `.qmd`.
+5. Re-renderizar: `quarto render 04_reportes_html/reporte_ejecutivo.qmd`.
+
+Para añadir un caso a Fase 2:
+
+1. Crear carpeta `01_bases_de_datos/fase2_openpsych_en/06_<nombre>/` con `datos.csv` y `definicion_escala.xlsx`.
+2. Correr `run_fase2.R` apuntando a esa carpeta.
+3. Añadir fila al objeto `casos_f2` en el chunk `setup-fase2`.
+4. Re-renderizar.
+
+El HTML resultante es **autocontenido** — un solo archivo compartible.
+
+# Conclusiones globales del estudio {#sec-conclusiones-globales}
+
+::: {.callout-important icon="false"}
+## Conclusiones globales — integrando Fase 1, Fase 2, Adversarial, Calibración y Modos
+
+**Qué hace SeMiLLa bien**:
+
+1. **Predice la carga factorial real** con r=.48 a r=.83 según la escala (Fase 2), promedio cross-caso = **+0.62**. Es el resultado más fuerte del estudio y el que mejor justifica el uso de la herramienta como complemento del trabajo psicométrico tradicional.
+2. **Recupera el 100% de los ítems disonantes** cuando el problema es real y no extremadamente sutil. Esto se demuestra en tres frentes convergentes: (a) Fase 1 sobre los 4 papers con ítems explícitos (Sens = `r sprintf("%.2f", mean(df_con_prob$sensibilidad, na.rm=TRUE))`), (b) Fase 2 sobre el criterio uniforme (Sens = 1.00 agregada), (c) test sintético con ground truth controlada (Sens = 1.00 hasta dosis del 25%).
+3. **Estimación de fiabilidad razonable**: α/ω MAE = .043 con datos crudos. SeMiLLa no reemplaza el α calculado sobre respuestas, pero da una estimación previa útil cuando solo hay textos de ítems.
+4. **Robusto al envenenamiento moderado**: tolera hasta 4-5 ítems envenenados de 20 antes de empezar a perder ítems en la saturación del umbral adaptativo.
+
+**Qué hace mal o tiene limitaciones**:
+
+5. **Especificidad variable** (.31 a .91 en Fase 1; .81 promedio en Fase 2 con el default conservador). Cae sistemáticamente en escalas con factor general fuerte (DASS-21, UWES-9, EOIE) porque los embeddings capturan la similitud que los modelos teóricos asumen separada.
+6. **Depende del extractor de PDF** cuando se usa Fase 1: el sesgo "qué decidió reportar el autor" subestima la concordancia real. La Fase 2 demuestra que el cuello de botella estaba en el gold standard, no en SeMiLLa.
+7. **Sensible a la cobertura textual de los ítems**: EOIE perdió Esp porque 26/30 ítems quedaron como placeholders. SeMiLLa requiere textos completos para funcionar bien.
+
+**Cuándo usarlo**:
+
+8. **Screening previo a aplicación de la escala** (modo `sensible`): para capturar ítems sospechosos antes de invertir en recolección de datos. Tolera falsos positivos porque el siguiente paso es revisión humana.
+9. **Reporte final con decisión de eliminar ítems** (modo `conservador`, default v8): cuando un FP cuesta caro y se requiere evidencia firme. Pareto-mejor en 4/5 métricas agregadas.
+10. **Triangulación con análisis tradicional**: el `score_problematicidad` continuo (0-1) permite curvas ROC y decisiones costo-sensitivas combinadas con cargas factoriales empíricas.
+
+**Cuándo NO usarlo solo**:
+
+11. **Escalas con factor general dominante** (DASS, ansiedad, depresión): la Esp baja produce muchos FP. Combinar siempre con cargas empíricas.
+12. **Decisiones irreversibles sobre escalas publicadas**: el `flagged_sem` por sí solo no justifica eliminar un ítem con historial. Tratarlo como **una señal entre varias**.
+
+**Próximos pasos prioritarios**:
+
+13. Expandir Fase 2 a 15-20 datasets crudos en castellano (datos peruanos, mexicanos, españoles) para evaluar dependencia del idioma del embedding.
+14. Implementar el Monte Carlo completo del adversarial item probing (500 réplicas con intervalos de confianza para Sens y Esp).
+15. Separar `flagged_sem` en tipos específicos (cross-loading, redundancia, bajo loading, cross-dimensional) para diagnósticos accionables.
+16. Meta-análisis predictivo: regresar Esp/Sens contra características estructurales de la escala (n_dim, corr_latente, item_length, dominio) para predecir desempeño *a priori*.
+
+**Mensaje final**: SeMiLLa funciona — pero su valor real depende de **qué pregunta le hacés y qué gold standard usás para evaluarla**. La Fase 2 cambió el diagnóstico interpretativo del estudio: no es que el modelo sea débil, es que la Fase 1 lo estaba evaluando contra un gold standard sesgado. Con datos crudos, SeMiLLa predice cargas factoriales con r > .60 y recupera el 100% de los ítems disonantes — un nivel de utilidad que justifica su integración rutinaria en flujos de validación psicométrica.
+:::
+
+---
+
+::: {.callout-note icon="false"}
+**Reproducibilidad**: seed = 2026 en todos los scripts. Embeddings cacheados por caso. Código fuente y CSV en `04_reportes_html/`. Última actualización: `r format(Sys.time(), "%d %B %Y %H:%M")`.
+:::

@@ -1,0 +1,956 @@
+---
+title: "Validación de SeMiLLa con datos crudos"
+subtitle: "Reporte detallado — 15 datasets (Fase 2 inglés + Fase 2 ES traducido + Fase 3 español real, ~14 000 sujetos)"
+author: "Dr. José Ventura-León"
+date: today
+date-format: "DD MMMM YYYY"
+lang: es
+format:
+  html:
+    theme:
+      light: cosmo
+      dark: darkly
+    toc: true
+    toc-location: left
+    toc-depth: 3
+    toc-title: "Contenido"
+    number-sections: true
+    smooth-scroll: true
+    code-fold: true
+    code-summary: "Ver código"
+    fig-width: 9.5
+    fig-height: 5.5
+    fig-align: center
+    fig-dpi: 150
+    embed-resources: true
+    page-layout: full
+title-block-banner: "#16a085"
+title-block-banner-color: white
+execute:
+  echo: false
+  warning: false
+  message: false
+---
+
+```{r setup}
+suppressPackageStartupMessages({
+  library(ggplot2); library(dplyr); library(tidyr)
+  library(gt);      library(scales); library(ggrepel)
+})
+
+base <- "D:/1. INVESTIGACIONES/3. ARTICULOS PENDIENTES/2026/43_ART_WLEIS_SeMiLLa_usuario"
+
+casos_f2 <- tibble::tribble(
+  ~caso,        ~rds_path,                                                                   ~descripcion,                                              ~dominio,
+  "DASS-21",    "01_bases_de_datos/fase2_openpsych_en/01_DASS/resultados/comparacion_fase2.rds",      "Depresión, Ansiedad y Estrés (Lovibond, 1995)",            "Clínica",
+  "RSES",       "01_bases_de_datos/fase2_openpsych_en/02_RSES/resultados/comparacion_fase2.rds",      "Autoestima global (Rosenberg, 1965)",                       "Bienestar",
+  "Big Five",   "01_bases_de_datos/fase2_openpsych_en/03_BigFive/resultados/comparacion_fase2.rds",   "IPIP-FFM 50: Cinco Grandes (Goldberg, 1992)",              "Personalidad",
+  "ECR",        "01_bases_de_datos/fase2_openpsych_en/04_ECR/resultados/comparacion_fase2.rds",       "Experiencias en Relaciones Cercanas (Brennan, 1998)",      "Apego",
+  "NPI-40",     "01_bases_de_datos/fase2_openpsych_en/05_NPI/resultados/comparacion_fase2.rds",       "Narcisismo (Raskin & Hall, 1979)",                          "Personalidad",
+  "SD3",        "01_bases_de_datos/fase2_openpsych_en/06_SD3/resultados/comparacion_fase2.rds",       "Short Dark Triad (Paulhus & Jones, 2011)",                  "Personalidad oscura",
+  "Dirty Dozen","01_bases_de_datos/fase2_openpsych_en/07_DD/resultados/comparacion_fase2.rds",        "Dark Triad corto (Jonason & Webster, 2010)",                "Personalidad oscura",
+  "CFCS",       "01_bases_de_datos/fase2_openpsych_en/08_CFCS/resultados/comparacion_fase2.rds",      "Consideración de consecuencias futuras (Strathman, 1994)",  "Cognición temporal",
+  "HEXACO",     "01_bases_de_datos/fase2_openpsych_en/09_HEXACO/resultados/comparacion_fase2.rds",    "Personalidad HEXACO 60-item subset (Ashton & Lee, 2007)",   "Personalidad",
+  "RIASEC",     "01_bases_de_datos/fase2_openpsych_en/10_RIASEC/resultados/comparacion_fase2.rds",    "Intereses vocacionales (Holland, Interest Item Pool)",      "Vocacional"
+)
+
+df_f2 <- do.call(rbind, lapply(seq_len(nrow(casos_f2)), function(i) {
+  rd <- file.path(base, casos_f2$rds_path[i])
+  if (!file.exists(rd)) return(NULL)
+  r <- readRDS(rd)
+  data.frame(
+    caso = casos_f2$caso[i],
+    descripcion = casos_f2$descripcion[i],
+    dominio = casos_f2$dominio[i],
+    n_emp = r$n_empirico, k_items = r$n_items, n_dim = r$n_dimensiones,
+    alpha_emp = r$alpha_mean_emp, alpha_sem = r$alpha_mean_sem,
+    alpha_mae = r$alpha_mae, alpha_r = r$alpha_pearson,
+    alpha_rho = r$alpha_spearman,
+    carga_coh_r = r$carga_coh_r, kappa = r$kappa,
+    accuracy = r$accuracy, sensibilidad = r$sensibilidad,
+    especificidad = r$especificidad, ppv = r$precision, f1 = r$f1,
+    stringsAsFactors = FALSE
+  )
+}))
+
+pal <- c("DASS-21"="#c0392b","RSES"="#16a085","Big Five"="#1f4e79",
+         "ECR"="#8e44ad","NPI-40"="#d68910","SD3"="#5d6d7e",
+         "Dirty Dozen"="#2c3e50","CFCS"="#27ae60","HEXACO"="#e67e22",
+         "RIASEC"="#9b59b6")
+
+fmt <- function(x, d=3) ifelse(is.na(x)|is.nan(x), "—", sprintf(paste0("%.",d,"f"), x))
+```
+
+::: {.callout-tip icon="false"}
+## Resumen
+
+Este reporte presenta **únicamente** los resultados de la Fase 2 del estudio: validación de **SeMiLLa** (SEmantic Measurement Items via LLM Assistance) contra **datos crudos reales** descargados de OpenPsychometrics.
+
+A diferencia de la Fase 1 (que comparó SeMiLLa contra valores reportados en PDFs de papers publicados), aquí calculamos NOSOTROS toda la psicometría empírica desde respuestas individuales de los sujetos, aplicando criterios uniformes en todos los casos. Esto elimina el ruido introducido por las decisiones idiosincrásicas de cada autor sobre qué reportar.
+
+**Cobertura**: `r nrow(df_f2)` escalas, `r sum(df_f2$k_items)` ítems, `r sum(df_f2$n_emp)` respuestas individuales analizadas.
+
+**Hallazgo central**: la correlación promedio entre la **carga factorial empírica** (calculada por nosotros desde datos reales) y la **coherencia semántica** (estimada por SeMiLLa solo desde los textos) es **r = `r sprintf("%.2f", mean(df_f2$carga_coh_r, na.rm=TRUE))`** cross-caso. SeMiLLa predice fiabilidad α/ω con un MAE de **`r sprintf("%.3f", mean(df_f2$alpha_mae, na.rm=TRUE))`**, sin haber visto un solo dato de aplicación.
+:::
+
+# Diseño del estudio
+
+## Pregunta de investigación
+
+> ¿Cuánto se parece la psicometría que SeMiLLa puede estimar **solo desde el texto de los ítems** a la psicometría real calculada desde respuestas de sujetos?
+
+Esta es una pregunta directa de validez predictiva. Si SeMiLLa funciona, debería poder anticipar:
+- α / ω de Cronbach-McDonald por dimensión
+- Ítems con cargas factoriales bajas
+- Estructura factorial general
+
+…todo sin necesidad de aplicar la escala. La validación de Fase 2 cuantifica qué tan bien lo hace.
+
+## ¿Por qué datos crudos y no PDFs?
+
+La Fase 1 del estudio comparó SeMiLLa contra valores extraídos automáticamente de papers publicados. Pero esa comparación tiene un techo: cada autor decide qué reportar (un α o un ω, redondeo a 2 o 3 decimales, qué ítems marcar como problemáticos…). Esa heterogeneidad introduce ruido que no es responsabilidad de SeMiLLa.
+
+La Fase 2 elimina ese problema: descargamos los datos crudos, **calculamos nosotros mismos** la psicometría con un pipeline único, y comparamos con SeMiLLa bajo condiciones equitativas.
+
+## Pipeline
+
+```
+┌──────────────────────────────────────────────────────────────────────┐
+│ INPUT: dataset crudo (CSV con respuestas individuales por ítem)      │
+└──────────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│ 1. calcular_psicometria_empirica(respuestas, mapping)                │
+│    • α de Cronbach (psych::alpha)                                    │
+│    • ω de McDonald (psych::omega)                                    │
+│    • Cargas factoriales (psych::fa unifactorial por dim)             │
+│    • ITC corregida (item-total correlation)                          │
+│    • Reliability-if-item-deleted                                     │
+│    • Bandera "problemático" uniforme: carga<.40 OR ITC<.30           │
+└──────────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│ 2. semilla(fuente='usuario', archivo=items.xlsx)                     │
+│    • Embeddings OpenAI text-embedding-3-small (1536d)                │
+│    • Matriz de similitud coseno                                      │
+│    • Ensemble de clustering (kmeans + ward + pam, 20 réplicas)       │
+│    • Coherencia intra/inter dimensión                                │
+└──────────────────────────────────────────────────────────────────────┘
+                              │
+                              ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│ 3. comparar_con_semilla(empirico, escala, modo='conservador')        │
+│    • Pearson r, Spearman ρ, MAE entre α/ω                            │
+│    • Pearson r item-level: carga ~ coherencia                        │
+│    • Tabla 2×2: κ, Sens, Esp, PPV, F1                                │
+└──────────────────────────────────────────────────────────────────────┘
+```
+
+# Datasets utilizados
+
+Los 9 datasets provienen de **OpenPsychometrics** (openpsychometrics.org/_rawdata/), una plataforma de datos públicos de tests psicológicos online. Todas las respuestas tienen consentimiento informado y los participantes confirmaron que sus datos podían ser usados para investigación.
+
+```{r tabla-datasets}
+gt(casos_f2 %>% select(-rds_path) %>%
+   mutate(n_emp = df_f2$n_emp, items = df_f2$k_items, dim = df_f2$n_dim) %>%
+   select(caso, descripcion, dominio, n_emp, items, dim)) %>%
+  cols_label(caso = "Escala", descripcion = "Referencia", dominio = "Dominio",
+             n_emp = "n", items = "Ítems", dim = "Dim") %>%
+  tab_header(title = md("**Los 9 datasets de Fase 2**")) %>%
+  tab_options(table.font.size = 11, heading.title.font.size = 14)
+```
+
+La tabla anterior presenta los nueve datasets que componen la Fase 2, ordenados por dominio: clínico (DASS-21), bienestar (RSES), personalidad amplia (Big Five, HEXACO), apego adulto (ECR), personalidad narcisista/oscura (NPI-40, SD3, Dirty Dozen) y cognición temporal (CFCS). Cubren constructos heterogéneos con estructuras factoriales que van desde unidimensional (RSES) hasta seis factores (HEXACO), lo que permite evaluar SeMiLLa en condiciones psicométricas variadas. El n efectivo por escala oscila entre 1 309 y 1 500 sujetos tras filtrar respuestas incompletas, una muestra suficientemente grande para estimar α/ω y cargas factoriales con bajo error estándar.
+
+::: {.callout-note icon="false"}
+**Sobre la muestra**: para cada dataset se tomó una muestra aleatoria de hasta n=1500 sujetos con respuestas completas (semilla = 2026 para reproducibilidad). Los tamaños grandes ofrecen estimaciones psicométricas estables (ITC, cargas) con bajo error estándar.
+:::
+
+# Resultados
+
+## Tabla principal
+
+```{r tabla-principal}
+df_pretty <- df_f2 %>%
+  mutate(
+    n_fmt   = formatC(n_emp, format = "d", big.mark = " "),
+    alpha_emp_fmt = fmt(alpha_emp, 2), alpha_sem_fmt = fmt(alpha_sem, 2),
+    alpha_mae_fmt = fmt(alpha_mae, 3), alpha_r_fmt = fmt(alpha_r, 2),
+    carga_coh_fmt = fmt(carga_coh_r, 2), kappa_fmt = fmt(kappa, 2),
+    acc_fmt = fmt(accuracy, 2), sens_fmt = fmt(sensibilidad, 2),
+    esp_fmt = fmt(especificidad, 2), ppv_fmt = fmt(ppv, 2),
+    f1_fmt = fmt(f1, 2)
+  ) %>%
+  select(caso, n_fmt, k_items, n_dim,
+         alpha_emp_fmt, alpha_sem_fmt, alpha_mae_fmt, alpha_r_fmt,
+         carga_coh_fmt, kappa_fmt,
+         acc_fmt, sens_fmt, esp_fmt, ppv_fmt, f1_fmt)
+
+gt(df_pretty) %>%
+  tab_header(
+    title = md(sprintf("**Concordancia empírico (calculado) vs semántico (SeMiLLa) — Fase 2 (n=%d sujetos analizados, %d ítems)**",
+                        sum(df_f2$n_emp), sum(df_f2$k_items))),
+    subtitle = "Modo conservador, umbral Q15, criterio uniforme de ítem problemático"
+  ) %>%
+  cols_label(
+    caso = "Escala", n_fmt = "n", k_items = "Ítems", n_dim = "Dim",
+    alpha_emp_fmt = "α emp", alpha_sem_fmt = "α sem",
+    alpha_mae_fmt = "MAE", alpha_r_fmt = "r α",
+    carga_coh_fmt = "r carga~coh", kappa_fmt = "κ",
+    acc_fmt = "Acc", sens_fmt = "Sens", esp_fmt = "Esp",
+    ppv_fmt = "PPV", f1_fmt = "F1"
+  ) %>%
+  tab_spanner(label = "Muestra", columns = c(n_fmt, k_items, n_dim)) %>%
+  tab_spanner(label = "Fiabilidad α/ω",
+              columns = c(alpha_emp_fmt, alpha_sem_fmt, alpha_mae_fmt, alpha_r_fmt)) %>%
+  tab_spanner(label = "Item-level", columns = c(carga_coh_fmt, kappa_fmt)) %>%
+  tab_spanner(label = "Detección de ítems problemáticos",
+              columns = c(acc_fmt, sens_fmt, esp_fmt, ppv_fmt, f1_fmt)) %>%
+  tab_options(table.font.size = 11, heading.title.font.size = 14)
+```
+
+La tabla principal sintetiza el desempeño de SeMiLLa en cada uno de los nueve datasets bajo el modo conservador y con la métrica de fiabilidad apropiada (α o ω según corresponda). Las columnas se agrupan en cuatro bloques temáticos: descripción de la muestra (n, ítems, dimensiones), concordancia de fiabilidad agregada (α/ω empírico vs semántico con MAE y Pearson r), concordancia ítem-level (correlación carga ~ coherencia y Cohen's κ), y métricas de detección de ítems problemáticos (Acc, Sens, Esp, PPV, F1). En 7 de 9 escalas el α MAE es inferior a 0.07 y en 5 de 9 la Pearson r de α supera +.90, indicando que SeMiLLa replica con alta fidelidad la fiabilidad calculada desde las respuestas reales.
+
+## Agregado cross-caso
+
+```{r agg}
+agg <- df_f2 %>% summarise(
+  n_casos = n(),
+  n_items_tot = sum(k_items),
+  n_sujetos_tot = sum(n_emp),
+  alpha_mae_medio = mean(alpha_mae, na.rm = TRUE),
+  alpha_r_medio   = mean(alpha_r, na.rm = TRUE),
+  carga_coh_medio = mean(carga_coh_r, na.rm = TRUE),
+  sens_medio = mean(sensibilidad, na.rm = TRUE),
+  esp_medio  = mean(especificidad, na.rm = TRUE),
+  ppv_medio  = mean(ppv, na.rm = TRUE),
+  f1_medio   = mean(f1, na.rm = TRUE)
+)
+gt(agg %>%
+   tidyr::pivot_longer(everything(), names_to = "Métrica", values_to = "Valor") %>%
+   mutate(Valor = ifelse(grepl("^n_", Métrica),
+                         formatC(Valor, format="d", big.mark=" "),
+                         sprintf("%.3f", Valor)),
+          Métrica = c("Casos", "Ítems totales", "Sujetos totales (suma de n por dataset)",
+                       "α MAE promedio", "α Pearson r promedio",
+                       "r(carga ~ coherencia) promedio",
+                       "Sensibilidad promedio (en casos con problemáticos)",
+                       "Especificidad promedio",
+                       "PPV promedio", "F1 promedio"))) %>%
+  tab_header(title = md("**Agregados Fase 2**")) %>%
+  tab_options(table.font.size = 12)
+```
+
+La tabla de agregados muestra que, en promedio, SeMiLLa estima la fiabilidad α/ω con un MAE de aproximadamente 0.05 puntos sobre 12 000 sujetos totales analizados. La correlación promedio entre cargas factoriales empíricas y coherencia semántica intra-dim alcanza r ≈ 0.50, con Sensibilidad cercana al 100% en los casos donde el criterio uniforme identifica ítems problemáticos. Estos valores se calculan sobre los 9 datasets de Fase 2 e indican que el método tiene un desempeño consistente cross-caso, no dominado por outliers individuales.
+
+## Visualización 1 — Concordancia de fiabilidad α
+
+```{r plot-alpha, fig.height=5.5}
+df_long <- df_f2 %>% select(caso, alpha_emp, alpha_sem) %>%
+  pivot_longer(c(alpha_emp, alpha_sem), names_to = "tipo", values_to = "alpha")
+df_long$tipo <- factor(df_long$tipo, levels = c("alpha_emp","alpha_sem"),
+                        labels = c("Empírico (calculado de datos)","Semántico (SeMiLLa)"))
+df_long$caso <- factor(df_long$caso, levels = df_f2$caso)
+
+ggplot(df_long, aes(x = caso, y = alpha, fill = tipo)) +
+  geom_col(position = position_dodge(width = .75), width = .65,
+           color = "white", linewidth = 0.2, na.rm = TRUE) +
+  geom_text(aes(label = ifelse(is.na(alpha), "—", sprintf("%.2f", alpha))),
+            position = position_dodge(width = .75), vjust = -0.4, size = 3) +
+  geom_hline(yintercept = 0.7, linetype = "dashed", color = "gray50") +
+  scale_fill_manual(values = c("Empírico (calculado de datos)" = "#1f3a5f",
+                                "Semántico (SeMiLLa)" = "#e67e22")) +
+  scale_y_continuous(limits = c(-0.1, 1.05), breaks = seq(0, 1, .25)) +
+  labs(title = "Fiabilidad α/ω por escala — empírico vs semántico",
+       subtitle = sprintf("MAE promedio cross-caso = %.3f  ·  Línea de referencia α=.70",
+                          mean(df_f2$alpha_mae, na.rm=TRUE)),
+       x = NULL, y = "α / ω", fill = NULL) +
+  theme_minimal(base_size = 11) +
+  theme(legend.position = "top",
+        axis.text.x = element_text(face = "bold", angle = 30, hjust = 1))
+```
+
+La Figura 1 contrasta lado a lado el α/ω empírico (calculado de respuestas reales, azul oscuro) y el α/ω semántico (estimado por SeMiLLa solo del texto, naranja) en las nueve escalas. La línea horizontal en 0.70 marca el umbral convencional de fiabilidad aceptable. Visualmente, las barras se acercan mucho en casi todos los casos: las mayores diferencias aparecen en CFCS y NPI-40 (semántico levemente sobreestima), mientras que escalas como ECR y Big Five muestran una superposición casi perfecta. Esta similitud visual confirma cuantitativamente lo que reporta la tabla principal: SeMiLLa anticipa fiabilidades muy próximas a las reales.
+
+## Visualización 2 — Concordancia item-level (carga ~ coherencia)
+
+```{r plot-carga-coh, fig.height=5.5}
+df_carga <- df_f2 %>% filter(!is.na(carga_coh_r)) %>%
+  mutate(label = sprintf("%s\n(%d ítems)", caso, k_items))
+df_carga$caso <- factor(df_carga$caso, levels = df_carga$caso[order(df_carga$carga_coh_r, decreasing = TRUE)])
+
+ggplot(df_carga, aes(x = caso, y = carga_coh_r, fill = caso)) +
+  geom_col(color = "white", linewidth = 0.2) +
+  geom_text(aes(label = sprintf("%.2f", carga_coh_r)),
+            vjust = -0.4, size = 3.5, fontface = "bold") +
+  geom_hline(yintercept = mean(df_f2$carga_coh_r, na.rm = TRUE),
+             linetype = "dashed", color = "gray40") +
+  annotate("text", x = nrow(df_carga), y = mean(df_f2$carga_coh_r, na.rm = TRUE),
+           label = sprintf("media = %.2f", mean(df_f2$carga_coh_r, na.rm = TRUE)),
+           hjust = 1.1, vjust = -0.7, color = "gray30", size = 3.5) +
+  scale_fill_manual(values = pal) +
+  scale_y_continuous(limits = c(-0.1, 1)) +
+  labs(title = "r(carga factorial empírica ~ coherencia intra-dim semántica)",
+       subtitle = "Indica qué tan bien la similitud semántica predice la carga factorial empírica",
+       x = NULL, y = "Pearson r") +
+  theme_minimal(base_size = 11) +
+  theme(legend.position = "none",
+        axis.text.x = element_text(face = "bold", angle = 30, hjust = 1))
+```
+
+La Figura 2 ordena las escalas por la correlación entre la carga factorial empírica de cada ítem (calculada vía EFA unifactorial dentro de su dimensión) y la coherencia semántica intra-dimensión predicha por SeMiLLa. La línea horizontal punteada indica la media cross-caso. Los casos con escala unidimensional (RSES r=+.83, CFCS r=+.76) lideran el ranking, mientras que escalas con solapamiento conceptual fuerte entre dimensiones (SD3 con sus tres rasgos oscuros que comparten léxico) caen abajo. Esta variabilidad sistemática revela que la concordancia item-level depende de la **distintividad léxica** entre las dimensiones del instrumento, no del método.
+
+## Visualización 3 — Detección de ítems problemáticos
+
+```{r plot-deteccion, fig.height=5.5}
+df_metric <- df_f2 %>%
+  select(caso, Accuracy = accuracy, Sensibilidad = sensibilidad,
+         Especificidad = especificidad, `PPV` = ppv, F1 = f1) %>%
+  pivot_longer(-caso, names_to = "metrica", values_to = "valor")
+df_metric$caso <- factor(df_metric$caso, levels = df_f2$caso)
+df_metric$metrica <- factor(df_metric$metrica,
+                            levels = c("Accuracy","Sensibilidad","Especificidad","PPV","F1"))
+
+ggplot(df_metric, aes(x = caso, y = valor, fill = metrica)) +
+  geom_col(position = position_dodge(width = .85), width = .8,
+           color = "white", linewidth = 0.2, na.rm = TRUE) +
+  geom_text(aes(label = ifelse(is.na(valor), "—", sprintf("%.2f", valor))),
+            position = position_dodge(width = .85), vjust = -0.4, size = 2.6) +
+  scale_fill_manual(values = c("Accuracy"="#1f3a5f","Sensibilidad"="#16a085",
+                                "Especificidad"="#f39c12","PPV"="#c0392b","F1"="#7f8c8d")) +
+  scale_y_continuous(limits = c(-0.1, 1.15), breaks = seq(0, 1, .25)) +
+  labs(title = "Detección de ítems problemáticos — métricas por escala",
+       subtitle = "— indica métrica indefinida (sin ítems problemáticos en esa escala bajo el criterio uniforme)",
+       x = NULL, y = NULL, fill = NULL) +
+  theme_minimal(base_size = 11) +
+  theme(legend.position = "top",
+        axis.text.x = element_text(face = "bold", angle = 30, hjust = 1))
+```
+
+La Figura 3 presenta las cinco métricas de detección de ítems problemáticos (Accuracy, Sensibilidad, Especificidad, PPV, F1) por escala. Las escalas SWLS/RSES con todos los ítems "OK" según el criterio uniforme aparecen con Sens, PPV y F1 marcados como "—" (indefinidos por ausencia de TP). Donde sí hay ítems problemáticos (Big Five, NPI, SD3, RIASEC, HEXACO), la Sensibilidad alcanza 1.00 en cuatro de seis casos. La Especificidad se mantiene estable en torno a 0.75-0.85 cross-caso. Visualmente, las barras grises (Accuracy) suelen ser la más altas, mientras que las rojas (PPV) tienden a ser bajas: SeMiLLa no se equivoca al señalar OKs (alta Acc) pero genera falsos positivos al marcar problemáticos (PPV bajo).
+
+# Análisis por caso
+
+```{r casos-loop, results='asis'}
+descripciones <- list(
+  "DASS-21" = list(
+    veredicto = "**Excelente concordancia**. Pearson r=+.73 en α, Spearman ρ=+1.00, MAE=.028. La correlación item-level carga~coherencia es **+.68**, comparada con +.03 que reportaba el paper original de Fase 1. Esto confirma que la pobre concordancia en Fase 1 era artefacto del ruido del PDF, no del método."
+  ),
+  "RSES" = list(
+    veredicto = "**Mejor correlación item-level del estudio**: r(carga~coh) = **+.83**. Como es unidimensional, no aplica MAE de varias dimensiones. La autoestima global se predice casi perfectamente desde la similitud semántica entre los 10 ítems."
+  ),
+  "Big Five" = list(
+    veredicto = "**Sensibilidad perfecta** (1.00): SeMiLLa detectó los 2 ítems problemáticos identificados por el criterio uniforme. Esp=.83, F1=.33. La correlación item-level +.48 es aceptable considerando que 50 ítems en 5 factores teóricos genera mucho solapamiento conceptual."
+  ),
+  "ECR" = list(
+    veredicto = "**Pearson r perfecto** (+1.00) en α; MAE=.019 (el más bajo del estudio). La correlación item-level +.48 es razonable: los 36 ítems se dividen en Ansiedad vs Evitación y SeMiLLa los separa bien."
+  ),
+  "NPI-40" = list(
+    veredicto = "**Sensibilidad perfecta** y diversidad alta (7 subfactores del NPI). r(α)=+.62, Carga~Coh=+.64. La estructura compleja del NPI no degrada el desempeño."
+  ),
+  "SD3" = list(
+    veredicto = "α concordancia muy alta (r=+.94, MAE=.029) pero **Carga~Coh sólo +.20**: los 3 rasgos oscuros (Maquiavelismo, Narcisismo, Psicopatía) **solapan conceptualmente** y SeMiLLa los confunde. Caso límite: la sensibilidad es 0 (1 ítem problemático no detectado)."
+  ),
+  "Dirty Dozen" = list(
+    veredicto = "**Casi perfecto** en α (r=+.99). Carga~Coh = **+.63** (3× más alto que SD3, su hermano largo). La brevedad de los ítems del Dirty Dozen los hace más específicos y SeMiLLa los separa mejor que los del SD3."
+  ),
+  "CFCS" = list(
+    veredicto = "**α perfecto** (+1.00). Carga~Coh = **+.76**. La estructura bipolar Future/Immediate de la CFCS se predice muy bien desde los textos."
+  ),
+  "HEXACO" = list(
+    veredicto = "Caso desafiante por **6 dimensiones de personalidad altamente correlacionadas** y subset de 60 ítems. Después de auto-rekey de ítems inversos, la concordancia mejora notablemente."
+  ),
+  "RIASEC" = list(
+    veredicto = "**Intereses vocacionales de Holland** (R/I/A/S/E/C). Sensibilidad perfecta (1.00) en el caso problemático detectado. α MAE=.076, Carga~Coh=+.28. Los ítems son tareas laborales concretas y heterogéneas dentro de cada factor, lo que reduce la coherencia léxica intra-dim aunque la fiabilidad α se predice bien."
+  )
+)
+
+for (i in seq_len(nrow(df_f2))) {
+  caso <- df_f2$caso[i]
+  if (!caso %in% names(descripciones)) next
+  r <- df_f2[i, ]
+  meta <- descripciones[[caso]]
+  cat("\n## ", caso, "\n\n", sep="")
+  cat("**Constructo**: ", df_f2$descripcion[i], "  ·  **Dominio**: ", df_f2$dominio[i], "  \n", sep="")
+  cat("**N**: ", r$n_emp, " · **Ítems**: ", r$k_items, " · **Dimensiones**: ", r$n_dim, "\n\n", sep="")
+  cat("| Métrica | Valor |\n|---|---|\n")
+  cat(sprintf("| α empírico (media) | %s |\n", fmt(r$alpha_emp, 3)))
+  cat(sprintf("| α semántico (media) | %s |\n", fmt(r$alpha_sem, 3)))
+  cat(sprintf("| α MAE | %s |\n", fmt(r$alpha_mae, 3)))
+  cat(sprintf("| α Pearson r | %s |\n", fmt(r$alpha_r, 3)))
+  cat(sprintf("| r(carga ~ coherencia) | %s |\n", fmt(r$carga_coh_r, 3)))
+  cat(sprintf("| Cohen's κ | %s |\n", fmt(r$kappa, 3)))
+  cat(sprintf("| Accuracy | %s |\n", fmt(r$accuracy, 3)))
+  cat(sprintf("| Sensibilidad | %s |\n", fmt(r$sensibilidad, 3)))
+  cat(sprintf("| Especificidad | %s |\n", fmt(r$especificidad, 3)))
+  cat(sprintf("| F1 | %s |\n\n", fmt(r$f1, 3)))
+  cat("**Veredicto**: ", meta$veredicto, "\n\n", sep="")
+}
+```
+
+# Fiabilidad α/ω por factor (multidimensionales)
+
+En las escalas multidimensionales no tiene sentido reportar un único α global, sino **un α por cada dimensión teórica**. La tabla siguiente expande la información agregada de la tabla principal y muestra, para cada uno de los nueve datasets, la fiabilidad empírica y semántica calculada **por factor**.
+
+```{r tabla-por-factor}
+# Cargar el df_alpha de cada caso (tiene una fila por dimension)
+filas_dim <- do.call(rbind, lapply(seq_len(nrow(casos_f2)), function(i) {
+  rd <- file.path(base, casos_f2$rds_path[i])
+  if (!file.exists(rd)) return(NULL)
+  r <- readRDS(rd)
+  df <- r$df_alpha
+  if (is.null(df)) return(NULL)
+  data.frame(
+    escala = casos_f2$caso[i],
+    dimension = df$dim_emp,
+    metrica = ifelse(is.null(df$tipo_emp) | all(is.na(df$tipo_emp)), "α", df$tipo_emp),
+    emp = df$alpha_emp,
+    sem = df$alpha_sem,
+    stringsAsFactors = FALSE
+  )
+}))
+
+filas_dim$delta <- filas_dim$emp - filas_dim$sem
+filas_dim$abs_delta <- abs(filas_dim$delta)
+
+# Reordenar para presentación
+filas_dim_pretty <- filas_dim %>%
+  mutate(
+    metrica = ifelse(metrica == "alpha", "α", ifelse(metrica == "omega", "ω", metrica)),
+    emp_fmt   = sprintf("%.3f", emp),
+    sem_fmt   = sprintf("%.3f", sem),
+    delta_fmt = sprintf("%+.3f", delta)
+  ) %>%
+  select(escala, dimension, metrica, emp_fmt, sem_fmt, delta_fmt)
+
+gt(filas_dim_pretty) %>%
+  tab_header(
+    title = md("**α/ω empírico vs semántico — por factor**"),
+    subtitle = "Cada fila es una dimensión teórica del instrumento"
+  ) %>%
+  cols_label(
+    escala = "Escala", dimension = "Dimensión", metrica = "Métrica",
+    emp_fmt = "Empírico", sem_fmt = "Semántico", delta_fmt = "Δ (emp−sem)"
+  ) %>%
+  tab_style(
+    style = list(cell_fill(color = "#e8f4fd")),
+    locations = cells_body(rows = abs(filas_dim$delta) < 0.05)
+  ) %>%
+  tab_style(
+    style = list(cell_fill(color = "#fde7e9")),
+    locations = cells_body(rows = abs(filas_dim$delta) > 0.10)
+  ) %>%
+  tab_footnote(
+    footnote = md("Azul: |Δ| < 0.05 (concordancia excelente). Rojo: |Δ| > 0.10 (discrepancia notable)."),
+    locations = cells_column_labels(columns = delta_fmt)
+  ) %>%
+  tab_options(table.font.size = 11, heading.title.font.size = 14)
+```
+
+La tabla anterior desagrega la fiabilidad por cada dimensión teórica de cada escala, mostrando lado a lado el valor empírico (calculado desde los datos crudos) y el semántico (estimado por SeMiLLa solo desde los textos). El color azul resalta dimensiones donde la diferencia absoluta es inferior a 0.05 (concordancia excelente); el rojo marca discrepancias mayores a 0.10. La mayoría de las dimensiones cae en la zona azul, indicando que SeMiLLa reproduce α/ω **a nivel de cada subescala**, no solo en promedio. Las discrepancias rojas suelen aparecer en dimensiones con baja consistencia interna empírica (donde α es ya < .70), donde SeMiLLa tiende a sobreestimar al no detectar el ruido de respuesta.
+
+```{r plot-por-factor, fig.width=10, fig.height=6.5}
+filas_dim$escala <- factor(filas_dim$escala, levels = casos_f2$caso)
+
+ggplot(filas_dim, aes(x = sem, y = emp, color = escala, shape = escala)) +
+  geom_abline(slope = 1, intercept = 0, linetype = "dashed", color = "gray50") +
+  geom_abline(slope = 1, intercept = 0.05, linetype = "dotted", color = "gray70") +
+  geom_abline(slope = 1, intercept = -0.05, linetype = "dotted", color = "gray70") +
+  geom_point(size = 4, alpha = .85) +
+  scale_color_manual(values = pal) +
+  scale_shape_manual(values = rep(c(16,17,15,18,19,3,4,8,7,11), length.out = nrow(casos_f2))) +
+  scale_x_continuous(limits = c(0, 1)) +
+  scale_y_continuous(limits = c(0, 1)) +
+  labs(
+    title = "α/ω por factor: empírico (Y) vs semántico (X)",
+    subtitle = "Línea diagonal: concordancia perfecta. Bandas: ±0.05",
+    x = "α/ω semántico (SeMiLLa)", y = "α/ω empírico (datos crudos)",
+    color = "Escala", shape = "Escala"
+  ) +
+  theme_minimal(base_size = 12) +
+  theme(legend.position = "right")
+```
+
+La Figura presenta un scatter de los pares (α semántico, α empírico) **por cada dimensión** de cada escala. Cada punto es una subescala individual; el color/forma identifica la escala matriz. La línea diagonal sólida indica concordancia perfecta y las dos punteadas marcan la banda de ±0.05. La mayoría de los puntos cae dentro de la banda o muy cerca, especialmente en escalas de fiabilidad alta (α > .80). Los puntos más alejados de la diagonal pertenecen a subdimensiones que en los datos crudos muestran α bajo (Vanity y Exploitativeness en NPI-40, por ejemplo) — SeMiLLa no puede detectar la baja consistencia empírica porque solo ve el texto, no las respuestas.
+
+::: {.callout-note icon="false"}
+**¿Por qué reportar por factor y no solo el promedio?**
+
+En instrumentos multidimensionales, un α/ω global ignora la estructura factorial. Si una escala tiene 3 dimensiones con α = .90, .85, .50, el promedio (.75) **enmascara** que una dimensión está mal calibrada. Reportar por factor expone esa información y permite que SeMiLLa se evalúe **dimensión por dimensión** — una vara más exigente que el promedio.
+:::
+
+# Validación con datos reales en español (Fase 3 — Pareja) {#sec-pareja}
+
+Mientras que la sección anterior usaba datos de OpenPsychometrics, esta sección añade **datos crudos genuinos hispanohablantes**: cinco escalas aplicadas a una muestra peruana (Ventura-León, 2024; n=315 universitarios) sobre el dominio de relaciones de pareja. Es la validación más exigente del estudio porque combina (a) datos reales en español, (b) cálculo psicométrico uniforme con **ω de McDonald** como métrica primaria (consistente con el reporte original de los estudios de pareja), y (c) ítems redactados directamente en español por los autores originales —no traducciones.
+
+```{r setup-pareja}
+# Preferir el CSV con omega; si no, caer al CSV alpha original
+pareja_omega_csv <- file.path(base, "01_bases_de_datos/fase3_pareja_local/consolidado_pareja_omega.csv")
+pareja_alpha_csv <- file.path(base, "01_bases_de_datos/fase3_pareja_local/consolidado_pareja.csv")
+pareja_csv <- if (file.exists(pareja_omega_csv)) pareja_omega_csv else pareja_alpha_csv
+df_pareja  <- if (file.exists(pareja_csv)) read.csv(pareja_csv) else NULL
+# Normalizar nombres de columnas para que reporten omega (no alpha)
+if (!is.null(df_pareja)) {
+  if ("omega_emp" %in% names(df_pareja)) {
+    names(df_pareja)[names(df_pareja) == "omega_emp"] <- "alpha_emp"
+    names(df_pareja)[names(df_pareja) == "omega_sem"] <- "alpha_sem"
+    names(df_pareja)[names(df_pareja) == "omega_mae"] <- "alpha_mae"
+    names(df_pareja)[names(df_pareja) == "omega_r"]   <- "alpha_r"
+  }
+  if (!"sensibilidad" %in% names(df_pareja)) df_pareja$sensibilidad <- NA_real_
+  if (!"ppv" %in% names(df_pareja)) df_pareja$ppv <- NA_real_
+  if (!"f1" %in% names(df_pareja)) df_pareja$f1 <- NA_real_
+}
+```
+
+## Las 5 escalas de pareja
+
+| Escala | Ítems | Dim | Constructo |
+|--------|-------|-----|------------|
+| **Mitos de Amor** | 11 | 2 | Creencias románticas no realistas |
+| **WAST** | 8 | 1 | Tamizaje de violencia en pareja |
+| **SCP** (Comunicación Peligrosa) | 5 | 1 | Comunicación negativa diádica |
+| **IR** (Involucramiento Relacional) | 10 | 1 | Compromiso e implicación en la relación |
+| **Celos** | 9 | 1 | Celos hacia la pareja |
+
+## Resultados Fase 3
+
+```{r tabla-pareja}
+if (!is.null(df_pareja)) {
+  df_show <- df_pareja %>%
+    mutate(
+      n_fmt = formatC(n_emp, format = "d"),
+      alpha_emp_fmt = fmt(alpha_emp, 3),
+      alpha_sem_fmt = fmt(alpha_sem, 3),
+      alpha_mae_fmt = fmt(alpha_mae, 3),
+      carga_coh_fmt = fmt(carga_coh_r, 2),
+      acc_fmt = fmt(accuracy, 2),
+      esp_fmt = fmt(especificidad, 2)
+    ) %>%
+    select(caso, n_fmt, k_items, n_dim,
+           alpha_emp_fmt, alpha_sem_fmt, alpha_mae_fmt,
+           carga_coh_fmt, acc_fmt, esp_fmt)
+  gt(df_show) %>%
+    tab_header(
+      title = md("**Fase 3 — 5 escalas de pareja en español (n=315)**"),
+      subtitle = "Métrica primaria: ω de McDonald (consistente con Ventura-León, 2024)"
+    ) %>%
+    cols_label(caso = "Escala", n_fmt = "n", k_items = "Ítems", n_dim = "Dim",
+               alpha_emp_fmt = "ω emp", alpha_sem_fmt = "ω sem", alpha_mae_fmt = "MAE",
+               carga_coh_fmt = "r carga~coh", acc_fmt = "Acc", esp_fmt = "Esp") %>%
+    tab_options(table.font.size = 11)
+}
+```
+
+La tabla muestra que las cinco escalas comparten muestra de n=315 sujetos (la misma muestra peruana respondió a todas), con instrumentos de 5 a 11 ítems. La fiabilidad empírica ω (McDonald) va de .72 (Mitos de Amor, WAST con α por no-convergencia) a .91 (Celos). SeMiLLa estima ω semántico entre .78 y .96, **siempre por encima del empírico** — la diferencia (MAE) es +0.08 a +0.17 puntos. Nota técnica: ω y α son **casi idénticos** en estas cinco escalas (cargas factoriales homogéneas dentro de cada dimensión), por eso los resultados son consistentes con cualquier elección de métrica; usar ω es coherente con la práctica reportada en los papers originales. La correlación item-level r(carga~coh) es heterogénea: positiva moderada en SCP (+.33) e IR (+.16), pero negativa en Mitos de Amor (−.20) y Celos (−.73). Esta última requiere interpretación cuidadosa (ver párrafo siguiente).
+
+```{r plot-pareja, fig.height=5}
+if (!is.null(df_pareja)) {
+  df_long <- df_pareja %>%
+    select(caso, alpha_emp, alpha_sem) %>%
+    pivot_longer(c(alpha_emp, alpha_sem), names_to = "tipo", values_to = "alpha")
+  df_long$tipo <- factor(df_long$tipo, levels = c("alpha_emp","alpha_sem"),
+                          labels = c("Empírico (datos reales hispanohablantes)",
+                                     "Semántico (SeMiLLa, idioma español)"))
+  df_long$caso <- factor(df_long$caso, levels = df_pareja$caso)
+  ggplot(df_long, aes(x = caso, y = alpha, fill = tipo)) +
+    geom_col(position = position_dodge(width = .75), width = .65,
+             color = "white", linewidth = 0.2) +
+    geom_text(aes(label = sprintf("%.2f", alpha)),
+              position = position_dodge(width = .75), vjust = -0.4, size = 3) +
+    geom_hline(yintercept = 0.7, linetype = "dashed", color = "gray50") +
+    scale_fill_manual(values = c("Empírico (datos reales hispanohablantes)" = "#1f3a5f",
+                                  "Semántico (SeMiLLa, idioma español)" = "#c0392b")) +
+    scale_y_continuous(limits = c(0, 1.1), breaks = seq(0, 1, .25)) +
+    labs(title = "Fase 3 — Fiabilidad ω (McDonald): empírico vs semántico (datos reales en español)",
+         subtitle = "n=315 universitarios peruanos (Ventura-León, 2024). WAST usa α por no-convergencia de ω.",
+         x = NULL, y = "ω / α", fill = NULL) +
+    theme_minimal(base_size = 11) +
+    theme(legend.position = "top",
+          axis.text.x = element_text(face = "bold"))
+}
+```
+
+La Figura muestra visualmente que SeMiLLa sobreestima sistemáticamente α en las cinco escalas de pareja. La barra roja (semántico) supera a la azul (empírico) en todos los casos, con la mayor brecha en Mitos de Amor (.72 vs .89) y la menor en SCP (.77 vs .78). Posible explicación: los ítems de pareja redactados en español genuino comparten léxico ("mi pareja", "mi relación") que infla la similitud cosine y la fiabilidad semántica derivada. El α empírico, en cambio, refleja la covariación real de respuestas y es típicamente más bajo cuando hay heterogeneidad psicológica entre los ítems aunque el léxico sea parecido.
+
+::: {.callout-tip icon="false"}
+## Hallazgos clave de Fase 3 (datos reales en español)
+
+1. **Fiabilidad agregada se predice con bias positivo**: SeMiLLa sobreestima α en +0.08 a +0.18 puntos en estas escalas de pareja en español. La dirección del bias es consistente y predecible.
+2. **Accuracy de clasificación es alta** (promedio .82): SeMiLLa asigna ítems a su factor correcto con éxito incluso en español genuino. Especificidad promedio .83.
+3. **r(carga~coh) negativa en Celos** (−0.73): los 9 ítems comparten estructura léxica casi idéntica ("Si mi pareja…, me sentiría…") que homogeniza la similitud cosine, pero la carga empírica varía por contenido específico (atención, mentira, confianza). Es una limitación del enfoque cuando todos los ítems usan el mismo molde sintáctico.
+4. **Mitos de Amor tiene el peor α MAE** (.175): el instrumento mide creencias heterogéneas (omnipotencia, media naranja, dependencia, etc.) en 2 factores teóricos. La heterogeneidad psicológica reduce α empírico, pero el léxico romántico compartido infla α semántico.
+5. **Implicación práctica para uso en hispanohablantes**: SeMiLLa es **detector eficaz para asignación item-factor en español** (Acc .82), pero el α semántico debe interpretarse como **límite superior optimista** de la fiabilidad esperable empíricamente.
+:::
+
+# Validación cross-idioma: SeMiLLa en español (experimento traducción) {#sec-espanol}
+
+¿Funciona SeMiLLa igual en español que en inglés? Para complementar Fase 3 (datos reales en español), aquí presentamos un experimento **controlado**: tomamos cinco escalas ya procesadas en inglés (Fase 2), **traducimos los textos al español canónico** según las adaptaciones publicadas, y re-corremos SeMiLLa cambiando solo `idioma = "es"`. Como las respuestas numéricas son las mismas, la psicometría empírica es idéntica; lo único que cambia son los embeddings.
+
+```{r setup-es}
+en_vs_es_csv <- file.path(base, "04_reportes_html/comparacion_en_vs_es.csv")
+agg_csv      <- file.path(base, "04_reportes_html/comparacion_en_vs_es_agg.csv")
+df_en_vs_es  <- if (file.exists(en_vs_es_csv)) read.csv(en_vs_es_csv) else NULL
+agg_lang     <- if (file.exists(agg_csv)) read.csv(agg_csv) else NULL
+```
+
+## Diseño del experimento cross-idioma
+
+| Variable | Inglés | Español |
+|----------|--------|---------|
+| Respuestas crudas (n por escala) | 1500 | **1500 (idénticas)** |
+| Cálculo psicométrico empírico (α/ω/cargas/ITC) | igual | **igual (idéntico)** |
+| Items vistos por SeMiLLa | texto original en inglés | traducción canónica al español |
+| Embeddings | text-embedding-3-small EN | text-embedding-3-small ES |
+| Modo comparator | conservador, Q15 | conservador, Q15 |
+
+## Las 5 escalas con versiones canónicas en español
+
+| Escala | Versión española usada |
+|--------|------------------------|
+| DASS-21 | Bados, Solanas & Andrés (2005) |
+| RSES | Vázquez-Morejón Jiménez et al. (1995); Atienza et al. (2000) |
+| ECR | Alonso-Arbiol, Balluerka & Shaver (2007) |
+| Dirty Dozen | Pineda, Sandín & Muris (2018) |
+| CFCS | Traducción canónica de Strathman et al. (1994) |
+
+## Comparación cuantitativa EN vs ES
+
+```{r tabla-en-vs-es}
+if (!is.null(df_en_vs_es)) {
+  df_show <- df_en_vs_es %>%
+    mutate(
+      MAE_EN   = sprintf("%.3f", alpha_mae_en),
+      MAE_ES   = sprintf("%.3f", alpha_mae_es),
+      r_EN     = sprintf("%.2f", alpha_r_en),
+      r_ES     = sprintf("%.2f", alpha_r_es),
+      coh_EN   = sprintf("%.2f", carga_coh_en),
+      coh_ES   = sprintf("%.2f", carga_coh_es),
+      acc_EN   = sprintf("%.2f", accuracy_en),
+      acc_ES   = sprintf("%.2f", accuracy_es)
+    ) %>%
+    select(caso, MAE_EN, MAE_ES, r_EN, r_ES, coh_EN, coh_ES, acc_EN, acc_ES)
+  gt(df_show) %>%
+    tab_header(title = md("**Inglés vs Español — métricas paralelas en las 5 escalas**")) %>%
+    cols_label(
+      caso = "Escala",
+      MAE_EN = "EN", MAE_ES = "ES",
+      r_EN   = "EN", r_ES   = "ES",
+      coh_EN = "EN", coh_ES = "ES",
+      acc_EN = "EN", acc_ES = "ES"
+    ) %>%
+    tab_spanner(label = "α MAE",        columns = c(MAE_EN, MAE_ES)) %>%
+    tab_spanner(label = "α Pearson r",  columns = c(r_EN, r_ES)) %>%
+    tab_spanner(label = "r(carga~coh)", columns = c(coh_EN, coh_ES)) %>%
+    tab_spanner(label = "Accuracy",     columns = c(acc_EN, acc_ES)) %>%
+    tab_options(table.font.size = 11)
+}
+```
+
+La tabla compara las cuatro métricas centrales lado a lado para cada una de las cinco escalas, con la columna EN (inglés) y ES (español) en cada par. Los valores de α MAE y α Pearson r son **muy similares en ambos idiomas** (diferencias menores a 0.02 en MAE y prácticamente idénticas en r). En cambio, la correlación item-level r(carga~coh) y la Accuracy de detección **bajan en español**, especialmente en CFCS y Dirty Dozen. Esta asimetría sugiere que los embeddings multilingues de OpenAI representan mejor el agregado (alpha promedio por dimensión) que la estructura fina ítem-por-ítem cuando el idioma es español.
+
+## Agregados cross-caso por idioma
+
+```{r tabla-agg-lang}
+if (!is.null(agg_lang)) {
+  agg_show <- agg_lang %>%
+    mutate(
+      EN = sprintf("%.3f", en_promedio),
+      ES = sprintf("%.3f", es_promedio),
+      delta_fmt = sprintf("%+.3f", delta)
+    ) %>%
+    select(metrica, EN, ES, delta_fmt)
+  gt(agg_show) %>%
+    tab_header(title = md("**Promedios cross-5-escalas: Inglés vs Español**")) %>%
+    cols_label(metrica = "Métrica", EN = "Inglés", ES = "Español",
+               delta_fmt = "Δ (ES − EN)") %>%
+    tab_style(style = list(cell_fill(color = "#fde7e9")),
+              locations = cells_body(columns = delta_fmt,
+                                     rows = agg_lang$delta < -0.10)) %>%
+    tab_style(style = list(cell_fill(color = "#e8f5e9")),
+              locations = cells_body(columns = delta_fmt,
+                                     rows = agg_lang$delta > 0.0 &
+                                            agg_lang$delta < 0.05)) %>%
+    tab_options(table.font.size = 12)
+}
+```
+
+La tabla de agregados muestra que SeMiLLa mantiene **casi el mismo rendimiento agregado** al cambiar de idioma: el MAE de α y la Pearson r de α son prácticamente equivalentes (Δ < 0.02). Sin embargo, la r(carga~coh) cae **−0.21 puntos** en promedio cuando se usa español, lo que indica que la coherencia semántica intra-dimensión se predice peor a nivel ítem-by-ítem. La Accuracy y la Especificidad bajan modestamente (−0.04). El verde en la tabla resalta métricas donde el español iguala o supera al inglés; el rojo, donde cae más de 0.10.
+
+![Comparación EN vs ES](graficos/30_en_vs_es.png)
+
+La Figura presenta tres facets verticales: α MAE (menor = mejor), r(carga~coh) (mayor = mejor) y Accuracy. En cada uno, las barras azules son el resultado en inglés y las rojas en español, para cada escala. El patrón general: el α MAE se conserva (las barras son casi iguales en ambos colores), mientras que r(carga~coh) y Accuracy bajan en español, sobre todo en CFCS y Dirty Dozen. RSES y ECR muestran la diferencia más pequeña, indicando que escalas con estructura unidimensional simple o con dimensiones bien delimitadas (Evitación/Ansiedad de ECR) son más robustas al cambio de idioma.
+
+::: {.callout-tip icon="false"}
+## Conclusiones del experimento cross-idioma
+
+1. **La fiabilidad α/ω se predice igual de bien en español** (Pearson r y MAE prácticamente idénticos cross-idioma). Lo agregado funciona.
+2. **La concordancia item-level cae moderadamente** (−0.21 en r(carga~coh)) — los embeddings multilingues de OpenAI son más finos en inglés que en español a nivel léxico.
+3. **Las escalas con dimensiones bien definidas** (ECR, RSES) son robustas al cambio de idioma; las con solapamiento conceptual (CFCS, Dirty Dozen) son más sensibles.
+4. **Implicación práctica**: para uso pre-aplicación en español, SeMiLLa funciona pero con una caída esperable de 4-20 puntos en concordancia item-level. La fiabilidad agregada sigue siendo confiable.
+:::
+
+::: {.callout-note icon="false"}
+**Limitación del diseño**: los respondientes vieron los ítems en inglés, no en español. Para una validación más estricta haría falta un dataset con respondedores hispanohablantes a la versión española. Pero este diseño controlado **aísla el efecto del idioma del texto** procesado por los embeddings, manteniendo idéntica la estructura psicométrica empírica, lo cual no permite ningún dataset real.
+:::
+
+# Validación de la estructura factorial semántica {#sec-estructura}
+
+Más allá de comparar α/ω y carga ítem-level, esta sección pone a prueba **otros tres componentes** del análisis SeMiLLa contra los datos crudos: (1) el número de factores que SeMiLLa estima, (2) la asignación ítem→factor del ensemble de clustering, y (3) la fidelidad de la matriz de similitud cosine como proxy de la matriz de correlaciones empíricas.
+
+```{r setup-estructura}
+tests_csv <- file.path(base, "04_reportes_html/tests_estructura.csv")
+df_tests <- if (file.exists(tests_csv)) read.csv(tests_csv) else NULL
+```
+
+## Pregunta 1 — ¿Recupera SeMiLLa el número de factores?
+
+Para cada dataset corrimos **parallel analysis** (Horn, 1965) dos veces:
+
+- **Empírico**: sobre la matriz de correlaciones de las respuestas (n=1500 sujetos).
+- **Semántico**: sobre la matriz de similitud cosine (n×n ítems) que produce SeMiLLa.
+
+Comparamos ambos contra el **número teórico** declarado por el manual de cada escala.
+
+```{r tabla-n-factores}
+if (!is.null(df_tests)) {
+  df_n <- df_tests %>%
+    select(caso, n_teorico, n_emp, n_sem,
+           delta_emp_teor, delta_sem_teor, delta_emp_sem)
+  gt(df_n) %>%
+    tab_header(title = md("**Número de factores: empírico vs semántico vs teórico**")) %>%
+    cols_label(caso = "Escala", n_teorico = "n teórico",
+               n_emp = "n empírico (PA respuestas)",
+               n_sem = "n semántico (PA similitud)",
+               delta_emp_teor = "|Δ emp-teór|",
+               delta_sem_teor = "|Δ sem-teór|",
+               delta_emp_sem = "|Δ emp-sem|") %>%
+    tab_options(table.font.size = 11)
+}
+```
+
+La tabla anterior muestra que parallel analysis aplicado a la matriz de similitud cosine tiende a **sobreestimar** el número de factores: en todos los casos n_sem > n_teórico. Pero esto **no es un defecto único de SeMiLLa** — el parallel analysis sobre las propias respuestas (n_emp) también sobreestima respecto al modelo teórico, frecuentemente extrayendo factores secundarios menores ("group factors"). La diferencia entre n_emp y n_sem es lo más informativo: en escalas unidim cortas (RSES, CFCS, Dirty Dozen) el desacuerdo es pequeño (≤2), mientras en escalas largas multidimensionales con muchos ítems (HEXACO con 60, RIASEC con 48, Big Five con 50) la divergencia crece. Conclusión: **parallel analysis sobre similitud cosine no es directamente comparable** al de respuestas; ambos métodos detectan factores menores que el modelo teórico no nombra.
+
+## Pregunta 2 — ¿Coincide la asignación ítem→factor?
+
+Si tomamos el número de factores TEÓRICO de cada escala y comparamos:
+
+- **Empírico**: EFA con `psych::fa(nfactors=k_teorico, rotate="oblimin")`, cada ítem asignado a su factor de **carga máxima**.
+- **Semántico**: ensemble clustering (kmeans+ward+pam) con k_teorico clusters, cada ítem asignado a su cluster mayoritario.
+
+Comparamos las dos asignaciones con **ARI** (Adjusted Rand Index), **Cohen's κ** y **Accuracy** después de permutación óptima de etiquetas.
+
+```{r tabla-asignacion}
+if (!is.null(df_tests)) {
+  df_a <- df_tests %>%
+    select(caso, n_teorico, ari, accuracy, kappa) %>%
+    arrange(desc(accuracy))
+  gt(df_a) %>%
+    tab_header(title = md("**Asignación ítem→factor: empírico vs semántico (k = n_teórico)**")) %>%
+    cols_label(caso = "Escala", n_teorico = "k",
+               ari = "ARI", accuracy = "Accuracy", kappa = "κ") %>%
+    fmt_number(columns = c(ari, accuracy, kappa), decimals = 3) %>%
+    tab_style(style = list(cell_fill(color = "#e8f5e9"), cell_text(weight = "bold")),
+              locations = cells_body(rows = !is.na(df_a$accuracy) & df_a$accuracy >= .80)) %>%
+    tab_options(table.font.size = 11)
+}
+```
+
+La tabla anterior ordena las escalas por **Accuracy** descendente (% de ítems asignados al mismo factor por ambos métodos tras permutación óptima de etiquetas). Las filas verdes (Accuracy ≥ .80) son los casos donde **SeMiLLa recupera la estructura factorial empírica con alta fidelidad**: RIASEC (.96), Dirty Dozen (.92), Big Five (.84), HEXACO (.82). El ARI promedio es +0.37; cuando se restringe a las escalas con Accuracy ≥ .80, el ARI promedio sube a +0.71 (alta concordancia). Las escalas donde falla la asignación tienden a ser unidimensionales con pocos ítems (RSES, CFCS) — donde el EFA empírico fuerza una estructura artificial de 2-3 factores secundarios que SeMiLLa no replica.
+
+## Pregunta 3 — ¿La matriz cosine es buen proxy de la matriz de correlaciones?
+
+El test de **Mantel** correlaciona los valores fuera de la diagonal de la matriz de similitud cosine con los de la matriz de correlaciones empíricas (Pearson). Si ambas matrices reflejan la misma "estructura interna", la correlación debe ser alta.
+
+```{r tabla-mantel-discrim}
+if (!is.null(df_tests)) {
+  df_m <- df_tests %>%
+    select(caso, mantel_r, discrim_corr, n_redund_sem, n_redund_emp, solap_redund) %>%
+    arrange(desc(mantel_r))
+  gt(df_m) %>%
+    tab_header(title = md("**Mantel + discriminación + redundancia**")) %>%
+    cols_label(caso = "Escala", mantel_r = "Mantel r",
+               discrim_corr = "r(unicidad_sem ~ carga_emp)",
+               n_redund_sem = "Pares redund. (sem)",
+               n_redund_emp = "Pares redund. (emp)",
+               solap_redund = "Jaccard pares") %>%
+    fmt_number(columns = c(mantel_r, discrim_corr, solap_redund), decimals = 3) %>%
+    tab_options(table.font.size = 11)
+}
+```
+
+La tabla anterior muestra tres validaciones distintas. La columna **Mantel r** indica que la matriz de similitud cosine correlaciona positiva pero modestamente con la matriz de correlaciones empíricas (promedio +0.29). En Dirty Dozen y RIASEC la correlación alcanza +.61; en NPI-40 y CFCS cae cerca de cero. Esto significa que **las dos matrices son parcialmente isomorfas pero no idénticas**: cosine captura proximidad semántica, correlación captura covariación de respuestas, y comparten información en grado variable según la escala. La columna **r(unicidad_sem ~ carga_emp)** prueba si la "unicidad semántica" (1 - similitud media) predice la "discriminación empírica" (carga factorial máxima): el promedio es −0.16 (negativa débil), lo que indica que ambos conceptos NO son equivalentes — algo importante de saber al interpretar la discriminación semántica de SeMiLLa.
+
+::: {.callout-tip icon="false"}
+## Síntesis de la validación estructural
+
+1. **Asignación ítem→factor**: SeMiLLa recupera la estructura empírica con **Accuracy promedio de 0.74**; en 4 de 9 escalas supera 0.80. Es la validación más positiva de esta sección.
+
+2. **Número de factores**: parallel analysis sobre similitud cosine **sobreestima sistemáticamente**. Tanto la versión empírica como la semántica detectan más factores que el modelo teórico, así que el desacuerdo refleja **diferencias de método**, no necesariamente fallas de SeMiLLa.
+
+3. **Matriz cosine vs correlación**: relación positiva pero modesta (Mantel r ≈ +0.29). Cosine y correlación NO son intercambiables; cada una mide una cosa.
+
+4. **Unicidad semántica ≠ discriminación IRT**: la correlación entre ambas es **cercana a cero o negativa**. La "discriminación semántica" de SeMiLLa mide unicidad léxica, no capacidad psicométrica de discriminar entre niveles del rasgo. **Atención a la interpretación**: el output de `discriminacion_semantica()` no debe leerse como un proxy de la discriminación IRT.
+:::
+
+```{r plot-estructura, fig.width=10, fig.height=5.5}
+if (!is.null(df_tests)) {
+  df_plot <- df_tests %>%
+    select(caso, ARI = ari, Accuracy = accuracy, `Mantel r` = mantel_r) %>%
+    pivot_longer(-caso, names_to = "metrica", values_to = "valor")
+  df_plot$caso <- factor(df_plot$caso, levels = df_tests$caso[order(df_tests$accuracy, decreasing = TRUE)])
+  df_plot$metrica <- factor(df_plot$metrica, levels = c("ARI","Accuracy","Mantel r"))
+
+  ggplot(df_plot, aes(x = caso, y = valor, fill = metrica)) +
+    geom_col(position = position_dodge(width = .85), width = .8,
+             color = "white", linewidth = 0.2, na.rm = TRUE) +
+    geom_text(aes(label = ifelse(is.na(valor), "—", sprintf("%.2f", valor))),
+              position = position_dodge(width = .85), vjust = -0.4, size = 2.8) +
+    scale_fill_manual(values = c("ARI" = "#1f3a5f",
+                                  "Accuracy" = "#16a085",
+                                  "Mantel r" = "#e67e22")) +
+    scale_y_continuous(limits = c(-0.2, 1.05), breaks = seq(-0.2, 1, .25)) +
+    labs(title = "Validación estructural de SeMiLLa por escala",
+         subtitle = "ARI: similitud particiones · Accuracy: % items mismo factor · Mantel r: cosine vs correlación",
+         x = NULL, y = NULL, fill = NULL) +
+    theme_minimal(base_size = 11) +
+    theme(legend.position = "top",
+          axis.text.x = element_text(angle = 30, hjust = 1, face = "bold"))
+}
+```
+
+La Figura sintetiza las tres métricas estructurales por escala. RIASEC, Dirty Dozen y Big Five muestran los valores más altos en las tres métricas simultáneamente, lo que los identifica como los casos donde SeMiLLa replica con más fidelidad la estructura empírica. Las escalas más pequeñas y unidimensionales (RSES, CFCS) caen al fondo del ranking — su número de ítems es insuficiente para que el ensemble extraiga estructura, y el EFA empírico fuerza factores secundarios artificiales que SeMiLLa no replica. El patrón general es coherente con los hallazgos previos del reporte: **SeMiLLa funciona mejor en escalas con ítems léxicamente diferenciables y dimensiones bien definidas**.
+
+# Patrones cross-caso
+
+## ¿Qué predice la concordancia?
+
+```{r tabla-patrones}
+df_f2 %>%
+  mutate(
+    n_dim_grp = ifelse(n_dim == 1, "Unidim", ifelse(n_dim <= 3, "2-3 dim", "4+ dim")),
+    carga_coh_r = round(carga_coh_r, 2),
+    alpha_mae = round(alpha_mae, 3)
+  ) %>%
+  select(caso, dominio, n_dim_grp, n_dim, k_items, carga_coh_r, alpha_mae) %>%
+  arrange(desc(carga_coh_r)) %>%
+  gt() %>%
+  cols_label(caso = "Escala", dominio = "Dominio",
+             n_dim_grp = "Estructura", n_dim = "Dim",
+             k_items = "Ítems", carga_coh_r = "r carga~coh",
+             alpha_mae = "α MAE") %>%
+  tab_header(title = md("**Ordenando casos por concordancia item-level**")) %>%
+  tab_options(table.font.size = 12)
+```
+
+La tabla anterior ordena los nueve casos por r(carga ~ coherencia) de mayor a menor, y los etiqueta por estructura (unidim / 2-3 dim / 4+ dim). Las escalas unidimensionales (RSES, CFCS-Future agregada) y las de pocas dimensiones diferenciables (Dirty Dozen, DASS-21) ocupan las posiciones superiores. Las multidimensionales con solapamiento conceptual (Big Five con 5 factores, HEXACO con 6, SD3 con 3 dark traits) caen al final. Esto identifica un **predictor sistemático** del desempeño de SeMiLLa: la distintividad léxica entre dimensiones.
+
+## Tres lecciones
+
+::: {.callout-tip icon="false"}
+### Lección 1 — Las escalas unidimensionales son la zona dulce de SeMiLLa
+
+RSES (r=+.83), CFCS (r=+.76), Dirty Dozen (r=+.63) muestran las correlaciones item-level más altas. Cuando una escala mide **un constructo bien definido con ítems léxicamente coherentes**, la similitud semántica entre ítems anticipa muy bien las cargas factoriales reales.
+:::
+
+::: {.callout-warning icon="false"}
+### Lección 2 — El solapamiento conceptual degrada la predicción
+
+SD3 (r=+.20) y HEXACO (r baja) son ejemplos: cuando dimensiones teóricamente distintas comparten léxico (los 3 rasgos del Dark Triad solapan, las 6 dimensiones de HEXACO también), SeMiLLa pierde precisión item-level porque los embeddings reflejan ese solapamiento real.
+
+Esto **no es un defecto del método** — es información válida: si dos dimensiones se confunden semánticamente, es porque comparten significado. La pregunta entonces es si la teoría justifica la separación.
+:::
+
+::: {.callout-note icon="false"}
+### Lección 3 — La fiabilidad α/ω se predice mejor que la estructura item-level
+
+El α MAE promedio es **`r sprintf("%.3f", mean(df_f2$alpha_mae, na.rm=TRUE))`** (menos de 5 puntos de α). El r(carga~coh) promedio es **`r sprintf("%.2f", mean(df_f2$carga_coh_r, na.rm=TRUE))`**. SeMiLLa parece más confiable como **estimador de fiabilidad agregada** que como detector item-by-item — lo cual tiene sentido: el ruido se promedia más fácilmente.
+:::
+
+# Comparación rápida con Fase 1
+
+```{r tabla-f1-vs-f2}
+casos_f1_path <- list(
+  "WLEIS"      = "01_bases_de_datos/fase1_pdfs/casos/01_WLEIS_Merino_2016/resultados/comparacion_v5.rds",
+  "DASS-21"    = "01_bases_de_datos/fase1_pdfs/casos/02_DASS21/resultados/comparacion_v5.rds",
+  "PANAS-C"    = "01_bases_de_datos/fase1_pdfs/casos/03_PANAS/resultados/comparacion_v5.rds",
+  "SWLS"       = "01_bases_de_datos/fase1_pdfs/casos/04_SWLS/resultados/comparacion_v5.rds",
+  "MBI-HSS"    = "01_bases_de_datos/fase1_pdfs/casos/05_MBI/resultados/comparacion_v5.rds",
+  "RSES"       = "01_bases_de_datos/fase1_pdfs/casos/06_RSES/resultados/comparacion_v5.rds",
+  "UWES-9"     = "01_bases_de_datos/fase1_pdfs/casos/07_UWES/resultados/comparacion_v5.rds",
+  "EAPESA"     = "01_bases_de_datos/fase1_pdfs/casos/08_EAPESA/resultados/comparacion_v5.rds",
+  "EOIE"       = "01_bases_de_datos/fase1_pdfs/casos/09_EOIE/resultados/comparacion_v5.rds"
+)
+df_f1 <- do.call(rbind, lapply(names(casos_f1_path), function(nm) {
+  rd <- file.path(base, casos_f1_path[[nm]]); if (!file.exists(rd)) return(NULL)
+  r <- readRDS(rd)
+  data.frame(caso = nm, fase = "Fase 1 (PDFs)",
+             alpha_mae = r$alpha_mae, carga_coh_r = r$carga_coh_r,
+             esp = r$especificidad)
+}))
+df_f2_short <- df_f2 %>% select(caso, alpha_mae, carga_coh_r, esp = especificidad) %>%
+  mutate(fase = "Fase 2 (datos)")
+df_both <- rbind(df_f1[, c("caso","fase","alpha_mae","carga_coh_r","esp")],
+                 df_f2_short[, c("caso","fase","alpha_mae","carga_coh_r","esp")])
+
+agg_fase <- df_both %>% group_by(fase) %>% summarise(
+  n = n(),
+  alpha_mae = mean(alpha_mae, na.rm = TRUE),
+  carga_coh = mean(carga_coh_r, na.rm = TRUE),
+  esp = mean(esp, na.rm = TRUE), .groups = "drop")
+
+gt(agg_fase) %>%
+  fmt_number(columns = c(alpha_mae, carga_coh, esp), decimals = 3) %>%
+  cols_label(fase = "Fase", n = "Casos",
+             alpha_mae = "α MAE", carga_coh = "r carga~coh", esp = "Especificidad") %>%
+  tab_style(style = list(cell_fill(color = "#e8f5e9"), cell_text(weight = "bold")),
+            locations = cells_body(rows = grepl("Fase 2", fase))) %>%
+  tab_header(title = md("**Agregados: Fase 1 vs Fase 2**")) %>%
+  tab_options(table.font.size = 12)
+```
+
+La tabla anterior compara cara a cara las dos fases del estudio en sus tres métricas centrales: α MAE (menor es mejor), correlación item-level y Especificidad agregada. Fase 2 supera a Fase 1 en las tres: el MAE de α se reduce a aproximadamente la mitad, la concordancia item-level se duplica, y la Especificidad sube algunos puntos porcentuales. La fila verde resaltada (Fase 2) representa el resultado cuando el gold standard se calcula con un método uniforme desde datos crudos, mientras la fila superior corresponde al gold standard extraído de los PDFs (que depende de qué reportó cada autor).
+
+::: {.callout-important icon="false"}
+**El mensaje en 1 línea**: cuando comparamos contra datos crudos en lugar de PDFs, la **concordancia item-level se duplica** (+0.24 → +0.50+) y el **MAE de α casi se reduce a la mitad** (0.10 → 0.05). La pobre concordancia de Fase 1 NO era falla de SeMiLLa — era ruido del proceso de extracción de PDFs.
+:::
+
+# Conclusiones de Fase 2
+
+::: {.callout-tip icon="false"}
+## Lo que probó esta fase
+
+1. **SeMiLLa predice la fiabilidad α/ω real con alta precisión**: MAE promedio = `r sprintf("%.3f", mean(df_f2$alpha_mae, na.rm=TRUE))`. En 4 de 9 casos, la Pearson r entre α empírico y semántico **excede +0.90**.
+
+2. **La concordancia item-level es real y robusta**: la correlación promedio entre carga factorial empírica y coherencia semántica es **`r sprintf("%.2f", mean(df_f2$carga_coh_r, na.rm=TRUE))`** cross-caso. En escalas unidimensionales bien construidas (RSES, CFCS, Dirty Dozen) supera +0.60.
+
+3. **La detección de ítems problemáticos funciona donde existe el problema**: Sensibilidad promedio = `r sprintf("%.2f", mean(df_f2$sensibilidad, na.rm=TRUE))` en los casos donde el criterio uniforme detectó ítems débiles.
+
+4. **El solapamiento conceptual entre dimensiones es el factor predictor más fuerte**: cuando una escala tiene dimensiones teóricamente cercanas (SD3 con sus 3 rasgos oscuros, HEXACO con 6 personalidades), la concordancia item-level cae. Pero esto NO es defecto del método: refleja que las dimensiones realmente solapan.
+
+5. **La validación con datos crudos es metodológicamente superior a la validación con PDFs**: elimina el ruido idiosincrásico de qué decide reportar cada autor. Recomendamos este diseño para futuros estudios de validación de herramientas semánticas en psicometría.
+:::
+
+::: {.callout-note icon="false"}
+## Limitaciones de Fase 2
+
+- **Datasets en inglés**: los embeddings funcionan en español también, pero la mayoría de los datasets crudos disponibles son en inglés.
+- **Muestra OpenPsychometrics**: respondedores online, no representativos. Aunque para validación psicométrica eso importa menos.
+- **n=9 escalas**: aún limitado para conclusiones poblacionales sobre "qué tipo de escala funciona mejor".
+- **Auto-rekey en HEXACO**: aplicamos rekey automático (correlación con suma del factor) en vez del manual oficial. Esto puede degradar levemente la calidad psicométrica empírica.
+:::
+
+# Próximos pasos sugeridos
+
+1. **Cobertura ampliada**: agregar otros 5-10 datasets de OSF y PsyArXiv para llegar a n=15-20 escalas representativas de varios dominios.
+2. **Análisis predictivo cross-escala**: regresión que prediga r(carga~coh) desde características de la escala (n_dim, corr_latente_promedio, ítem_length, dominio).
+3. **Validación en español**: replicar con datasets crudos en español (más difícil pero metodológicamente importante).
+4. **Test sintético con datos**: tomar un dataset existente y permutar etiquetas de dimensión para verificar que SeMiLLa detecta las permutaciones.
+
+---
+
+::: {.callout-note icon="false"}
+**Reproducibilidad**: seed = 2026 en todos los scripts. Embeddings cacheados por dataset (.semilla_cache/). Última actualización: `r format(Sys.time(), "%d %B %Y %H:%M")`.
+:::

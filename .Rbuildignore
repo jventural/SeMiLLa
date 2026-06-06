@@ -1,0 +1,7 @@
+^.*\.Rproj$
+^\.Rproj\.user$
+^\.github$
+^\.Rhistory$
+^README\.md$
+^LICENSE\.md$
+^validation$
