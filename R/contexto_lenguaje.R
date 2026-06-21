@@ -32,6 +32,11 @@
 #' @param nivel_socioeconomico Cadena: `"alto"`, `"medio"`, `"medio_bajo"`,
 #'   `"bajo"`, o `"auto"` (sin restriccion).
 #' @param idioma `"es"`, `"en"` o `"pt"`.
+#' @param variante_regional Variante de castellano para ajustar registro y
+#'   vocabulario regional: `"auto"` (default, sin ajuste),
+#'   `"selva_peru"` (alias: `"selva"`, `"amazonia_peru"`, `"amazonico"`) para
+#'   castellano amazonico simple (lector adolescente a menudo bilingue), o una
+#'   cadena libre que se inyecta como guia de registro.
 #'
 #' @return Cadena con un bloque de texto listo para inyectar en sys_msg.
 #'   Devuelve cadena vacia si ambos parametros son `"auto"`.
@@ -39,10 +44,12 @@
 #' @export
 contexto_lenguaje <- function(etapa_evolutiva = "auto",
                               nivel_socioeconomico = "auto",
-                              idioma = "es") {
+                              idioma = "es",
+                              variante_regional = "auto") {
 
-  # Si ambos son auto, no inyectar nada
-  if (etapa_evolutiva == "auto" && nivel_socioeconomico == "auto") {
+  # Si todo es auto, no inyectar nada
+  if (etapa_evolutiva == "auto" && nivel_socioeconomico == "auto" &&
+      identical(variante_regional, "auto")) {
     return("")
   }
 
@@ -129,24 +136,53 @@ contexto_lenguaje <- function(etapa_evolutiva = "auto",
     ""
   )
 
+  # ---- Bloque por VARIANTE REGIONAL (idioma es) ----
+  vr <- tolower(trimws(variante_regional))
+  bloque_region_es <- if (vr %in% c("selva_peru", "selva", "amazonia_peru",
+                                     "amazonia", "amazonico")) {
+    paste(
+      "VARIANTE REGIONAL: CASTELLANO AMAZONICO (SELVA DEL PERU).",
+      "- Lector tipico: adolescente de un colegio o comunidad de la selva",
+      "  peruana, muchas veces BILINGUE (castellano como segunda lengua).",
+      "- Castellano MUY simple, oral y concreto. UNA sola idea por oracion.",
+      "- Oraciones CORTAS pero COMPLETAS y CLARAS (idealmente 12-16 palabras):",
+      "  NUNCA recortes articulos, preposiciones ni conectores, ni dejes frases",
+      "  telegraficas o entrecortadas ('perder control emocional', 'no calmarme",
+      "  facil'); escribe 'perder el control de mis emociones', 'no calmarme",
+      "  facilmente'. Si una palabra mas hace la frase mas clara, agregala: la",
+      "  CLARIDAD a la primera lectura tiene PRIORIDAD sobre la brevedad.",
+      "- PROHIBIDO encadenar muchas subordinadas o usar dobles condicionales",
+      "  ('si... entonces si...', 'aunque... podria... cuando...'). Si hace",
+      "  falta, partir en una frase mas simple, pero siempre gramaticalmente",
+      "  completa.",
+      "- EVITAR palabras cultas o abstractas: 'angustia', 'ansiedad',",
+      "  'desconectado', 'saldar', 'expiar', 'reparar', 'vulnerabilidad',",
+      "  'desbordar(se)', 'tentacion', 'fallas', 'autocastigo', 'indiferencia'.",
+      "- USAR palabras concretas de uso diario: 'hacerme dano', 'lastimarme',",
+      "  'me siento mal', 'me da rabia', 'nervios', 'miedo', 'estoy triste',",
+      "  'me cuesta calmarme', 'me dan ganas de...', 'pienso que...', 'me siento solo'.",
+      "- EVITAR jerga urbana limeña y modismos costeños.",
+      "- El sentido del item debe entenderse a la PRIMERA lectura, en voz alta.",
+      "- PRUEBA: si un adolescente de la selva con castellano basico tuviera que",
+      "  releer la frase o preguntar que significa una palabra, simplificarla."
+    )
+  } else if (!identical(variante_regional, "auto") && nzchar(vr)) {
+    # variante libre: inyectar el texto tal cual como guia de registro
+    paste0("VARIANTE REGIONAL / REGISTRO: ", variante_regional)
+  } else ""
+
   # ---- Concatenar ----
-  bloque <- paste(c(
+  partes <- c(
     "RESTRICCIONES DE LENGUAJE (basadas en la poblacion lectora):",
     bloque_etapa_es,
     bloque_nse_es,
+    bloque_region_es,
     "",
-    "CRITERIO DE PRUEBA: cualquier frase debe ser comprensible para un",
-    "estudiante de la edad y NSE indicados, leida en voz alta sin pausas",
-    "para buscar significado de palabras."
-  )[nzchar(c(
-    "RESTRICCIONES DE LENGUAJE (basadas en la poblacion lectora):",
-    bloque_etapa_es,
-    bloque_nse_es,
-    "",
-    "CRITERIO DE PRUEBA: cualquier frase debe ser comprensible para un",
-    "estudiante de la edad y NSE indicados, leida en voz alta sin pausas",
-    "para buscar significado de palabras."
-  ))], collapse = "\n")
+    "CRITERIO DE PRUEBA: cualquier frase debe ser comprensible y CLARA a la",
+    "primera lectura para un estudiante de la edad, NSE y variante indicados,",
+    "leida en voz alta sin pausas para buscar significado de palabras."
+  )
+  bloque <- paste(partes[nzchar(partes)], collapse = "\n")
 
   # Idiomas en/pt: traduccion basica (placeholder)
   if (idioma == "en") {

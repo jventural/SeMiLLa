@@ -66,6 +66,7 @@ export(validez_criterio_predicha)
 # Pasos 16-19 (Fase VI). Entregable final
 # -----------------------------------------------------------------------------
 export(forma_corta)
+export(forma_breve)
 export(sugerir_escala_respuesta)
 export(ensamblar)
 export(ensamblar_test)

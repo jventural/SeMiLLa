@@ -31,6 +31,11 @@
 #'   independientes); "filas" (solo medias por fila).
 #' @param umbral_carga Cargas absolutas por debajo de este umbral se
 #'   reportan como cero (default: 0.10).
+#' @param ejecutar Lógico. Si \code{FALSE} (default) la función se omite y
+#'   devuelve \code{NULL}: el EFA regularizado es un diagnóstico OPCIONAL de
+#'   robustez, NO el análisis que define la estructura de la escala (eso lo
+#'   hace \code{precision_clasificacion(metodo = "ensemble")}). Pásalo
+#'   explícitamente a \code{TRUE} para correrlo.
 #' @param verbose Mostrar progreso.
 #'
 #' @return Lista de clase \code{semilla_efa_reg} con:
@@ -73,7 +78,16 @@ efa_regularizado <- function(x,
                              alpha = 0.5,
                              centrado = c("double", "ninguno", "filas"),
                              umbral_carga = 0.10,
+                             ejecutar = FALSE,
                              verbose = TRUE) {
+
+  # Diagnóstico OPCIONAL: la estructura la define el clustering ensemble
+  # (precision_clasificacion), no este EFA. Off por defecto.
+  if (!isTRUE(ejecutar)) {
+    if (verbose) message("efa_regularizado() omitido (ejecutar = FALSE). ",
+                         "Es un diagnóstico opcional; usa ejecutar = TRUE para correrlo.")
+    return(invisible(NULL))
+  }
 
   if (!inherits(x, "semilla")) {
     stop("x debe ser un objeto 'semilla' con embeddings calculados.")

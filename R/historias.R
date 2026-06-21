@@ -57,6 +57,18 @@
 #'   "masculino", "femenino" o "neutro".
 #' @param items_modo Generacion de items: "transversal" (default, comunes a
 #'   todas las historias) o "por_historia" (especificos de cada historia).
+#' @param enfoque_items Solo aplica cuando \code{items_modo = "por_historia"}.
+#'   Define como se construyen los items especificos de cada historia:
+#'   \itemize{
+#'     \item \code{"facetas"} (default): se recorren las mismas
+#'       \code{facetas_percepcion} en cada historia, produciendo items
+#'       PARALELOS entre historias (diseno cruzado faceta x historia). La
+#'       estructura factorial tiende a organizarse por faceta o por perspectiva,
+#'       no por historia.
+#'     \item \code{"historias"}: cada historia genera items DISTINTIVOS de su
+#'       constructo dominante (contenido propio, no facetas compartidas),
+#'       buscando que las K historias rindan K factores diferenciados.
+#'   }
 #' @param contexto_propension Texto opcional que orienta la propension del
 #'   contexto. NULL por defecto.
 #' @param etapa_evolutiva Etapa evolutiva que ajusta el lenguaje: "auto"
@@ -64,6 +76,10 @@
 #'   "adolescencia_tardia", "adultez_emergente", "adultez" o "adulto_mayor".
 #' @param nivel_socioeconomico Nivel socioeconomico que ajusta el lenguaje:
 #'   "auto" (default), "alto", "medio", "medio_bajo" o "bajo".
+#' @param variante_regional Variante de castellano para ajustar registro y
+#'   vocabulario: "auto" (default), "selva_peru" (castellano amazonico simple,
+#'   lector adolescente a menudo bilingue) o una cadena libre de guia de
+#'   registro. Se combina con etapa_evolutiva y nivel_socioeconomico.
 #' @param modelo Modelo OpenAI. Default \code{"gpt-4.1-mini-2025-04-14"}.
 #' @param seed Semilla para reproducibilidad.
 #' @param verbose Mostrar progreso.
@@ -118,23 +134,34 @@ generar_escala_historias <- function(
   verbose                 = TRUE,
   # --- v2: items modo (transversal vs por_historia) ---
   items_modo              = c("transversal", "por_historia"),
+  # --- v2.4: enfoque de items cuando items_modo = "por_historia" ---
+  #   "facetas"  : las mismas facetas_percepcion en cada historia (items
+  #                paralelos entre historias; util para diseno cruzado faceta x historia).
+  #   "historias": items DISTINTIVOS del constructo dominante de cada historia
+  #                (contenido propio por historia, no facetas paralelas); apunta
+  #                a una estructura factorial alineada con las historias.
+  enfoque_items           = c("facetas", "historias"),
   contexto_propension     = NULL,
   # --- v3: control de lenguaje por etapa evolutiva y NSE ---
   etapa_evolutiva         = c("auto", "ninez", "adolescencia_temprana",
                                "adolescencia_media", "adolescencia_tardia",
                                "adultez_emergente", "adultez", "adulto_mayor"),
   nivel_socioeconomico    = c("auto", "alto", "medio", "medio_bajo",
-                               "bajo")
+                               "bajo"),
+  # --- v2.4: variante regional de castellano (registro/vocabulario) ---
+  variante_regional       = "auto"
 ) {
 
   items_modo <- match.arg(items_modo)
+  enfoque_items <- match.arg(enfoque_items)
   etapa_evolutiva <- match.arg(etapa_evolutiva)
   nivel_socioeconomico <- match.arg(nivel_socioeconomico)
 
-  # Construir bloque de restricciones lexicas (vacio si auto/auto)
+  # Construir bloque de restricciones lexicas (vacio si todo auto)
   bloque_lenguaje <- contexto_lenguaje(etapa_evolutiva,
                                         nivel_socioeconomico,
-                                        idioma = idioma)
+                                        idioma = idioma,
+                                        variante_regional = variante_regional)
   options(SeMiLLa.bloque_lenguaje = bloque_lenguaje)
   on.exit(options(SeMiLLa.bloque_lenguaje = NULL), add = TRUE)
 
@@ -228,34 +255,63 @@ generar_escala_historias <- function(
     )
     items_df$factor <- NA_character_
   } else {
-    # POR HISTORIA: n_items items especificos para cada historia con framing
-    # de propension (auto-identificacion, riesgo, normalizacion, prediccion)
+    # POR HISTORIA: n_items items especificos para cada historia.
+    #   enfoque_items = "facetas"   -> mismas facetas_percepcion en cada historia
+    #                                  (items paralelos; diseno cruzado).
+    #   enfoque_items = "historias" -> items DISTINTIVOS del constructo dominante
+    #                                  de cada historia (contenido propio).
     if (verbose) cat("[3/3] Generando ", n_items,
-                      " items POR HISTORIA (framing de propension, ",
+                      " items POR HISTORIA (enfoque = '", enfoque_items, "', ",
                       length(factores), " x ", n_items, " = ",
                       length(factores) * n_items, " items totales)...\n",
                       sep = "")
     items_lista <- list()
+    arranques_usados <- character(0)   # acumula aperturas para no repetir entre historias
     for (i in seq_len(nrow(historias_df))) {
       f_i <- historias_df$factor[i]
       d_i <- historias_df$descripcion[i]
       t_i <- historias_df$texto[i]
       if (verbose) cat("  [", i, "/", nrow(historias_df), "] ", f_i, "\n", sep = "")
-      items_i <- .generar_items_propension_por_historia(
-        openai = openai, modelo = modelo,
-        n_items = n_items,
-        facetas = facetas_percepcion,
-        victima = victima,
-        factor_actual = f_i,
-        descripcion_factor = d_i,
-        texto_historia = t_i,
-        concepto = concepto,
-        contexto_propension = contexto_propension,
-        tipo_escala_respuesta = tipo_escala_respuesta,
-        max_palabras = max_palabras_item,
-        idioma = idioma,
-        verbose = verbose
-      )
+      if (enfoque_items == "facetas") {
+        items_i <- .generar_items_propension_por_historia(
+          openai = openai, modelo = modelo,
+          n_items = n_items,
+          facetas = facetas_percepcion,
+          victima = victima,
+          factor_actual = f_i,
+          descripcion_factor = d_i,
+          texto_historia = t_i,
+          concepto = concepto,
+          contexto_propension = contexto_propension,
+          tipo_escala_respuesta = tipo_escala_respuesta,
+          max_palabras = max_palabras_item,
+          idioma = idioma,
+          verbose = verbose
+        )
+      } else {
+        items_i <- .generar_items_distintivos_por_historia(
+          openai = openai, modelo = modelo,
+          n_items = n_items,
+          victima = victima,
+          factor_actual = f_i,
+          descripcion_factor = d_i,
+          texto_historia = t_i,
+          concepto = concepto,
+          contexto_propension = contexto_propension,
+          tipo_escala_respuesta = tipo_escala_respuesta,
+          max_palabras = max_palabras_item,
+          idioma = idioma,
+          evitar_arranques = arranques_usados,
+          verbose = verbose
+        )
+        # Registrar las 2 primeras palabras de cada item como arranque usado
+        arranques_usados <- unique(c(
+          arranques_usados,
+          vapply(items_i$item, function(x) {
+            w <- unlist(strsplit(trimws(x), "\\s+")); paste(w[seq_len(min(2, length(w)))], collapse = " ")
+          }, character(1), USE.NAMES = FALSE)
+        ))
+      }
       items_i$factor <- f_i
       items_lista[[f_i]] <- items_i
     }
@@ -279,6 +335,8 @@ generar_escala_historias <- function(
       n_factores           = length(factores),
       n_items              = nrow(items_df),
       facetas              = facetas_percepcion,
+      items_modo           = items_modo,
+      enfoque_items        = enfoque_items,
       tipo_escala_respuesta = tipo_escala_respuesta,
       balance_polaridad     = balance_polaridad
     )
@@ -1115,6 +1173,266 @@ print.semilla_historias <- function(x, ...) {
     item      = out_items,
     faceta    = out_faceta,
     polaridad = out_polar,
+    stringsAsFactors = FALSE
+  )
+}
+
+
+# =============================================================================
+# .generar_items_distintivos_por_historia
+#   Genera n_items items que miden el CONSTRUCTO DOMINANTE de UNA historia,
+#   con contenido DISTINTIVO de esa historia (no facetas paralelas compartidas
+#   entre historias). Internamente el modelo deriva varios INDICADORES del mismo
+#   constructo para dar variedad sin redundancia, todos anclados a la historia.
+#   Objetivo psicometrico: que las K historias rindan K factores diferenciados.
+# =============================================================================
+
+#' @keywords internal
+.generar_items_distintivos_por_historia <- function(
+    openai, modelo,
+    n_items,
+    victima, factor_actual, descripcion_factor, texto_historia,
+    concepto, contexto_propension = NULL,
+    tipo_escala_respuesta = "acuerdo",
+    max_palabras = 18L,
+    idioma = "es",
+    evitar_arranques = character(0),
+    verbose = TRUE) {
+
+  if (idioma != "es")
+    stop("Idioma no soportado en enfoque_items='historias'. Usa idioma='es'.")
+
+  bloque_leng <- getOption("SeMiLLa.bloque_lenguaje", "")
+  bloque_leng_msg <- if (nzchar(bloque_leng)) paste0("\n\n", bloque_leng) else ""
+
+  ctx_prop <- if (!is.null(contexto_propension)) paste0(
+    "\nCONTEXTO DEL CONSTRUCTO DE PROPENSION:\n", contexto_propension, "\n"
+  ) else ""
+
+  # Aperturas plantilladas a prohibir (anti-fraseo) + las ya usadas en otras
+  # historias (evitar_arranques), para que ningun arranque se repita entre
+  # dimensiones y no se induzca un factor de metodo por fraseo/perspectiva.
+  arranques_prohibidos <- unique(c(
+    "Si yo estuviera", "Si estuviera", "Si fuera", "A mi tambien", "A mi me",
+    "Yo tambien", "Es comprensible que", "Es normal que", "Tiene sentido que",
+    "Tiene logica que", "Se entiende que", "Es logico que",
+    evitar_arranques
+  ))
+  evita_msg <- paste0(
+    "\n\nARRANQUES PROHIBIDOS (ningun item puede comenzar con estas formas ni",
+    " variantes minimas; cambia el inicio): ",
+    paste0("'", arranques_prohibidos, "'", collapse = ", "), "."
+  )
+
+  sys_msg <- paste(
+    "Eres un redactor experto en items para escalas psicometricas en formato",
+    "de historias / vinetas, con framing PROYECTIVO de AUTOINFORME. El",
+    "respondiente acaba de leer una historia breve sobre una protagonista (",
+    victima, ") y ahora responde hablando de SI MISMO.",
+    "",
+    "PROPOSITO - ESCALA DE RIESGO / PROPENSION (REGLA DE MAXIMA PRIORIDAD):",
+    "esta escala se aplica a TODA la poblacion adolescente general, la mayoria",
+    "de la cual NUNCA se ha hecho dano ni ha tenido esos pensamientos. Mide",
+    "RIESGO/PROPENSION: factores precursores y vulnerabilidad que hacen MAS",
+    "PROBABLE la conducta a futuro, NO la conducta ni la ideacion actual.",
+    "Puntuar alto = mayor RIESGO, no '(ya) lo hago'.",
+    "",
+    "PROHIBIDO PRESUPONER CONDUCTA/IDEACION ACTUAL: ningun item puede dar por",
+    "hecho que el respondiente YA tiene impulsos, imagenes mentales, ganas o",
+    "conductas de hacerse dano. Un adolescente que nunca se ha lastimado ni lo",
+    "ha pensado DEBE poder responderlo con sentido. PROHIBIDO redactar como",
+    "hecho actual: 'cuando me vienen imagenes de cortarme', 'siento ganas de",
+    "lastimarme', 'cuando aprieto mi piel', 'esas ganas que me llenan'. Eso",
+    "mediria a quien YA se autolesiona, no el RIESGO.",
+    "",
+    "EN SU LUGAR, mide propension con estos marcos (usa potencial/condicional",
+    "SOBRE UNO MISMO: 'yo tambien podria', 'llegaria a', 'me costaria', 'yo",
+    "mismo sentiria', 'me despertaria'):",
+    "  (a) VULNERABILIDAD/RASGO: 'me cuesta calmarme cuando una emocion me",
+    "      desborda' (responde cualquiera, alto = riesgo).",
+    "  (b) CREENCIAS/EXPECTATIVAS PROPIAS sobre el dano: 'yo podria llegar a",
+    "      creer que el dolor fisico aliviaria mi malestar'.",
+    "  (c) DISPOSICION HIPOTETICA/PROYECTIVA: 'si me sintiera tan mal como",
+    paste0(victima, ","), "yo mismo podria sentir la tentacion de...', 'en el",
+    "      lugar de", victima, "podria llegar a pensar que...'.",
+    "  (d) SUSCEPTIBILIDAD SOCIAL: 'si fuera comun en mi grupo, me costaria",
+    "      verlo como algo grave', 'ver que otros lo hacen me despertaria",
+    "      curiosidad'.",
+    "Mide DISPOSICION/PROBABILIDAD, no ocurrencia. El acto o la idea concreta",
+    "se nombra en plano hipotetico, nunca como experiencia ya vivida.",
+    "",
+    "DISTINGUIR PROPENSION DE EMPATIA (CRITICO): el item mide la DISPOSICION",
+    "DEL RESPONDIENTE, no su capacidad de ENTENDER a", paste0(victima, "."),
+    "PROHIBIDO redactar items de COMPRENSION o IDENTIFICACION hacia la",
+    "protagonista: nada de 'me parece comprensible', 'me parece logico', 'tiene",
+    "sentido (para mi)', 'me identifico con la creencia / con lo que sintio',",
+    "'entiendo / entenderia la tentacion', 'comprendo por que", paste0(victima, "...'."),
+    "Esos verbos miden EMPATIA / toma de perspectiva, NO propension, y harian",
+    "que el test se confunda con una escala de empatia. El predicado NUCLEAR",
+    "debe ser SIEMPRE una disposicion, creencia, expectativa o reaccion PROPIA",
+    "del respondiente en plano potencial ('yo tambien podria creer/sentir/llegar",
+    "a...', 'a mi me costaria...', 'yo mismo sentiria...'). La historia ancla y",
+    "prima; pero el verbo central habla de UNO MISMO, no de entender a", paste0(victima, "."),
+    "",
+    "OBJETIVO CRITICO: TODOS los items miden UN UNICO constructo (el dominante",
+    "de ESTA historia, abajo). Es una escala multidimensional donde cada",
+    "historia es UNA dimension DISTINTA; los items de esta historia NO deben",
+    "ser intercambiables con los de otras. Capturan el CONTENIDO y mecanismo",
+    "propios de esta historia, no cogniciones genericas que sirvan para",
+    "cualquiera.",
+    "",
+    "PERSPECTIVA UNICA - PRIMERA PERSONA PROYECTIVA (OBLIGATORIO): TODOS los",
+    "items van en primera persona ('me', 'yo', 'mi') y son PROYECTIVOS: el",
+    "respondiente habla de SI MISMO PONIENDOSE EN RELACION con lo que vivio",
+    victima, "en ESTA historia (se identifica, se compara o reacciona ante lo",
+    "que a ella le paso). PROHIBIDO juzgar a", victima, "en tercera persona",
+    "('Es comprensible que ella...', 'Tiene sentido que ella...'): el",
+    "respondiente NO opina sobre la protagonista, habla de SU PROPIA experiencia.",
+    "",
+    "ANCLAJE A LA HISTORIA (REGLA NO NEGOCIABLE, MAXIMA PRIORIDAD): cada item",
+    "DEBE referirse a un elemento o suceso CONCRETO de ESTA historia (lo que",
+    victima, "sintio, penso, vio o vivio; el lugar, la emocion o el hecho",
+    "especifico), de modo que el item SOLO tenga sentido tras leer ESTA historia",
+    "y NO sirva para otra. Sin la historia, el item no deberia entenderse igual.",
+    "Es lo que da razon de ser a la historieta. NO copies frases textuales.",
+    "MARCO PROYECTIVO EXPLICITO (PRIORITARIO): AL MENOS 6 de los", n_items,
+    "items deben COMPARAR de forma EXPLICITA al respondiente con lo que vivio o",
+    "sintio", paste0(victima, ":"), "'como le paso a", paste0(victima, "...'"), ",",
+    "'igual que", paste0(victima, "...'"), ", 'lo que sintio", victima,
+    "tambien me...', 'si estuviera como", victima, "sentiria/haria lo mismo'.",
+    "Es el corazon del formato historieta: el respondiente se PROYECTA en",
+    paste0(victima, "."), "VARIA el conector de comparacion entre items (no",
+    "repitas el mismo) y su posicion (inicio, medio o final). Los demas items",
+    "deben al menos nombrar un personaje/lugar (Camila, el patio, el recreo, el",
+    "video, las marcas) o aludir al suceso/emocion concretos. NINGUN item puede",
+    "quedar como una frase de rasgo generica sin conexion con la historia.",
+    "",
+    "VARIEDAD DE ARRANQUE Y DE ANCLAJE (ANTI-FRASEO, CRITICO): el anclaje a",
+    victima, "/ la historia es obligatorio, PERO su FORMA y POSICION deben",
+    "VARIAR de un item a otro; NUNCA uses la misma formula de enlace ni el mismo",
+    "arranque. Varia el modo de anclar: a veces nombra a", victima,
+    "('Lo que sintio", victima, "en el patio tambien me invade a veces'); a",
+    "veces alude solo al suceso o la emocion ('Ese vacio que aparece de golpe...',",
+    "'Despues de una burla asi...'); a veces habla en primera persona de la",
+    "misma situacion ('Cuando me llena esa rabia...'). El anclaje puede ir al",
+    "inicio, al medio o al final del item. Cada item DEBE comenzar distinto y",
+    "con estructura sintactica distinta; alterna rasgo, frecuencia, condicional",
+    "y reaccion. Objetivo: anclaje FUERTE a la historia SIN plantilla de",
+    "redaccion compartida (una plantilla repetida induce un factor de metodo).",
+    evita_msg,
+    "",
+    "VARIEDAD SIN REDUNDANCIA: 4 a 6 INDICADORES distintos del MISMO constructo",
+    "(matices, intensidades, situaciones, consecuencias). Los items",
+    "correlacionan entre si pero no son parafrasis.",
+    "",
+    "EVITAR terminos clinicos ('NSSI', 'autolesion', 'cutting'); usar 'hacerme",
+    "dano', 'lastimarme', 'cortarme'. Una sola oracion declarativa por item,",
+    "sin signos de pregunta.",
+    "",
+    "CLARIDAD ANTE TODO: cada item debe leerse NATURAL y COMPLETO a la primera",
+    "lectura. Corto pero NUNCA telegrafico: no omitas articulos, preposiciones",
+    "ni conectores. Es preferible un item de 15 palabras claro que uno de 11",
+    "entrecortado. La claridad tiene prioridad sobre la brevedad. Castellano",
+    "gramaticalmente correcto ('dentro de mi', NO 'dentro mio').",
+    "",
+    "LEXICO OBLIGATORIO: estan PROHIBIDAS las palabras abstractas 'angustia',",
+    "'ansiedad', 'desregulacion', 'desconectado', 'vulnerabilidad'. Reemplazalas",
+    "SIEMPRE por equivalentes simples: 'angustia'/'ansiedad' -> 'nervios',",
+    "'miedo' o 'sentirme muy mal'; 'desconectado de mi cuerpo' -> 'raro, como si",
+    "mi cuerpo no fuera mio'. Ninguna de esas palabras prohibidas debe aparecer.",
+    bloque_leng_msg
+  )
+
+  user_msg <- paste0(
+    "CONSTRUCTO DOMINANTE (DIMENSION) DE ESTA HISTORIA: ", factor_actual, "\n",
+    "DEFINICION / NUCLEO DEL CONSTRUCTO:\n", descripcion_factor, "\n\n",
+    "TEXTO DE LA HISTORIA QUE EL RESPONDIENTE ACABA DE LEER:\n",
+    texto_historia, "\n",
+    ctx_prop,
+    "\nTipo de escala de respuesta: ", tipo_escala_respuesta, "\n",
+    "Polaridad: ACUERDO alto = MAYOR presencia del constructo dominante de",
+    " esta historia (mayor propension en esta dimension).\n\n",
+    "Genera EXACTAMENTE ", n_items, " items en PRIMERA PERSONA PROYECTIVA que",
+    " midan SOLO este constructo, repartidos en 4-6 indicadores distintos.",
+    " CADA item DEBE anclarse a un elemento/suceso concreto de ESTA historia",
+    " (que solo tenga sentido tras leerla), pero con arranque, estructura y",
+    " forma de anclaje DIFERENTES entre si (ver reglas).\n",
+    "Cada item: una sola oracion declarativa, maximo ", max_palabras,
+    " palabras.\n",
+    "Devuelve cada item en una linea numerada (1., 2., ...). Sin titulos, sin",
+    " comillas, sin explicaciones adicionales."
+  )
+
+  raw <- .llamar_openai(
+    openai = openai,
+    messages = list(
+      list(role = "system", content = sys_msg),
+      list(role = "user",   content = user_msg)
+    ),
+    modelo = modelo, max_tokens = 900L, temperature = 0.7
+  )
+
+  lineas <- unlist(strsplit(raw, "\n", fixed = TRUE))
+  lineas <- trimws(lineas)
+  lineas <- lineas[nzchar(lineas)]
+  lineas <- sub("^[0-9]+[.\\)]\\s*", "", lineas, perl = TRUE)
+  lineas <- sub("^[-*]\\s*", "", lineas)
+  lineas <- lineas[nzchar(lineas)]
+
+  if (length(lineas) < n_items) {
+    warning("La historia '", factor_actual, "' devolvio ", length(lineas),
+            " items (esperados ", n_items, "). Se usa lo disponible.")
+  } else {
+    lineas <- lineas[seq_len(n_items)]
+  }
+
+  # ---- Guardia lexica (modo registro simple / amazonico) ----
+  # Los LLM a veces ignoran la prohibicion de palabras abstractas salientes
+  # (angustia, ansiedad, desconectado...). Si el bloque de lenguaje activo
+  # restringe el registro, se reescribe cada item que contenga una palabra
+  # prohibida, sustituyendola por un equivalente simple (con cache => reproducible).
+  prohibidas <- "angustia|ansiedad|desregulaci[oó]n|desconectad[oa]|vulnerabilidad"
+  registro_simple <- grepl("AMAZONICO|MUY simple|NIÑEZ|MEDIO-BAJO|BAJO",
+                           bloque_leng, ignore.case = TRUE)
+  if (registro_simple) {
+    for (j in seq_along(lineas)) {
+      intentos <- 0
+      while (grepl(prohibidas, lineas[j], ignore.case = TRUE, perl = TRUE) &&
+             intentos < 2) {
+        intentos <- intentos + 1
+        sys_r <- paste(
+          "Reescribe el siguiente item de una escala para adolescentes evitando",
+          "POR COMPLETO las palabras abstractas 'angustia', 'ansiedad',",
+          "'desregulacion', 'desconectado' y 'vulnerabilidad'. Usa equivalentes",
+          "simples: 'nervios', 'miedo', 'sentirme muy mal', o 'raro, como si mi",
+          "cuerpo no fuera mio'. Manten el mismo significado, primera persona en",
+          "plano potencial ('podria', 'me costaria'), maximo 16 palabras, claro y",
+          "gramaticalmente correcto. IMPORTANTE: si el item menciona a", victima,
+          "o un elemento de la historia (patio, recreo, la burla, el video, las",
+          "marcas, Camila, etc.), CONSERVA esa referencia; si no la menciona,",
+          "AÑADE una alusion breve a", paste0(victima, ""), "o a la situacion.",
+          "Devuelve SOLO el item, sin comillas ni numero."
+        )
+        rr <- tryCatch(.llamar_openai(
+          openai = openai,
+          messages = list(list(role = "system", content = sys_r),
+                          list(role = "user",   content = lineas[j])),
+          modelo = modelo, max_tokens = 80L, temperature = 0.3),
+          error = function(e) lineas[j])
+        rr <- trimws(gsub('^[\\s"«–-]+|[\\s"»]+$', "", rr, perl = TRUE))
+        if (nzchar(rr)) lineas[j] <- rr
+      }
+    }
+  }
+
+  if (verbose) cat("       constructo distintivo: ", length(lineas),
+                   " items generados\n", sep = "")
+
+  data.frame(
+    n_item    = seq_along(lineas),
+    item      = lineas,
+    faceta    = rep(factor_actual, length(lineas)),
+    polaridad = rep("directa", length(lineas)),
     stringsAsFactors = FALSE
   )
 }
