@@ -86,9 +86,11 @@ sugerir_escala_respuesta <- function(x,
                                      idioma                = "es",
                                      n_puntos              = NULL,
                                      contexto              = "auto",
+                                     valencia              = c("auto", "positiva", "negativa", "neutra"),
                                      evitar_absolutos      = NULL,
                                      anclajes_contextuales = TRUE,
                                      verbose               = TRUE) {
+  valencia <- match.arg(valencia)
 
   metodo   <- match.arg(metodo)
   contexto <- match.arg(
@@ -115,10 +117,16 @@ sugerir_escala_respuesta <- function(x,
   # ----- Estimacion de deseabilidad social -----
   ds_score <- .estimar_deseabilidad_social(items_txt, contexto)
 
+  # ----- Estimacion de valencia del constructo (positiva => evitar piso "Nunca") -----
+  if (valencia == "auto") valencia <- .estimar_valencia(items_txt, concepto)
+
   # ----- Decision evitar_absolutos -----
+  # Para constructos POSITIVOS (valores, bienestar, autoeficacia...) el ancla
+  # absoluta inferior ("Nunca") es categoria muerta (efecto piso) -> se evita.
   if (is.null(evitar_absolutos)) {
     evitar_absolutos <- contexto %in% c("parental", "clinico", "adicciones") ||
-                        ds_score > 0.35
+                        ds_score > 0.35 ||
+                        valencia == "positiva"
   }
 
   if (verbose) {
@@ -159,8 +167,19 @@ sugerir_escala_respuesta <- function(x,
     )
   }
 
+  # ----- Set canonico equidistante (sin absolutos, saltos parejos y distinguibles) -----
+  # Evita el apilamiento de cuantificadores ("Algunas veces" ~ "A veces") al suavizar.
+  if (isTRUE(evitar_absolutos)) {
+    can <- .anclajes_canonicos_suaves(resultado$tipo_escala, resultado$n_puntos, idioma)
+    if (!is.null(can)) {
+      resultado$anclajes      <- stats::setNames(can, as.character(seq_along(can)))
+      resultado$punto_neutral <- (length(can) %% 2) == 1
+    }
+  }
+
   resultado$metodo              <- metodo
   resultado$contexto            <- contexto
+  resultado$valencia            <- valencia
   resultado$deseabilidad_social <- round(ds_score, 3)
   resultado$evitar_absolutos    <- evitar_absolutos
   class(resultado) <- c("semilla_escala_respuesta", "list")
@@ -979,4 +998,59 @@ print.semilla_escala_respuesta <- function(x, ...) {
   }
   cat("=====================================================\n\n")
   invisible(x)
+}
+
+# ---- Valencia del constructo (heuristica de keywords) ------------------------
+# Devuelve "positiva", "negativa" o "neutra". Constructos positivos (valores,
+# bienestar, autoeficacia...) -> conviene evitar el ancla absoluta inferior.
+.estimar_valencia <- function(items_txt, concepto = NULL) {
+  txt <- tolower(paste(c(concepto, items_txt), collapse = " "))
+  pos <- c("valor", "valores", "bienestar", "autoeficacia", "satisfacc",
+           "resilien", "gratitud", "optimism", "compromiso", "fortaleza",
+           "virtud", "moral", "esperanza", "felicidad", "autoestima",
+           "motivac", "empatia", "empatía", "prosocial", "florecimiento",
+           "sentido", "proposito", "propósito", "honestidad", "integridad",
+           "solidaridad", "respeto", "responsabilidad", "identidad")
+  neg <- c("ansied", "depres", "estres", "estrés", "burnout", "corrupc",
+           "miedo", "ira", "agresi", "violenc", "soledad", "riesgo", "sintom",
+           "síntoma", "trastorno", "adicc", "dolor", "malestar", "desesperanza",
+           "suicid", "trauma", "fobia", "panico", "pánico", "acoso", "estigma")
+  np <- sum(vapply(pos, function(w) grepl(w, txt, fixed = TRUE), logical(1)))
+  nn <- sum(vapply(neg, function(w) grepl(w, txt, fixed = TRUE), logical(1)))
+  if (np > nn && np > 0) "positiva" else if (nn > np && nn > 0) "negativa" else "neutra"
+}
+
+# ---- Anclajes canonicos suaves (sin absolutos, equidistantes) ----------------
+# Sets validados con saltos parejos y categorias distinguibles (evita apilamiento).
+# Devuelve NULL si no hay canonico para (tipo, n, idioma) -> se conserva lo generado.
+.anclajes_canonicos_suaves <- function(tipo_escala, n_puntos, idioma = "es") {
+  n <- as.integer(n_puntos)
+  ES <- list(
+    frecuencia = list(
+      "4" = c("Rara vez", "Algunas veces", "A menudo", "Casi siempre"),
+      "5" = c("Rara vez", "Algunas veces", "A menudo", "Muy a menudo", "Casi siempre"),
+      "6" = c("Rara vez", "Ocasionalmente", "Algunas veces", "A menudo", "Muy a menudo", "Casi siempre")),
+    acuerdo = list(
+      "4" = c("Muy en desacuerdo", "En desacuerdo", "De acuerdo", "Muy de acuerdo"),
+      "5" = c("Muy en desacuerdo", "En desacuerdo", "Indeciso", "De acuerdo", "Muy de acuerdo")),
+    intensidad = list(
+      "4" = c("Muy poco", "Poco", "Bastante", "Mucho"),
+      "5" = c("Muy poco", "Poco", "Moderadamente", "Bastante", "Mucho"))
+  )
+  EN <- list(
+    frecuencia = list(
+      "4" = c("Rarely", "Sometimes", "Often", "Almost always"),
+      "5" = c("Rarely", "Occasionally", "Often", "Very often", "Almost always"),
+      "6" = c("Rarely", "Now and then", "Sometimes", "Often", "Very often", "Almost always")),
+    acuerdo = list(
+      "4" = c("Strongly disagree", "Disagree", "Agree", "Strongly agree"),
+      "5" = c("Strongly disagree", "Disagree", "Undecided", "Agree", "Strongly agree")),
+    intensidad = list(
+      "4" = c("Very little", "A little", "Quite a bit", "A lot"),
+      "5" = c("Very little", "A little", "Moderately", "Quite a bit", "A lot"))
+  )
+  tab <- if (identical(idioma, "en")) EN else ES
+  grp <- tab[[tipo_escala]]
+  if (is.null(grp)) return(NULL)
+  grp[[as.character(n)]]   # NULL si ese n no esta definido
 }
