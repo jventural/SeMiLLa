@@ -1027,9 +1027,9 @@ print.semilla_escala_respuesta <- function(x, ...) {
   n <- as.integer(n_puntos)
   ES <- list(
     frecuencia = list(
-      "4" = c("Rara vez", "Algunas veces", "A menudo", "Casi siempre"),
-      "5" = c("Rara vez", "Algunas veces", "A menudo", "Muy a menudo", "Casi siempre"),
-      "6" = c("Rara vez", "Ocasionalmente", "Algunas veces", "A menudo", "Muy a menudo", "Casi siempre")),
+      "4" = c("Casi nunca", "Pocas veces", "Muchas veces", "Casi siempre"),
+      "5" = c("Casi nunca", "Pocas veces", "A veces", "Muchas veces", "Casi siempre"),
+      "6" = c("Casi nunca", "Pocas veces", "A veces", "Bastantes veces", "Muchas veces", "Casi siempre")),
     acuerdo = list(
       "4" = c("Muy en desacuerdo", "En desacuerdo", "De acuerdo", "Muy de acuerdo"),
       "5" = c("Muy en desacuerdo", "En desacuerdo", "Indeciso", "De acuerdo", "Muy de acuerdo")),
