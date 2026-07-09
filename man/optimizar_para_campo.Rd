@@ -14,6 +14,7 @@ optimizar_para_campo(
   conservar_por_cluster = 2L,
   max_reemplazos_prop = 0.5,
   n_rep = 100,
+  n_rep_intermedio = 40,
   modelo = "gpt-4.1-mini",
   poblacion = NULL,
   seed = 2026,
@@ -45,7 +46,15 @@ faceta repetida (default 2).}
 \item{max_reemplazos_prop}{Proporcion maxima de la escala reemplazable por
 iteracion (default 0.5).}
 
-\item{n_rep}{Replicas por escenario en la simulacion de estructura.}
+\item{n_rep}{Replicas por escenario en la simulacion de la compuerta
+FINAL (la que emite el veredicto reportado; default 100).}
+
+\item{n_rep_intermedio}{Replicas por escenario en las compuertas
+INTERMEDIAS del bucle (default 40). Las intermedias solo orientan la
+correccion (mejoro o no?); la precision completa se reserva para la
+compuerta final. Con escalas grandes (32 items, 4 factores) esto
+recorta cerca de la mitad del tiempo total sin perder rigor en el
+veredicto reportado.}
 
 \item{modelo}{Modelo LLM para los reemplazos y la deseabilidad.}
 

@@ -32,6 +32,8 @@
 #' @param k Numero de factores para las figuras EFA-cargas (por defecto, el numero
 #'   de dimensiones de la escala).
 #' @param nombre_test,autor Metadatos del test ensamblado.
+#' @param dpi Resolucion de las figuras PNG (default 600, calidad de
+#'   publicacion).
 #' @param verbose Mensajes de progreso.
 #'
 #' @return (Invisible) data.frame con los archivos generados y su estado.
@@ -43,7 +45,8 @@ exportar_proyecto <- function(escala, dir, abreviatura = "TEST",
                               criterio = NULL, forma_corta = NULL,
                               escala_respuesta = NULL, escala_sin_refinar = NULL,
                               adaptacion = NULL, dif = NULL, k = NULL,
-                              nombre_test = NULL, autor = "SeMiLLa", verbose = TRUE) {
+                              nombre_test = NULL, autor = "SeMiLLa",
+                              dpi = 600, verbose = TRUE) {
   `%||%` <- function(a, b) if (is.null(a)) b else a
   if (is.null(escala) || is.null(escala$items))
     stop("exportar_proyecto(): 'escala' debe ser un objeto semilla con $items.")
@@ -65,7 +68,7 @@ exportar_proyecto <- function(escala, dir, abreviatura = "TEST",
   }
   gp <- function(p, nombre, w = 10, h = 8) {
     f <- file.path(GR, nombre)
-    ok <- tryCatch({ ggplot2::ggsave(f, p, width = w, height = h, dpi = 200, bg = "white"); TRUE },
+    ok <- tryCatch({ ggplot2::ggsave(f, p, width = w, height = h, dpi = dpi, bg = "white"); TRUE },
                    error = function(e) { msg("   [x] graficos/", nombre, ": ", e$message); FALSE })
     reg(file.path("graficos", nombre), ok)
   }
@@ -255,7 +258,7 @@ exportar_proyecto <- function(escala, dir, abreviatura = "TEST",
                      strip.placement = "outside", panel.spacing = ggplot2::unit(2, "pt"),
                      axis.text.x = ggplot2::element_text(size = 7), plot.title = ggplot2::element_text(face = "bold"))
     ggplot2::ggsave(file, p, width = max(7, 1.0 * length(factores) + 3),
-                    height = max(6, 0.32 * nrow(df) + 2), dpi = 200, bg = "white")
+                    height = max(6, 0.32 * nrow(df) + 2), dpi = dpi, bg = "white")
     TRUE
   }, error = function(e) { msg("   [x] ", basename(file), ": ", e$message); FALSE })
   if (!is.null(gp_reg)) gp_reg(file.path("graficos", basename(file)), ok)
@@ -266,7 +269,7 @@ exportar_proyecto <- function(escala, dir, abreviatura = "TEST",
   ok <- tryCatch({
     pr <- precision_clasificacion(esc, metodo = "ensemble", algoritmos = c("kmeans", "ward"), verbose = FALSE)
     p <- plot_sankey(pr, titulo = paste0("Flujo item -> cluster (", etiqueta, ")"))
-    ggplot2::ggsave(file, p, width = 12, height = 6, dpi = 200, bg = "white"); TRUE
+    ggplot2::ggsave(file, p, width = 12, height = 6, dpi = dpi, bg = "white"); TRUE
   }, error = function(e) { msg("   [x] ", basename(file), ": ", e$message); FALSE })
   if (!is.null(gp_reg)) gp_reg(file.path("graficos", basename(file)), ok)
   invisible(ok)
@@ -276,7 +279,7 @@ exportar_proyecto <- function(escala, dir, abreviatura = "TEST",
   ok <- tryCatch({
     pr <- precision_clasificacion(esc, metodo = "ensemble", algoritmos = c("kmeans", "ward"), verbose = FALSE)
     p <- plot_consenso(pr, titulo = paste0("Consenso del ensemble por item (", etiqueta, ")"))
-    ggplot2::ggsave(file, p, width = 9, height = 8, dpi = 200, bg = "white"); TRUE
+    ggplot2::ggsave(file, p, width = 9, height = 8, dpi = dpi, bg = "white"); TRUE
   }, error = function(e) { msg("   [x] ", basename(file), ": ", e$message); FALSE })
   if (!is.null(gp_reg)) gp_reg(file.path("graficos", basename(file)), ok)
   invisible(ok)

@@ -67,7 +67,14 @@
 #'   faceta repetida (default 2).
 #' @param max_reemplazos_prop Proporcion maxima de la escala reemplazable por
 #'   iteracion (default 0.5).
-#' @param n_rep Replicas por escenario en la simulacion de estructura.
+#' @param n_rep Replicas por escenario en la simulacion de la compuerta
+#'   FINAL (la que emite el veredicto reportado; default 100).
+#' @param n_rep_intermedio Replicas por escenario en las compuertas
+#'   INTERMEDIAS del bucle (default 40). Las intermedias solo orientan la
+#'   correccion (mejoro o no?); la precision completa se reserva para la
+#'   compuerta final. Con escalas grandes (32 items, 4 factores) esto
+#'   recorta cerca de la mitad del tiempo total sin perder rigor en el
+#'   veredicto reportado.
 #' @param modelo Modelo LLM para los reemplazos y la deseabilidad.
 #' @param poblacion Poblacion objetivo; si NULL se toma de
 #'   \code{x$metadata$poblacion}.
@@ -103,6 +110,7 @@ optimizar_para_campo <- function(x,
                                  conservar_por_cluster = 2L,
                                  max_reemplazos_prop   = 0.5,
                                  n_rep                 = 100,
+                                 n_rep_intermedio      = 40,
                                  modelo                = "gpt-4.1-mini",
                                  poblacion             = NULL,
                                  seed                  = 2026,
@@ -115,12 +123,15 @@ optimizar_para_campo <- function(x,
 
   openai <- .configurar_openai(api_key, modelo = modelo)
 
-  # Compuerta inicial (si no viene ya calculada)
+  # Compuerta inicial (si no viene ya calculada). Usa las replicas
+  # intermedias: solo orienta el bucle; el veredicto final se re-estima
+  # con n_rep completo al terminar.
   if (is.null(x$compuerta)) {
     if (verbose) cat("\n[optimizar_para_campo] Compuerta inicial...\n")
     x$compuerta <- compuerta_pre_aplicacion(
       x, api_key = api_key, poblacion = poblacion,
-      n_rep = n_rep, modelo = modelo, seed = seed, verbose = verbose)
+      n_rep = n_rep_intermedio, modelo = modelo, seed = seed,
+      verbose = verbose)
   }
 
   historial <- data.frame(
@@ -236,7 +247,7 @@ optimizar_para_campo <- function(x,
       break
     }
 
-    # Re-representar y re-auditar la escala corregida
+    # Re-representar y re-auditar la escala corregida (replicas intermedias)
     if (verbose) cat("\n  Recalculando embeddings y re-pasando la compuerta...\n")
     emb <- obtener_embeddings(items = x, api_key = api_key, verbose = FALSE)
     x$embeddings <- emb$embeddings
@@ -244,11 +255,25 @@ optimizar_para_campo <- function(x,
 
     x$compuerta <- compuerta_pre_aplicacion(
       x, api_key = api_key, poblacion = poblacion,
-      n_rep = n_rep, modelo = modelo, seed = seed, verbose = verbose)
+      n_rep = n_rep_intermedio, modelo = modelo, seed = seed,
+      verbose = verbose)
 
     historial <- rbind(historial, data.frame(
       iteracion = it, veredicto = x$compuerta$veredicto,
       n_reemplazos = n_ok, stringsAsFactors = FALSE))
+  }
+
+  # Compuerta FINAL con las replicas completas: es la que emite el veredicto
+  # reportado. Solo se re-estima si hubo iteraciones (la escala cambio) y si
+  # el presupuesto final difiere del intermedio.
+  if (it > 0 && n_rep > n_rep_intermedio) {
+    if (verbose) cat("\n  Compuerta FINAL (replicas completas: ", n_rep, ")...\n", sep = "")
+    x$compuerta <- compuerta_pre_aplicacion(
+      x, api_key = api_key, poblacion = poblacion,
+      n_rep = n_rep, modelo = modelo, seed = seed, verbose = verbose)
+    historial <- rbind(historial, data.frame(
+      iteracion = it, veredicto = x$compuerta$veredicto,
+      n_reemplazos = 0L, stringsAsFactors = FALSE))
   }
 
   x$optimizacion <- list(

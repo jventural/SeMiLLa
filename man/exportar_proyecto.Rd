@@ -26,6 +26,7 @@ exportar_proyecto(
   k = NULL,
   nombre_test = NULL,
   autor = "SeMiLLa",
+  dpi = 600,
   verbose = TRUE
 )
 }
@@ -71,6 +72,9 @@ graficos comparativos 10 (EFA sin refinar) y 12 (Sankey sin refinar).}
 de dimensiones de la escala).}
 
 \item{nombre_test, autor}{Metadatos del test ensamblado.}
+
+\item{dpi}{Resolucion de las figuras PNG (default 600, calidad de
+publicacion).}
 
 \item{verbose}{Mensajes de progreso.}
 }

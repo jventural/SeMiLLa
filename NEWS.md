@@ -151,6 +151,13 @@ bloquear escalas sanas. Cuatro ajustes:
   items (p. ej. decision de formato de respuesta, anclas de frecuencia,
   rediseno de dimensiones), el bucle se detiene y lo dice en vez de iterar
   a ciegas.
+- **Replicas ADAPTATIVAS** (`n_rep_intermedio = 40`): las compuertas
+  intermedias del bucle usan 40 replicas Monte Carlo (solo orientan la
+  correccion) y el veredicto final se re-estima con las `n_rep` completas
+  (100). Motivacion medida: la simulacion local (300 CFAs ordinales por
+  compuerta) domina el tiempo total — generar PM2/ACO2/VP2 tomo 16/38/60+
+  minutos con 4-5 compuertas completas cada una; el modo adaptativo recorta
+  cerca de la mitad sin perder rigor en el veredicto reportado.
 
 ## compuerta_pre_aplicacion(): ninguna escala va a campo sin auditarse
 
