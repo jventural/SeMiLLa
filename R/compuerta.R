@@ -143,12 +143,28 @@ compuerta_pre_aplicacion <- function(x,
   # similitud .71-.77 y un cluster debil de 3 items; los bloques que si
   # danaron (PM "companeros" 7 items, ACO plantilla afectiva .70) cumplen
   # todos el criterio fuerte.
-  fac_fuertes <- if (nrow(fac) > 0)
-    fac[fac$sim_media >= 0.65 | fac$n_items >= 4L, , drop = FALSE]
-  else fac
-  fac_debiles <- if (nrow(fac) > 0)
-    fac[!(fac$sim_media >= 0.65 | fac$n_items >= 4L), , drop = FALSE]
-  else fac
+  es_fuerte <- if (nrow(fac) > 0) {
+    vapply(seq_len(nrow(fac)), function(i) {
+      fuerte <- fac$sim_media[i] >= 0.65 || fac$n_items[i] >= 4L
+      if (!fuerte) return(FALSE)
+      # Exencion por tipo: un cluster INTRA-dimension cognitiva/afectiva con
+      # cohesion tematica moderada (sim < .70) es contenido legitimo de la
+      # actitud, no parafraseo (piloto ACO: cognitivos cohesivos, omega=.72).
+      idx <- suppressWarnings(as.integer(gsub("\\D", "",
+        trimws(strsplit(fac$codigos[i], ",")[[1]]))))
+      idx <- idx[!is.na(idx) & idx <= nrow(x$items)]
+      dims_c <- unique(x$items$dimension[idx])
+      if (length(dims_c) == 1 && fac$sim_media[i] < 0.70) {
+        def_d <- if (is.list(x$concepto$dimensiones))
+          x$concepto$dimensiones[[dims_c]] %||% "" else ""
+        if (.tipo_dimension(dims_c, def_d) %in% c("cognitiva", "afectiva"))
+          return(FALSE)
+      }
+      TRUE
+    }, logical(1))
+  } else logical(0)
+  fac_fuertes <- fac[es_fuerte, , drop = FALSE]
+  fac_debiles <- fac[!es_fuerte, , drop = FALSE]
 
   if (nrow(fac_fuertes) > 0) {
     estados[1]  <- "riesgo"
@@ -333,6 +349,19 @@ compuerta_pre_aplicacion <- function(x,
     estados[3] == "riesgo" &&
     !is.na(estructura$rmsea_med) && estructura$rmsea_med <= 0.08 &&
     !is.na(estructura$phi_med)
+  # Variante del mismo caso: el UNICO riesgo es el halo de deseabilidad,
+  # con redaccion aceptable, ajuste simulado bueno y el mapa de fusion
+  # anticipando la fusion TOTAL de las dimensiones. La escala es aplicable
+  # como puntaje global (precedente empirico PM v1: halo -> bifactor con
+  # ECV=.84 y omegaH=.92 -> total interpretable).
+  caso_global_halo <- !is.null(estructura) &&
+    estados[1] != "riesgo" &&
+    estados[2] == "riesgo" &&
+    estados[3] != "riesgo" &&
+    !is.na(estructura$rmsea_med) && estructura$rmsea_med <= 0.08 &&
+    !is.null(mapa) && isTRUE(mapa$hay_fusion) &&
+    mapa$k_esperado == 1
+  caso_global <- caso_global || caso_global_halo
 
   veredicto <- if (caso_global) {
     acciones <- c(acciones,
