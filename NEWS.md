@@ -151,6 +151,22 @@ bloquear escalas sanas. Cuatro ajustes:
   items (p. ej. decision de formato de respuesta, anclas de frecuencia,
   rediseno de dimensiones), el bucle se detiene y lo dice en vez de iterar
   a ciegas.
+- **Robustez del juicio de deseabilidad en la compuerta**: si la
+  estabilidad entre pasadas del LLM es baja (r < .70), se recalifica
+  automaticamente con 4 pasadas antes de emitir el diagnostico de halo
+  (observado en PM2: con r = .41 el mismo conjunto de items recibia
+  "contrastante" o "halo" segun la corrida, oscilando alrededor del umbral).
+- **Correccion por TIPO de dimension** (`.tipo_dimension()`): la
+  restriccion anti-halo del optimizador respeta la naturaleza de la
+  dimension — en cognitivas exige creencias con matiz discutible (PROHIBIDO
+  convertirlas en conductas), en afectivas emociones diferenciadas, y solo
+  en conductuales/generales la conducta con costo. Ademas, los clusters de
+  faceta INTRA-dimension cognitiva/afectiva solo se podan con plantilla
+  fuerte (sim >= .70): las creencias/emociones sobre el mismo objeto
+  cohesionan de forma legitima (piloto ACO: cognitivos cohesivos, omega=.72).
+  Bug detectado al regenerar ACO2: el optimizador transformo creencias
+  buenas ("Enterarme de favoritismos reduce mi confianza...") en conductas
+  ("dedico tiempo a recopilar evidencia...").
 - **Replicas ADAPTATIVAS** (`n_rep_intermedio = 40`): las compuertas
   intermedias del bucle usan 40 replicas Monte Carlo (solo orientan la
   correccion) y el veredicto final se re-estima con las `n_rep` completas

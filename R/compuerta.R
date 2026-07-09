@@ -181,6 +181,22 @@ compuerta_pre_aplicacion <- function(x,
                            poblacion = poblacion, verbose = verbose),
     error = function(e) e
   )
+  # Robustez: si el juicio del LLM es INESTABLE entre pasadas (r < .70), el
+  # diagnostico de halo puede oscilar alrededor del umbral entre corridas
+  # (observado en PM2: r = .41 -> "contrastante" y "halo" con los mismos
+  # items). Se recalifica con el doble de pasadas antes de emitir juicio.
+  if (!inherits(deseab, "error") && is.finite(deseab$estabilidad %||% NA) &&
+      deseab$estabilidad < 0.70) {
+    if (verbose) cat("  (estabilidad r=", sprintf("%.2f", deseab$estabilidad),
+                     " < .70: recalificando con 4 pasadas...)\n", sep = "")
+    deseab2 <- tryCatch(
+      calificar_deseabilidad(x, api_key = api_key, modelo = modelo,
+                             poblacion = poblacion, n_pasadas = 4,
+                             verbose = verbose),
+      error = function(e) NULL
+    )
+    if (!is.null(deseab2)) deseab <- deseab2
+  }
   if (inherits(deseab, "error")) {
     estados[2]  <- "advertencia"
     detalles[2] <- paste("no evaluada:", conditionMessage(deseab))

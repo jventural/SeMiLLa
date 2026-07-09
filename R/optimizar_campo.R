@@ -307,6 +307,25 @@ optimizar_para_campo <- function(x,
 # Helpers internos
 # =============================================================================
 
+# Tipo de una dimension segun su nombre y definicion. Las restricciones de
+# correccion DEBEN respetar el tipo: exigir "conducta observable con costo"
+# a una dimension COGNITIVA convierte creencias en conductas (bug detectado
+# con ACO2: el optimizador destruyo la dimension Cognitiva que en el piloto
+# empirico funcionaba, transformando "Enterarme de favoritismos reduce mi
+# confianza" en "dedico tiempo a recopilar evidencia y denunciarlo").
+
+#' @keywords internal
+.tipo_dimension <- function(nombre, definicion = "") {
+  t <- tolower(paste(nombre, definicion))
+  t <- chartr("áéíóúüñ",
+              "aeiouun", t)
+  if (grepl("cognitiv|creenc|juicio|pienso|piensa|belief|opinion", t)) return("cognitiva")
+  if (grepl("afectiv|emocion|sentimient|siento|siente|feel", t))       return("afectiva")
+  if (grepl("conductual|conducta|disposicion|comportamiento|behav|accion", t)) return("conductual")
+  "general"
+}
+
+
 # Orden de severidad de los veredictos de la compuerta.
 
 #' @keywords internal
@@ -454,6 +473,18 @@ optimizar_para_campo <- function(x,
              else suppressWarnings(as.integer(gsub("\\D", "", cods)))
       idx <- idx[!is.na(idx) & idx >= 1 & idx <= n]
       if (length(idx) <= conservar_por_cluster) next
+
+      # En dimensiones COGNITIVAS y AFECTIVAS de una actitud, las creencias/
+      # emociones sobre el mismo objeto cohesionan de forma legitima (piloto
+      # ACO: los cognitivos cohesivos funcionaron, omega=.72). Solo se podan
+      # si comparten PLANTILLA fuerte (sim media >= .70), no por tema comun.
+      dims_cluster <- unique(x$items$dimension[idx])
+      if (length(dims_cluster) == 1) {
+        def_d <- if (is.list(x$concepto$dimensiones))
+          x$concepto$dimensiones[[dims_cluster]] %||% "" else ""
+        tipo <- .tipo_dimension(dims_cluster, def_d)
+        if (tipo %in% c("cognitiva", "afectiva") && fac$sim_media[i] < 0.70) next
+      }
       Sg <- S[idx, idx, drop = FALSE]; diag(Sg) <- NA
       protot <- rowMeans(Sg, na.rm = TRUE)
       conservar <- idx[order(-protot)][seq_len(conservar_por_cluster)]
@@ -548,14 +579,30 @@ optimizar_para_campo <- function(x,
     "el verbo inicial, el contexto y la estructura de la oracion.\n",
     "LONGITUD OBLIGATORIA: el item debe tener entre ", rango_palabras[1],
     " y ", rango_palabras[2], " palabras, similar al resto de la escala. ",
-    "Gasta las palabras en la situacion y la conducta, no en adornos.\n",
-    if (anti_halo) paste0(
-      "RESTRICCION DE DESEABILIDAD: redacta una CONDUCTA ESPECIFICA y ",
-      "observable que implique un costo personal real (tiempo, esfuerzo, ",
-      "incomodidad, renuncia), en una situacion concreta. EVITA ",
-      "autoatribuciones globales halagadoras (del tipo 'soy honesto', ",
-      "'valoro la justicia'): debe ser creible que una persona promedio ",
-      "responda que NO la realiza sin quedar mal.\n") else ""
+    "Gasta las palabras en el contenido, no en adornos.\n",
+    if (anti_halo) {
+      tipo <- .tipo_dimension(dim_nombre, def_dim)
+      switch(tipo,
+        "cognitiva" = paste0(
+          "RESTRICCION DE DESEABILIDAD (dimension COGNITIVA): redacta una ",
+          "CREENCIA o JUICIO especifico sobre una consecuencia DISTINTA a ",
+          "las ya cubiertas, con matiz discutible (que una persona ",
+          "razonable pueda no compartir del todo). PROHIBIDO convertir el ",
+          "item en una conducta o accion: debe seguir siendo una creencia ",
+          "('creo que...', 'pienso que...', 'X hace que...').\n"),
+        "afectiva" = paste0(
+          "RESTRICCION DE DESEABILIDAD (dimension AFECTIVA): redacta una ",
+          "EMOCION especifica y DIFERENCIADA de las ya cubiertas, ante una ",
+          "situacion concreta distinta. PROHIBIDO convertir el item en una ",
+          "conducta o accion: debe seguir siendo una reaccion emocional.\n"),
+        paste0(
+          "RESTRICCION DE DESEABILIDAD: redacta una CONDUCTA ESPECIFICA y ",
+          "observable que implique un costo personal real (tiempo, esfuerzo, ",
+          "incomodidad, renuncia), en una situacion concreta. EVITA ",
+          "autoatribuciones globales halagadoras (del tipo 'soy honesto', ",
+          "'valoro la justicia'): debe ser creible que una persona promedio ",
+          "responda que NO la realiza sin quedar mal.\n"))
+    } else ""
   )
 
   items_evitar <- unique(x$items$item)
