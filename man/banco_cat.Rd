@@ -10,7 +10,7 @@ banco_cat(
   n_finales = 15,
   api_key,
   modelo = "gpt-4.1-mini",
-  umbral_redundancia = 0.85,
+  umbral_redundancia = 0.7,
   formato_export = c("mirt", "catR"),
   verbose = TRUE
 )
@@ -29,7 +29,8 @@ filtrado (default: 15).}
 \item{modelo}{Modelo de OpenAI (default: \code{"gpt-4.1-mini"}).}
 
 \item{umbral_redundancia}{Similitud coseno por encima de la cual se
-considera item redundante (default: 0.85).}
+considera item redundante (default: 0.70, recalibrado en v2.7.0 con
+datos reales: 0.85 solo detectaba clones casi literales).}
 
 \item{formato_export}{Formato de exportacion: "mirt" (default) o "catR".}
 

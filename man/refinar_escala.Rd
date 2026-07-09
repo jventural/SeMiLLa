@@ -11,7 +11,7 @@ refinar_escala(
   umbral_precision = 100,
   criterio = c("kmeans", "ensemble"),
   umbral_consenso = 0.667,
-  umbral_redundancia = 0.85,
+  umbral_redundancia = 0.7,
   max_intentos_redundancia = 3,
   modelo = "gpt-4.1-mini",
   exportar_excel = TRUE,
@@ -46,8 +46,13 @@ un item bien clasificado (default: 0.667 = al menos 2/3 algoritmos).
 Solo se usa cuando \code{criterio = "ensemble"}. Valores tipicos:
 0.667 (mayoria simple), 0.999 (unanimidad).}
 
-\item{umbral_redundancia}{Similitud maxima permitida entre items 0-1 (default: 0.85).
-Items nuevos mas similares que este umbral seran regenerados.}
+\item{umbral_redundancia}{Similitud maxima permitida entre items 0-1 (default: 0.70).
+Items nuevos mas similares que este umbral seran regenerados. El default
+bajo de 0.85 a 0.70 en v2.7.0: la calibracion con datos reales (escala
+PM policial, n=280) mostro que las parafrasis que luego correlacionan
+>= .70 en aplicacion viven en similitud coseno 0.56-0.78, y 0.85 solo
+detecta clones casi literales (capturo 0 de 8 pares gemelos).
+La comparacion incluye items de TODAS las dimensiones.}
 
 \item{max_intentos_redundancia}{Intentos maximos para generar item no redundante (default: 3)}
 

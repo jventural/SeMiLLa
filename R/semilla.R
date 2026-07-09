@@ -49,6 +49,22 @@
 #' @param umbral_precision Precision minima aceptable 0-100 (default: 100)
 #' @param exportar_csv Exportar items a CSV (default: FALSE)
 #' @param archivo_salida Nombre del archivo CSV de salida
+#' @param compuerta Ejecutar la COMPUERTA PRE-APLICACION al final del
+#'        pipeline (default: TRUE). Encadena \code{auditar_redundancia()}
+#'        (pares + facetas repetidas), \code{calificar_deseabilidad()} y
+#'        \code{simular_estructura()}, y emite un veredicto unico
+#'        (LISTA PARA CAMPO / APLICAR CON CAUTELA / NO APLICAR TODAVIA)
+#'        con acciones concretas. Motivada por el caso PM policial (n=280):
+#'        los tres mecanismos que arruinaron esa aplicacion eran detectables
+#'        antes de ir a campo. Ver \code{\link{compuerta_pre_aplicacion}}.
+#' @param optimizar Si la compuerta devuelve "NO APLICAR TODAVIA", corregir
+#'        automaticamente la escala con \code{\link{optimizar_para_campo}}:
+#'        poda los clusters de faceta repetida y los pares redundantes,
+#'        regenera esos items con restricciones anti-parafraseo y anti-halo,
+#'        y re-pasa la compuerta (hasta \code{max_iteraciones_optimizar}).
+#'        Default: TRUE. Requiere \code{compuerta = TRUE}.
+#' @param max_iteraciones_optimizar Iteraciones maximas de la optimizacion
+#'        automatica (default: 2).
 #' @param seed Semilla para reproducibilidad (default: NULL). Usar un numero
 #'        entero para obtener resultados reproducibles en los analisis.
 #' @param verbose Mostrar progreso en consola (default: TRUE)
@@ -152,6 +168,9 @@ semilla <- function(concepto = NULL,
                     umbral_precision = 100,
                     exportar_csv = FALSE,
                     archivo_salida = NULL,
+                    compuerta = TRUE,
+                    optimizar = TRUE,
+                    max_iteraciones_optimizar = 2,
                     seed = NULL,
                     verbose = TRUE) {
 
@@ -398,6 +417,66 @@ semilla <- function(concepto = NULL,
   resultado$metadata$refinado <- refinar
   resultado$metadata$fuente   <- fuente
 
+  # PASO 5: COMPUERTA PRE-APLICACION (redaccion -> deseabilidad -> estructura)
+  # Ninguna escala deberia ir a campo sin pasarla (caso PM policial, n=280).
+  if (compuerta) {
+    if (verbose) {
+      cat("\n")
+      cat(.linea("="), "\n")
+      cat(.color_azul("[5/5] COMPUERTA PRE-APLICACION"), "\n")
+      cat(.linea("="), "\n")
+      cat("Auditando la escala ANTES de ir a campo...\n")
+      cat("  > Redaccion: pares redundantes + facetas repetidas\n")
+      cat("  > Deseabilidad social: halo entre/dentro de dimensiones\n")
+      cat("  > Simulacion: probabilidad de estructura factorial limpia\n")
+    }
+    resultado$compuerta <- tryCatch(
+      compuerta_pre_aplicacion(
+        resultado,
+        api_key   = api_key,
+        poblacion = poblacion,
+        verbose   = verbose
+      ),
+      error = function(e) {
+        warning("La compuerta pre-aplicacion fallo (", conditionMessage(e),
+                "). Ejecutela manualmente con compuerta_pre_aplicacion().")
+        NULL
+      }
+    )
+
+    # Correccion automatica guiada por la compuerta: podar facetas/pares y
+    # regenerar con restricciones anti-parafraseo y anti-halo, re-auditando.
+    if (optimizar && !is.null(resultado$compuerta) &&
+        identical(resultado$compuerta$veredicto, "NO APLICAR TODAVIA")) {
+      if (verbose) {
+        cat("\n")
+        cat(.linea("="), "\n")
+        cat(.color_amarillo("[5b/5] OPTIMIZACION GUIADA POR LA COMPUERTA"), "\n")
+        cat(.linea("="), "\n")
+        cat("La compuerta detecto riesgos corregibles; refinando items...\n")
+      }
+      resultado <- tryCatch(
+        optimizar_para_campo(
+          resultado,
+          api_key = api_key,
+          max_iteraciones = max_iteraciones_optimizar,
+          modelo = modelo,
+          poblacion = poblacion,
+          verbose = verbose
+        ),
+        error = function(e) {
+          warning("La optimizacion automatica fallo (", conditionMessage(e),
+                  "). Ejecutela manualmente con optimizar_para_campo().")
+          resultado
+        }
+      )
+    }
+  } else {
+    if (verbose) cat("\n", .color_gris("[5/5] COMPUERTA PRE-APLICACION"),
+                     " - Omitida (compuerta = FALSE). La escala NO ha sido",
+                     " auditada para campo.\n", sep = "")
+  }
+
   if (verbose) {
     cat("\n")
     cat(.linea(), "\n")
@@ -406,6 +485,14 @@ semilla <- function(concepto = NULL,
     cat("Dimensiones: ", length(unique(items_result$items$dimension)), "\n", sep = "")
     if (!is.null(efa_result)) {
       cat("Factores EFA: ", efa_result$metadata$n_factores, "\n", sep = "")
+    }
+    if (!is.null(resultado$compuerta)) {
+      cat("Compuerta pre-aplicacion: ", resultado$compuerta$veredicto, "\n", sep = "")
+    }
+    if (!is.null(resultado$optimizacion)) {
+      cat("Optimizacion automatica: ", nrow(resultado$optimizacion$reemplazos),
+          " item(s) reemplazado(s) en ", resultado$optimizacion$iteraciones,
+          " iteracion(es)\n", sep = "")
     }
     cat(.linea(), "\n")
   }
@@ -509,6 +596,24 @@ print.semilla <- function(x, ...) {
     }
     cat("\n")
   }
+
+  # Compuerta pre-aplicacion
+  cat(.linea("-"), "\n")
+  if (!is.null(x$compuerta)) {
+    col_ver <- if (identical(x$compuerta$veredicto, "LISTA PARA CAMPO"))
+      .color_verde else .color_amarillo
+    cat(.color_verde("COMPUERTA PRE-APLICACION:"), " ",
+        col_ver(x$compuerta$veredicto), "\n", sep = "")
+    if (length(x$compuerta$acciones) > 0) {
+      cat("  Acciones pendientes: ", length(x$compuerta$acciones),
+          " (ver x$compuerta)\n", sep = "")
+    }
+  } else {
+    cat(.color_amarillo("COMPUERTA PRE-APLICACION: pendiente"),
+        " - ejecute compuerta_pre_aplicacion(x, api_key) antes de aplicar\n",
+        sep = "")
+  }
+  cat("\n")
 
   # Metadata
   cat(.linea("="), "\n")

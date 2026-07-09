@@ -12,6 +12,7 @@ sugerir_escala_respuesta(
   idioma = "es",
   n_puntos = NULL,
   contexto = "auto",
+  valencia = c("auto", "positiva", "negativa", "neutra"),
   evitar_absolutos = NULL,
   anclajes_contextuales = TRUE,
   verbose = TRUE

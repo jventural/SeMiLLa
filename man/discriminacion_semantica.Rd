@@ -27,15 +27,28 @@ semantica" - items con baja similitud promedio tienden a tener mayor
 poder de discriminacion segun la Teoria de Respuesta al Item (IRT).
 }
 \details{
-La investigacion muestra una correlacion negativa moderada (r = -0.55) entre
-similitud semantica y parametro de discriminacion IRT: "items semanticamente
-unicos tienden a tener mayor poder de discriminacion".
+La idea (paradoja de la atenuacion; Loevinger, 1954) es que items casi
+redundantes aportan poca informacion incremental, por lo que items
+semanticamente mas unicos pueden discriminar mas. El indice replica
+exactamente el de Kilmen & Bulut (2025): la \strong{similitud coseno media de
+cada item con los demas de su MISMA subescala} (\code{similitud_media}), y la
+unicidad como \code{1 - similitud_media}; se priorizan los items de mayor
+unicidad.
 
-Esto significa que:
+\strong{Evidencia (matiz importante):} el efecto es \emph{moderado y depende
+de la subescala}, no es una ley general. En Kilmen & Bulut (2025) la
+correlacion entre discriminacion IRT y similitud media fue \strong{r = -.546
+(p < .05) en la subescala de ansiedad}, pero \strong{r = +.036 (no
+significativo) en la de evitacion}. En una validacion interna con la EEAP
+(n = 100) la relacion tambien fue inconsistente entre dimensiones (de
+aprox. -.10 a +.67). Por tanto:
 \itemize{
-\item Items muy similares a otros son redundantes y discriminan poco
-\item Items semanticamente unicos capturan aspectos distintivos del constructo
-\item La unicidad semantica es un proxy de la informacion IRT del item
+\item La unicidad semantica es un proxy \emph{util pero inestable} de la
+discriminacion; conviene confirmarlo con datos de respuesta reales.
+\item Funciona mejor como filtro de \emph{redundancia} (descartar
+casi-duplicados) que como ranking fino de discriminacion.
+\item Para seleccion alineada con la carga factorial, comparar con
+\code{\link{forma_breve}} (criterio repr - cross).
 }
 }
 \examples{
@@ -55,4 +68,7 @@ disc[order(-disc$unicidad), ]
 Kilmen, S., & Bulut, O. (2025). Shortening Psychological Scales: Semantic
 Similarity Matters. Educational and Psychological Measurement, 85(5),
 910-934. https://doi.org/10.1177/00131644251319047
+
+Loevinger, J. (1954). The attenuation paradox in test theory. Psychological
+Bulletin, 51(5), 493-504. https://doi.org/10.1037/h0058543
 }

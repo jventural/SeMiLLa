@@ -24,7 +24,8 @@
 #' @param api_key API key de OpenAI.
 #' @param modelo Modelo de OpenAI (default: \code{"gpt-4.1-mini"}).
 #' @param umbral_redundancia Similitud coseno por encima de la cual se
-#'   considera item redundante (default: 0.85).
+#'   considera item redundante (default: 0.70, recalibrado en v2.7.0 con
+#'   datos reales: 0.85 solo detectaba clones casi literales).
 #' @param formato_export Formato de exportacion: "mirt" (default) o "catR".
 #' @param verbose Mostrar progreso.
 #'
@@ -68,7 +69,7 @@ banco_cat <- function(x,
                       n_finales = 15,
                       api_key,
                       modelo = "gpt-4.1-mini",
-                      umbral_redundancia = 0.85,
+                      umbral_redundancia = 0.70,
                       formato_export = c("mirt", "catR"),
                       verbose = TRUE) {
 

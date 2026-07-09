@@ -4,21 +4,48 @@
 \alias{auditar_redundancia}
 \title{Auditoria multi-indice de redundancia de items}
 \usage{
-auditar_redundancia(x, umbral_sem = 0.85, n_gram = 2, umbral_sintactico = 0.3)
+auditar_redundancia(
+  x,
+  umbral_sem = "auto",
+  n_gram = 2,
+  umbral_sintactico = 0.3,
+  umbral_faceta = "auto",
+  min_items_faceta = 3L
+)
 }
 \arguments{
 \item{x}{Objeto \code{semilla} o \code{semilla_embeddings} (debe contener la
 matriz \code{$similitud} y el data.frame \code{$items} con la columna
 \code{item}).}
 
-\item{umbral_sem}{Umbral de similitud coseno para marcar pares redundantes
-(por defecto 0.85).}
+\item{umbral_sem}{Umbral de similitud coseno para marcar pares redundantes.
+Default \code{"auto"}: cuantil .95 de la distribucion de similitudes de
+la propia escala, acotado a \link{0.70, 0.85}. La calibracion con dos
+escalas reales (bateria policial, n=280) mostro que ningun umbral FIJO
+sirve: en PM (linea base de similitud baja, media=.49) las parafrasis
+daninas vivian en .56-.78 y el antiguo 0.85 capturo 0 de 8; en ACO
+(actitud hacia UN objeto nombrado en cada item, media alta) un 0.70
+fijo marcaba 28 pares en una escala que empiricamente funciono,
+mientras que los pares de similitud alta RELATIVA (>= ~.78) coincidian
+con los items que la specification search empirica descarto. Puede
+fijarse un numero manualmente.}
 
 \item{n_gram}{Tamano del n-grama de palabras para el solapamiento lexico y
 sintactico (por defecto 2).}
 
 \item{umbral_sintactico}{Umbral del solapamiento medio de n-gramas a partir
 del cual se dispara la alerta de homogeneidad sintactica (por defecto 0.30).}
+
+\item{umbral_faceta}{Similitud media intra-cluster a partir de la cual un
+grupo de items se considera una FACETA REPETIDA. Default \code{"auto"}:
+cuantil .75 de las similitudes de la escala, acotado a \link{0.55, 0.70}.
+El analisis por pares no ve este patron: tres o mas items sobre la
+misma conducta pueden pasar el filtro de a pares y aun asi formar un
+bloque de dependencia local que rompe el ajuste (RMSEA) e infla la
+fiabilidad. Puede fijarse un numero manualmente.}
+
+\item{min_items_faceta}{Numero minimo de items de un cluster para reportarlo
+como faceta repetida (por defecto 3).}
 }
 \value{
 Objeto de clase \code{semilla_redundancia} (lista) con:
@@ -26,6 +53,9 @@ Objeto de clase \code{semilla_redundancia} (lista) con:
 \item \code{similitud_maxima}: lista con \code{global}, \code{media} y el
 vector \code{por_item}.
 \item \code{pares_redundantes}: data.frame de pares con coseno >= \code{umbral_sem}.
+\item \code{facetas_repetidas}: data.frame de clusters de 3+ items sobre la
+misma conducta (cluster, n_items, sim_media, nucleo lexico compartido,
+items), con la recomendacion de conservar 1-2 por cluster.
 \item \code{ngram_overlap}: lista con \code{media}, \code{maxima} y la matriz \code{J}.
 \item \code{homogeneidad_sintactica}: lista con \code{indice},
 \code{prefijo_compartido} y \code{alerta} (logico).
@@ -54,6 +84,17 @@ Un valor alto, junto con baja diversidad lexica, senala que la similitud
 coseno esta capturando forma y no contenido; en ese caso los indices
 semanticos pierden validez y la escala requiere revision de la redaccion.
 }
+\section{Limite de la similitud semantica}{
+
+La similitud de embeddings NO captura la correlacion empirica inducida por
+deseabilidad social uniforme ni por estilos de respuesta: dos items de
+temas distintos pero ambos muy deseables pueden correlacionar > .70 en
+aplicacion con similitud coseno < .45 (observado en PM policial). Por eso
+esta auditoria debe complementarse SIEMPRE con
+\code{calificar_deseabilidad()} y \code{simular_estructura()} antes de
+aplicar la escala.
+}
+
 \examples{
 \dontrun{
 esc <- semilla("celos en relaciones de pareja", api_key = Sys.getenv("OPENAI_API_KEY"))

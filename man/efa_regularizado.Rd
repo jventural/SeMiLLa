@@ -12,6 +12,7 @@ efa_regularizado(
   alpha = 0.5,
   centrado = c("double", "ninguno", "filas"),
   umbral_carga = 0.1,
+  ejecutar = FALSE,
   verbose = TRUE
 )
 }
@@ -37,6 +38,12 @@ independientes); "filas" (solo medias por fila).}
 
 \item{umbral_carga}{Cargas absolutas por debajo de este umbral se
 reportan como cero (default: 0.10).}
+
+\item{ejecutar}{Lógico. Si \code{FALSE} (default) la función se omite y
+devuelve \code{NULL}: el EFA regularizado es un diagnóstico OPCIONAL de
+robustez, NO el análisis que define la estructura de la escala (eso lo
+hace \code{precision_clasificacion(metodo = "ensemble")}). Pásalo
+explícitamente a \code{TRUE} para correrlo.}
 
 \item{verbose}{Mostrar progreso.}
 }

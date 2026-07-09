@@ -14,6 +14,11 @@ export(info_cache)
 export(limpiar_cache)
 
 # -----------------------------------------------------------------------------
+# Paso 2b (Fase I). Proveedor LLM (endpoints OpenAI-compatibles)
+# -----------------------------------------------------------------------------
+export(usar_proveedor)
+
+# -----------------------------------------------------------------------------
 # Pasos 3-4 (Fase II). Construccion de la escala
 # -----------------------------------------------------------------------------
 export(semilla)
@@ -53,6 +58,8 @@ export(efa_regularizado)
 # Pasos 10-15 (Fase V). Evaluacion psicometrica sin datos
 # -----------------------------------------------------------------------------
 export(validez_contenido)
+export(calificar_deseabilidad)
+export(simular_estructura)
 export(auditar_redaccion_items)
 export(evaluar_calidad_items)        # alias depreciado v1.x
 export(fiabilidad_semantica)
@@ -61,6 +68,10 @@ export(discriminacion_semantica)
 export(cargas_semanticas)
 export(analizar_coherencia)
 export(validez_criterio_predicha)
+export(compuerta_pre_aplicacion)
+export(optimizar_para_campo)
+export(verificar_clave)
+export(detectar_necesidad_ilustracion)
 
 # -----------------------------------------------------------------------------
 # Pasos 16-19 (Fase VI). Entregable final
@@ -73,6 +84,7 @@ export(ensamblar_test)
 export(ensamblar_test_historias)
 export(ensamblar_test_guttman)
 export(ensamblar_prueba_objetiva)
+export(ensamblar_prueba_html)
 export(ensamblar_test_cognitivo)
 export(ensamblar_test_forcedchoice)
 export(exportar_escala)
@@ -104,6 +116,7 @@ export(plot_precision)
 export(plot_evolucion_precision)
 export(plot_redundancia)
 export(plot_sankey)
+export(plot_consenso)
 export(plot_cargas)
 export(plot_scree)
 export(plot_forma_corta)
@@ -145,6 +158,22 @@ S3method(print, semilla_transcultural)
 S3method(print, semilla_criterio)
 S3method(print, semilla_banco_cat)
 S3method(print, semilla_redundancia)
+S3method(print, semilla_compuerta)
+S3method(print, semilla_verificacion_clave)
+S3method(print, semilla_deteccion_ilustracion)
+S3method(print, semilla_prueba_objetiva)
+S3method(print, semilla_test_objetivo)
+S3method(print, semilla_test_objetivo_multi)
+S3method(print, semilla_test_cognitivo)
+S3method(print, semilla_test_cognitivo_multi)
+S3method(print, semilla_guttman)
+S3method(print, semilla_test_guttman)
+S3method(print, semilla_historias)
+S3method(print, semilla_test_historias)
+S3method(print, semilla_test_historias_multi)
+S3method(print, semilla_forcedchoice)
+S3method(print, semilla_test_forcedchoice)
+S3method(print, semilla_prompts_ilustracion)
 
 
 # =============================================================================

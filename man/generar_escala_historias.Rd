@@ -28,10 +28,12 @@ generar_escala_historias(
   seed = 2026,
   verbose = TRUE,
   items_modo = c("transversal", "por_historia"),
+  enfoque_items = c("facetas", "historias"),
   contexto_propension = NULL,
   etapa_evolutiva = c("auto", "ninez", "adolescencia_temprana", "adolescencia_media",
     "adolescencia_tardia", "adultez_emergente", "adultez", "adulto_mayor"),
-  nivel_socioeconomico = c("auto", "alto", "medio", "medio_bajo", "bajo")
+  nivel_socioeconomico = c("auto", "alto", "medio", "medio_bajo", "bajo"),
+  variante_regional = "auto"
 )
 }
 \arguments{
@@ -98,6 +100,19 @@ especifico (sin contar la introduccion).}
 \item{items_modo}{Generacion de items: "transversal" (default, comunes a
 todas las historias) o "por_historia" (especificos de cada historia).}
 
+\item{enfoque_items}{Solo aplica cuando \code{items_modo = "por_historia"}.
+Define como se construyen los items especificos de cada historia:
+\itemize{
+\item \code{"facetas"} (default): se recorren las mismas
+\code{facetas_percepcion} en cada historia, produciendo items
+PARALELOS entre historias (diseno cruzado faceta x historia). La
+estructura factorial tiende a organizarse por faceta o por perspectiva,
+no por historia.
+\item \code{"historias"}: cada historia genera items DISTINTIVOS de su
+constructo dominante (contenido propio, no facetas compartidas),
+buscando que las K historias rindan K factores diferenciados.
+}}
+
 \item{contexto_propension}{Texto opcional que orienta la propension del
 contexto. NULL por defecto.}
 
@@ -107,6 +122,11 @@ contexto. NULL por defecto.}
 
 \item{nivel_socioeconomico}{Nivel socioeconomico que ajusta el lenguaje:
 "auto" (default), "alto", "medio", "medio_bajo" o "bajo".}
+
+\item{variante_regional}{Variante de castellano para ajustar registro y
+vocabulario: "auto" (default), "selva_peru" (castellano amazonico simple,
+lector adolescente a menudo bilingue) o una cadena libre de guia de
+registro. Se combina con etapa_evolutiva y nivel_socioeconomico.}
 }
 \value{
 Objeto \code{semilla_historias} (lista) con:

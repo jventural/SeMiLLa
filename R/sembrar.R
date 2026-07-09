@@ -940,8 +940,13 @@ ver_items <- function(x, dimension = NULL) {
 #'        un item bien clasificado (default: 0.667 = al menos 2/3 algoritmos).
 #'        Solo se usa cuando \code{criterio = "ensemble"}. Valores tipicos:
 #'        0.667 (mayoria simple), 0.999 (unanimidad).
-#' @param umbral_redundancia Similitud maxima permitida entre items 0-1 (default: 0.85).
-#'        Items nuevos mas similares que este umbral seran regenerados.
+#' @param umbral_redundancia Similitud maxima permitida entre items 0-1 (default: 0.70).
+#'        Items nuevos mas similares que este umbral seran regenerados. El default
+#'        bajo de 0.85 a 0.70 en v2.7.0: la calibracion con datos reales (escala
+#'        PM policial, n=280) mostro que las parafrasis que luego correlacionan
+#'        >= .70 en aplicacion viven en similitud coseno 0.56-0.78, y 0.85 solo
+#'        detecta clones casi literales (capturo 0 de 8 pares gemelos).
+#'        La comparacion incluye items de TODAS las dimensiones.
 #' @param max_intentos_redundancia Intentos maximos para generar item no redundante (default: 3)
 #' @param modelo Modelo de OpenAI para generar nuevos items
 #' @param exportar_excel Exportar historial a Excel (default: TRUE)
@@ -979,7 +984,7 @@ refinar_escala <- function(escala,
                            umbral_precision = 100,
                            criterio = c("kmeans", "ensemble"),
                            umbral_consenso = 0.667,
-                           umbral_redundancia = 0.85,
+                           umbral_redundancia = 0.70,
                            max_intentos_redundancia = 3,
                            modelo = "gpt-4.1-mini",
                            exportar_excel = TRUE,
@@ -1205,6 +1210,16 @@ refinar_escala <- function(escala,
       if (!is.null(items_generados_iteracion[[dim_nombre]])) {
         items_misma_dim <- unique(c(items_misma_dim, items_generados_iteracion[[dim_nombre]]))
       }
+
+      # Comparar TAMBIEN contra las otras dimensiones: la redundancia
+      # inter-dimension es la mas danina (funde los factores). Evidencia
+      # PM policial 2026 (n=280): los 2 pares con mayor correlacion
+      # empirica (r >= .76) cruzaban dimensiones y el filtro intra-dim
+      # nunca los comparo.
+      items_otras_dim <- items_actuales$item[
+        items_actuales$dimension != dim_nombre & items_actuales$item != item_prob$item
+      ]
+      items_misma_dim <- unique(c(items_misma_dim, items_otras_dim))
 
       # Numero del item original (para tracking persistente de textos)
       num_original <- if ("codigo" %in% names(item_prob)) {

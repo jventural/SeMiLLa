@@ -52,7 +52,7 @@ flujo <- function(tipo = "texto", archivo = NULL) {
 
   cat("  ", .color_azul("FASE III. ANALISIS SEMANTICO"), "\n", sep = "")
   cat("    Paso 5.  obtener_embeddings()             [OpenAI text-embedding-3-small]\n")
-  cat("    Paso 6.  analizar_redundancia()           [pares con sim > 0.85]\n")
+  cat("    Paso 6.  analizar_redundancia()           [pares con sim > 0.70]\n")
   cat("    Paso 7.  efa_regularizado()               [Goretzko, 2023]\n")
   cat("    Paso 8.  precision_clasificacion(metodo='ensemble')  [Voss et al., 2026]\n\n")
 
@@ -66,6 +66,14 @@ flujo <- function(tipo = "texto", archivo = NULL) {
   cat("    Paso 13. discriminacion_semantica()       [unicidad por item]\n")
   cat("    Paso 14. analizar_coherencia()            [intra vs inter-dim]\n")
   cat("    Paso 15. validez_criterio_predicha()      [Fokkema et al., 2022]\n\n")
+
+  cat("  ", .color_amarillo("FASE V-B. COMPUERTA PRE-APLICACION (obligatoria antes de campo)"), "\n", sep = "")
+  cat("    Paso 15b. compuerta_pre_aplicacion()      [redaccion + deseabilidad + simulacion]\n")
+  cat("              Veredicto: LISTA PARA CAMPO / APLICAR CON CAUTELA / NO APLICAR TODAVIA\n")
+  cat("              semilla() la ejecuta automaticamente (compuerta = TRUE)\n")
+  cat("    Paso 15c. optimizar_para_campo()          [correccion automatica guiada]\n")
+  cat("              Poda facetas/pares -> regenera anti-halo -> re-pasa la compuerta\n")
+  cat("              semilla() la dispara si el veredicto es NO APLICAR (optimizar = TRUE)\n\n")
 
   cat("  ", .color_verde("FASE VI. ENTREGABLE FINAL"), "\n", sep = "")
   cat("    Paso 16. forma_corta(x, n_items)\n")
@@ -87,11 +95,13 @@ flujo <- function(tipo = "texto", archivo = NULL) {
   cat("    Paso 25. crear_plantilla_escala() / leer_escala()\n\n")
 
   cat(.linea("-"), "\n")
-  cat(.color_verde("FUNCION PRINCIPAL:"), " semilla() ejecuta el pipeline central (Paso 3-19)\n")
-  cat(.color_verde("FLUJO MINIMO (8 pasos):"), "\n")
+  cat(.color_verde("FUNCION PRINCIPAL:"), " semilla() ejecuta el pipeline central (Paso 3-19),\n")
+  cat("  incluida la COMPUERTA PRE-APLICACION (Paso 15b) al cierre.\n")
+  cat(.color_verde("FLUJO MINIMO (9 pasos):"), "\n")
   cat("  cache('enable') -> generar_items() -> obtener_embeddings() ->\n")
   cat("  precision_clasificacion(metodo='ensemble') -> refinar_escala() ->\n")
-  cat("  validez_contenido() -> forma_corta() -> ensamblar(tipo='likert')\n")
+  cat("  validez_contenido() -> compuerta_pre_aplicacion() -> forma_corta() ->\n")
+  cat("  ensamblar(tipo='likert')\n")
   cat(.linea("="), "\n\n")
 }
 
@@ -211,7 +221,8 @@ ayuda <- function() {
 
   cat(.color_azul("EVALUACION (Validity & Reliability):"), "\n")
   cat("  validez_contenido()  Evalua validez de contenido via LLM (CVI)\n")
-  cat("  fiabilidad_semantica() Calcula Alpha Semantico (Spearman-Brown)\n\n")
+  cat("  fiabilidad_semantica() Calcula Alpha Semantico (Spearman-Brown)\n")
+  cat("  compuerta_pre_aplicacion() Auditoria integral antes de ir a campo\n\n")
 
   cat(.color_azul("INTEGRACION (Scale Integration):"), "\n")
   cat("  exportar_escala()    Exporta items a Excel + archivo de info\n")

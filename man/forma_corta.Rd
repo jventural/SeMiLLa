@@ -52,6 +52,21 @@ El algoritmo funciona asi:
 El metodo "diverso" selecciona items que maximizan la cobertura semantica,
 prefiriendo items mas alejados entre si dentro de cada cluster.
 }
+\section{Recomendacion de uso (forma_corta vs forma_breve)}{
+
+\itemize{
+\item \strong{Sin datos de respuesta (caso habitual): usar
+\code{forma_corta} (esta funcion).} En la validacion interna (EEAP) fue el
+criterio puramente semantico mas robusto (coincidencia ~69\\% con la
+seleccion empirica, frente a ~56\\% de \code{forma_breve} semantico).
+\item \strong{Con un piloto de respuestas reales (~90+): usar
+\code{\link{forma_breve}} en modo hibrido} (argumento
+\code{respuestas_piloto}), que sube la coincidencia a ~88\\%.
+}
+Es decir: \code{forma_corta} es el \emph{default sin datos};
+\code{forma_breve} aporta sobre todo cuando hay piloto empirico.
+}
+
 \examples{
 \dontrun{
 # Generar forma corta de 15 items
@@ -72,4 +87,7 @@ developing short-form psychological measures. Frontiers in Psychology, 16.
 Olaru, G., Schroeders, U., & Wilhelm, O. (2025). Shortening Psychological
 Scales: Semantic Similarity Matters. European Journal of Psychological
 Assessment.
+}
+\seealso{
+\code{\link{forma_breve}}, \code{\link{discriminacion_semantica}}
 }

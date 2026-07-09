@@ -133,7 +133,7 @@ generar_prueba_objetiva <- function(
     cat("  Formatos:\n")
     print(table(tabla_especificacion$formato))
   }
-  openai <- .configurar_openai(api_key)
+  openai <- .configurar_openai(api_key, modelo = modelo)
 
   # Acumuladores
   items_list   <- list()
@@ -539,6 +539,18 @@ print.semilla_prueba_objetiva <- function(x, ...) {
   print(table(x$items$formato))
   cat("  Niveles Bloom:\n")
   print(table(x$items$nivel_bloom))
+  if (!is.null(x$metadata$verificacion)) {
+    v <- x$metadata$verificacion
+    cat("  Verificacion de clave: ", v$n_coincidencias, "/", v$n_verificados,
+        if (!is.na(v$tasa_coincidencia))
+          paste0(" (", round(100 * v$tasa_coincidencia, 1), "%)") else "",
+        " coincidencias [", v$modelo, "]\n", sep = "")
+    if (v$n_discrepancias > 0)
+      cat("    ", .color_warning(),
+          " Hay discrepancias: ver x$verificacion\n", sep = "")
+  } else {
+    cat("  Verificacion de clave: pendiente (use verificar_clave())\n")
+  }
   cat("-----------------------------------------------------------\n")
   cat("  Primer item (ejemplo):\n")
   cat("    [", x$items$tema[1], " / ", x$items$nivel_bloom[1], " / ",

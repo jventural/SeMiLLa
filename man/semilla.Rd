@@ -27,6 +27,9 @@ semilla(
   umbral_precision = 100,
   exportar_csv = FALSE,
   archivo_salida = NULL,
+  compuerta = TRUE,
+  optimizar = TRUE,
+  max_iteraciones_optimizar = 2,
   seed = NULL,
   verbose = TRUE
 )
@@ -97,6 +100,25 @@ Si TRUE, reemplaza items problematicos hasta alcanzar umbral de precision.}
 \item{exportar_csv}{Exportar items a CSV (default: FALSE)}
 
 \item{archivo_salida}{Nombre del archivo CSV de salida}
+
+\item{compuerta}{Ejecutar la COMPUERTA PRE-APLICACION al final del
+pipeline (default: TRUE). Encadena \code{auditar_redundancia()}
+(pares + facetas repetidas), \code{calificar_deseabilidad()} y
+\code{simular_estructura()}, y emite un veredicto unico
+(LISTA PARA CAMPO / APLICAR CON CAUTELA / NO APLICAR TODAVIA)
+con acciones concretas. Motivada por el caso PM policial (n=280):
+los tres mecanismos que arruinaron esa aplicacion eran detectables
+antes de ir a campo. Ver \code{\link{compuerta_pre_aplicacion}}.}
+
+\item{optimizar}{Si la compuerta devuelve "NO APLICAR TODAVIA", corregir
+automaticamente la escala con \code{\link{optimizar_para_campo}}:
+poda los clusters de faceta repetida y los pares redundantes,
+regenera esos items con restricciones anti-parafraseo y anti-halo,
+y re-pasa la compuerta (hasta \code{max_iteraciones_optimizar}).
+Default: TRUE. Requiere \code{compuerta = TRUE}.}
+
+\item{max_iteraciones_optimizar}{Iteraciones maximas de la optimizacion
+automatica (default: 2).}
 
 \item{seed}{Semilla para reproducibilidad (default: NULL). Usar un numero
 entero para obtener resultados reproducibles en los analisis.}

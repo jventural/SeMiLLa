@@ -578,7 +578,7 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
 # -----------------------------------------------------------------------------
 
 #' @keywords internal
-.configurar_openai <- function(api_key) {
+.configurar_openai <- function(api_key, modelo = NULL, base_url = NULL) {
   if (!requireNamespace("reticulate", quietly = TRUE)) {
     stop("Necesitas instalar reticulate: install.packages('reticulate')")
   }
@@ -595,8 +595,29 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
     stop("No se pudo importar openai. Instala con: pip install openai")
   })
 
+  # Resolver endpoint de chat: argumento explicito > usar_proveedor() >
+  # inferencia por nombre de modelo > OpenAI (default). El protocolo es el
+  # mismo (OpenAI-compatible); solo cambia la base_url.
+  if (is.null(base_url)) {
+    base_url <- getOption("SeMiLLa.base_url", NULL)
+  }
+  if (is.null(base_url) && !is.null(modelo)) {
+    inferido <- .inferir_proveedor_por_modelo(modelo)
+    if (!is.null(inferido)) {
+      base_url <- inferido$base_url
+      message("[SeMiLLa] El modelo '", modelo, "' parece de '",
+              inferido$proveedor, "'; usando ", base_url,
+              ". Fija el proveedor con usar_proveedor() para silenciar",
+              " este mensaje.")
+    }
+  }
+
   # Crear cliente
-  cliente <- openai$OpenAI(api_key = api_key)
+  cliente <- if (is.null(base_url)) {
+    openai$OpenAI(api_key = api_key)
+  } else {
+    openai$OpenAI(api_key = api_key, base_url = base_url)
+  }
 
   return(cliente)
 }
@@ -765,7 +786,7 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
 #' @return Lista con: redundante (logical), items_similares (textos), similitudes (valores)
 .verificar_redundancia_item <- function(openai, nuevo_item, items_existentes,
                                         embeddings_existentes = NULL,
-                                        umbral = 0.85) {
+                                        umbral = 0.70) {
 
   # Obtener embedding del nuevo item
   nuevo_emb <- tryCatch({
@@ -835,7 +856,8 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
                                      tipo_escala_respuesta = "frecuencia",
                                      evitar_cuantificadores = TRUE,
                                      max_palabras = 18L,
-                                     incluir_inversos = TRUE) {
+                                     incluir_inversos = TRUE,
+                                     instruccion_extra = NULL) {
 
   # Instrucciones de idioma
   instrucciones_idioma <- switch(
@@ -1026,6 +1048,26 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
     "16. Los items deben DISCRIMINAR segun el nivel del constructo\n"
   )
 
+  # Reglas de diversidad de contenido (anti-parafraseo). Motivadas por
+  # evidencia empirica (escala PM policial, n=280): lotes con varios items
+  # que parafrasean la misma conducta generan dependencia local (RMSEA
+  # inaceptable), funden los factores y inflan la fiabilidad.
+  reglas_diversidad <- paste0(
+    "DIVERSIDAD DE CONTENIDO (CRITICO - anti-parafraseo):\n",
+    "1. Cada item debe cubrir una MANIFESTACION DIFERENTE de la dimension:\n",
+    "   varia la conducta, el contexto o el destinatario entre items.\n",
+    "2. PROHIBIDO que dos items del conjunto puedan resumirse con la misma\n",
+    "   frase (la misma conducta dicha con otras palabras cuenta como\n",
+    "   REPETICION, no como item nuevo).\n",
+    "3. PROHIBIDO reutilizar el mismo par verbo+objeto en mas de UN item\n",
+    "   (ej.: si ya existe un item sobre 'ayudar a companeros con problemas',\n",
+    "   NINGUN otro item puede tratar de ayudar/apoyar/ser solidario con\n",
+    "   companeros: los sinonimos son la misma conducta).\n",
+    "4. ANTES de responder, revisa el conjunto completo: si dos items\n",
+    "   comparten la conducta esencial, reemplaza uno por otra manifestacion\n",
+    "   de la dimension aun no cubierta.\n"
+  )
+
   # Linea de polaridad (inversos si/no)
   linea_inversos <- if (isTRUE(incluir_inversos)) {
     "- Incluir algunos items inversos (redaccion negativa del constructo)\n"
@@ -1054,6 +1096,9 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
     reglas_complejidad, "\n",
     reglas_escala_resp, "\n",
     reglas_redaccion, "\n",
+    reglas_diversidad, "\n",
+    if (!is.null(instruccion_extra) && nzchar(instruccion_extra))
+      paste0(instruccion_extra, "\n\n") else "",
     "FORMATO:\n",
     "- Afirmaciones en primera persona\n",
     "- Apropiados para escala Likert (sin cuantificadores en el enunciado)\n",

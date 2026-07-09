@@ -256,12 +256,18 @@ items_similares <- function(embeddings, item, top = 5) {
 #' Identifica pares de items potencialmente redundantes.
 #'
 #' @param embeddings Objeto semilla_embeddings o semilla
-#' @param umbral Umbral de similitud (default: 0.85)
+#' @param umbral Umbral de similitud. Default \code{"auto"} (v2.7.0):
+#'   cuantil .95 de las similitudes de la propia escala, acotado a
+#'   [0.70, 0.85]. Calibrado con dos escalas reales (n=280): un umbral FIJO
+#'   no sirve — 0.85 no capturo ninguna parafrasis danina en PM (vivian en
+#'   .56-.78) y 0.70 sobre-alarmaba en ACO (actitud hacia un objeto unico,
+#'   linea base de similitud alta). Puede fijarse un numero. Para clusters
+#'   de faceta repetida use \code{\link{auditar_redundancia}}.
 #'
 #' @return Dataframe con pares redundantes
 #'
 #' @export
-analizar_redundancia <- function(embeddings, umbral = 0.85) {
+analizar_redundancia <- function(embeddings, umbral = "auto") {
 
   # Extraer embeddings segun tipo
   if (inherits(embeddings, "semilla")) {
@@ -277,6 +283,13 @@ analizar_redundancia <- function(embeddings, umbral = 0.85) {
 
   n <- nrow(emb$similitud)
   redundantes <- data.frame()
+
+  # Umbral adaptativo a la linea base de similitud de la escala
+  if (identical(umbral, "auto")) {
+    ut <- upper.tri(emb$similitud)
+    umbral <- min(0.85, max(0.70,
+      as.numeric(stats::quantile(emb$similitud[ut], 0.95, na.rm = TRUE))))
+  }
 
   # Dimension de cada item (si esta disponible) para agregados por dimension
   dim_vec <- if (!is.null(emb$items) && "dimension" %in% names(emb$items))

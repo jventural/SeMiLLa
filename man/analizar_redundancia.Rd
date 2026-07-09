@@ -4,12 +4,18 @@
 \alias{analizar_redundancia}
 \title{Analizar Redundancia de Items}
 \usage{
-analizar_redundancia(embeddings, umbral = 0.85)
+analizar_redundancia(embeddings, umbral = "auto")
 }
 \arguments{
 \item{embeddings}{Objeto semilla_embeddings o semilla}
 
-\item{umbral}{Umbral de similitud (default: 0.85)}
+\item{umbral}{Umbral de similitud. Default \code{"auto"} (v2.7.0):
+cuantil .95 de las similitudes de la propia escala, acotado a
+\link{0.70, 0.85}. Calibrado con dos escalas reales (n=280): un umbral FIJO
+no sirve — 0.85 no capturo ninguna parafrasis danina en PM (vivian en
+.56-.78) y 0.70 sobre-alarmaba en ACO (actitud hacia un objeto unico,
+linea base de similitud alta). Puede fijarse un numero. Para clusters
+de faceta repetida use \code{\link{auditar_redundancia}}.}
 }
 \value{
 Dataframe con pares redundantes

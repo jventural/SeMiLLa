@@ -21,7 +21,11 @@
 #' etc. Esa carpeta luego se pasa a \code{ensamblar_test(ilustraciones = ...)}.
 #'
 #' @param escala Objeto \code{semilla}, \code{semilla_items} o data.frame con
-#'   columnas \code{item} y \code{dimension}.
+#'   columnas \code{item} y \code{dimension}. Tambien acepta un objeto
+#'   \code{semilla_prueba_objetiva}: en ese caso se ilustran los enunciados
+#'   y el prompt incorpora reglas de proteccion de la clave (la imagen no
+#'   debe revelar ni sugerir la respuesta correcta, sin letras ni textos de
+#'   opciones).
 #' @param api_key Clave de OpenAI.
 #' @param personaje Cadena con la ficha del personaje. Si es NULL, se usa un
 #'   default sensato segun \code{idioma_prompts}.
@@ -74,10 +78,15 @@ prompts_ilustracion <- function(escala,
   idioma_docs    <- match.arg(idioma_docs)
   paleta         <- match.arg(paleta)
 
-  items_df <- .extraer_df_items(escala)
+  items_df <- .extraer_df_items_ilustrables(escala)
   if (is.null(items_df) || nrow(items_df) == 0) {
     stop("No se encontraron items en 'escala'.")
   }
+
+  # Pruebas objetivas: la ilustracion acompana un item CON respuesta
+  # correcta, asi que el prompt debe blindarse para que la imagen no
+  # revele ni sugiera la clave (ver .salvaguarda_clave_imagen).
+  es_objetiva <- inherits(escala, "semilla_prueba_objetiva")
 
   # ---------- Defaults segun paleta ----------
   # Importante: en blanco y negro NO mencionar colores en la ficha del personaje
@@ -156,7 +165,7 @@ prompts_ilustracion <- function(escala,
 
   # ---------- Cliente OpenAI ----------
   if (verbose) cat("\n[prompts_ilustracion] Configurando cliente OpenAI...\n")
-  openai <- .configurar_openai(api_key)
+  openai <- .configurar_openai(api_key, modelo = modelo)
 
   if (!is.null(seed)) options(SeMiLLa.seed = as.integer(seed))
 
@@ -179,6 +188,22 @@ prompts_ilustracion <- function(escala,
     "Usa presente simple. NO incluyas comillas, prefijos como \u00ABEscena:\u00BB",
     "ni comentarios extra. Responde solo la oraci\u00F3n."
   )
+
+  # En pruebas objetivas la escena debe PLANTEAR la situacion del enunciado
+  # sin resolverla: si la imagen muestra la respuesta, el item queda regalado.
+  if (es_objetiva) {
+    sys_msg <- paste(sys_msg, if (idioma_prompts == "en") paste(
+      "IMPORTANT: this item belongs to a knowledge test with one correct",
+      "answer. Describe ONLY the situation posed by the stem; the scene must",
+      "NOT solve the item, must NOT depict or hint at the correct answer,",
+      "and must NOT show answer options or letters."
+    ) else paste(
+      "IMPORTANTE: este \u00EDtem pertenece a una prueba de conocimiento con",
+      "una respuesta correcta. Describe SOLO la situaci\u00F3n que plantea el",
+      "enunciado; la escena NO debe resolver el \u00EDtem, NO debe mostrar ni",
+      "sugerir la respuesta correcta, y NO debe incluir opciones ni letras."
+    ))
+  }
 
   n <- nrow(items_df)
   escenas <- character(n)
@@ -226,11 +251,15 @@ prompts_ilustracion <- function(escala,
   L_char   <- if (idioma_prompts == "en") "Character" else "Personaje"
   L_scene  <- if (idioma_prompts == "en") "Scene"     else "Escena"
 
+  salvaguarda_clave <- if (es_objetiva)
+    .salvaguarda_clave_imagen(idioma_prompts) else NULL
+
   prompt_final <- paste0(
     L_style, ": ", estilo, ".\n",
     L_char,  ": ", personaje, ".\n",
     L_scene, ": ", escenas, "\n",
     if (!is.null(reforzar_bn)) paste0(reforzar_bn, "\n") else "",
+    if (!is.null(salvaguarda_clave)) paste0(salvaguarda_clave, "\n") else "",
     consistency
   )
 
@@ -325,6 +354,31 @@ prompts_ilustracion <- function(escala,
   attr(resultado, "paleta")    <- paleta
   attr(resultado, "idioma")    <- idioma_prompts
   resultado
+}
+
+
+# Bloque de reglas que se anexa al prompt de imagen cuando el item proviene
+# de una prueba objetiva (tiene respuesta correcta). Evita que la imagen
+# regale el item: sin respuesta representada, sin letras ni opciones, sin
+# texto que funcione como pista.
+
+#' @keywords internal
+.salvaguarda_clave_imagen <- function(idioma_prompts) {
+  if (idioma_prompts == "en") {
+    paste("ANSWER-SAFETY RULES: this illustration accompanies a test item",
+          "with one correct answer. The image must NOT depict, spell out or",
+          "hint at the correct answer. Do NOT include option letters (a, b,",
+          "c, d) or option texts. Do NOT include written words that could",
+          "act as a clue. Show only the situation posed by the stem.")
+  } else {
+    paste("REGLAS DE PROTECCIÓN DE LA CLAVE: esta ilustración",
+          "acompaña un ítem de prueba con una respuesta correcta.",
+          "La imagen NO debe representar, escribir ni sugerir la respuesta",
+          "correcta. NO incluir letras de opciones (a, b, c, d) ni el texto",
+          "de las opciones. NO incluir palabras escritas que sirvan de",
+          "pista. Mostrar únicamente la situación que plantea el",
+          "enunciado.")
+  }
 }
 
 

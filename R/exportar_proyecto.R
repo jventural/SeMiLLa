@@ -148,6 +148,13 @@ exportar_proyecto <- function(escala, dir, abreviatura = "TEST",
                   paste0(abreviatura, " (refinado)"), gp_reg = reg, msg = msg)
   .fig_sankey_de(escala, file.path(GR, "13_sankey_refinado.png"),
                  paste0(abreviatura, " (refinado)"), gp_reg = reg, msg = msg)
+  # ---- Lollipop de consenso por item: sin refinar (14) y refinado (15) ----
+  if (!is.null(escala_sin_refinar)) {
+    .fig_consenso_de(escala_sin_refinar, file.path(GR, "14_consenso_sinrefinar.png"),
+                     paste0(abreviatura, " (sin refinar)"), gp_reg = reg, msg = msg)
+  }
+  .fig_consenso_de(escala, file.path(GR, "15_consenso_refinado.png"),
+                   paste0(abreviatura, " (refinado)"), gp_reg = reg, msg = msg)
 
   msg(">> Exportando escala final...")
   base_final <- file.path(RES, paste0(abreviatura, "_escala_final"))
@@ -260,6 +267,16 @@ exportar_proyecto <- function(escala, dir, abreviatura = "TEST",
     pr <- precision_clasificacion(esc, metodo = "ensemble", algoritmos = c("kmeans", "ward"), verbose = FALSE)
     p <- plot_sankey(pr, titulo = paste0("Flujo item -> cluster (", etiqueta, ")"))
     ggplot2::ggsave(file, p, width = 12, height = 6, dpi = 200, bg = "white"); TRUE
+  }, error = function(e) { msg("   [x] ", basename(file), ": ", e$message); FALSE })
+  if (!is.null(gp_reg)) gp_reg(file.path("graficos", basename(file)), ok)
+  invisible(ok)
+}
+
+.fig_consenso_de <- function(esc, file, etiqueta, gp_reg = NULL, msg = message) {
+  ok <- tryCatch({
+    pr <- precision_clasificacion(esc, metodo = "ensemble", algoritmos = c("kmeans", "ward"), verbose = FALSE)
+    p <- plot_consenso(pr, titulo = paste0("Consenso del ensemble por item (", etiqueta, ")"))
+    ggplot2::ggsave(file, p, width = 9, height = 8, dpi = 200, bg = "white"); TRUE
   }, error = function(e) { msg("   [x] ", basename(file), ": ", e$message); FALSE })
   if (!is.null(gp_reg)) gp_reg(file.path("graficos", basename(file)), ok)
   invisible(ok)

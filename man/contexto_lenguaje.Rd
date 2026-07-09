@@ -7,7 +7,8 @@
 contexto_lenguaje(
   etapa_evolutiva = "auto",
   nivel_socioeconomico = "auto",
-  idioma = "es"
+  idioma = "es",
+  variante_regional = "auto"
 )
 }
 \arguments{
@@ -20,6 +21,12 @@ contexto_lenguaje(
 \code{"bajo"}, o \code{"auto"} (sin restriccion).}
 
 \item{idioma}{\code{"es"}, \code{"en"} o \code{"pt"}.}
+
+\item{variante_regional}{Variante de castellano para ajustar registro y
+vocabulario regional: \code{"auto"} (default, sin ajuste),
+\code{"selva_peru"} (alias: \code{"selva"}, \code{"amazonia_peru"}, \code{"amazonico"}) para
+castellano amazonico simple (lector adolescente a menudo bilingue), o una
+cadena libre que se inyecta como guia de registro.}
 }
 \value{
 Cadena con un bloque de texto listo para inyectar en sys_msg.

@@ -1747,6 +1747,132 @@ plot_sankey <- function(x, titulo = NULL) {
 }
 
 
+#' @title Visualizar Consenso del Ensemble por Item (lollipop)
+#'
+#' @description
+#' Grafico lollipop que muestra, para cada item, el grado de consenso (0 a 1)
+#' con el que el ensemble de algoritmos de clustering lo ubica junto a los
+#' demas items de su dimension teorica. Los items por debajo de
+#' \code{umbral_consenso} se resaltan en rojo (candidatos a refinamiento).
+#'
+#' La misma funcion sirve para la escala SIN refinar y para la REFINADA: solo
+#' cambia el objeto de precision que se le pasa. Es la version "por item" del
+#' diagrama \code{\link{plot_sankey}} (que muestra el flujo global).
+#'
+#' @param x Objeto \code{semilla_precision} de
+#'   \code{precision_clasificacion(metodo = "ensemble")}, o bien un data.frame
+#'   con al menos las columnas \code{Dimension} y \code{Consenso} (y opcional
+#'   \code{Codigo}, para numerar los items).
+#' @param umbral_consenso Umbral de consenso (default 0.667 = 2/3 algoritmos).
+#' @param titulo Titulo del grafico (default automatico).
+#' @param subtitulo Subtitulo (default automatico segun items bajo umbral).
+#' @param mostrar_valores Si TRUE, anota el valor de consenso junto a cada punto.
+#'
+#' @return Objeto ggplot2
+#'
+#' @examples
+#' \dontrun{
+#' pr <- precision_clasificacion(mi_escala, metodo = "ensemble")
+#' plot_consenso(pr)                                  # version sin refinar
+#'
+#' ref <- refinar_escala(mi_escala, api_key = api)
+#' pr2 <- precision_clasificacion(ref$escala_final, metodo = "ensemble")
+#' plot_consenso(pr2, titulo = "Consenso por item (refinado)")
+#' }
+#'
+#' @seealso \code{\link{plot_sankey}}, \code{\link{precision_clasificacion}}
+#' @export
+plot_consenso <- function(x, umbral_consenso = 0.667, titulo = NULL,
+                          subtitulo = NULL, mostrar_valores = TRUE) {
+
+  .verificar_ggplot2()
+
+  # --- obtener el data.frame de consenso ---
+  if (inherits(x, "semilla_precision")) {
+    df <- x$consenso
+    if (is.null(df))
+      stop("El objeto no tiene '$consenso'. Genera la precision con ",
+           "precision_clasificacion(metodo = 'ensemble').")
+  } else if (is.data.frame(x) && "Consenso" %in% names(x)) {
+    df <- x
+  } else {
+    stop("x debe ser un objeto semilla_precision (ensemble) o un data.frame ",
+         "con columna 'Consenso'.")
+  }
+  if (!all(c("Dimension", "Consenso") %in% names(df)))
+    stop("Se requieren las columnas 'Dimension' y 'Consenso'.")
+
+  df <- as.data.frame(df, stringsAsFactors = FALSE)
+
+  # numero de item (desde 'Codigo' tipo Item_7, o secuencial)
+  if (!is.null(df$Codigo)) {
+    df$numero <- suppressWarnings(as.integer(gsub("\\D", "", df$Codigo)))
+  }
+  if (is.null(df$numero) || any(is.na(df$numero))) df$numero <- seq_len(nrow(df))
+  df$etiqueta <- paste0("I", df$numero)
+
+  # orden: por dimension (orden de aparicion) y numero de item
+  dims <- unique(df$Dimension)
+  df$Dimension <- factor(df$Dimension, levels = dims)
+  df <- df[order(as.integer(df$Dimension), df$numero), ]
+  df$etiqueta <- factor(df$etiqueta, levels = rev(df$etiqueta))
+
+  # grupo de color: bajo umbral -> rojo; el resto, color de su dimension
+  df$bajo  <- df$Consenso < umbral_consenso
+  df$grupo <- ifelse(df$bajo, "Bajo umbral", as.character(df$Dimension))
+  df$grupo <- factor(df$grupo, levels = c(dims, "Bajo umbral"))
+
+  # paleta de dimensiones + rojo para bajo umbral
+  base_cols <- c("#2E7D52", "#3E78B2", "#C9863A", "#7E57C2", "#0097A7",
+                 "#D81B60", "#5D4037", "#455A64")
+  col_dims <- stats::setNames(
+    base_cols[((seq_along(dims) - 1) %% length(base_cols)) + 1], dims)
+  colores <- c(col_dims, "Bajo umbral" = "#D1495B")
+
+  n_bajo <- sum(df$bajo, na.rm = TRUE)
+  if (is.null(titulo)) titulo <- "Consenso del ensemble por item"
+  if (is.null(subtitulo))
+    subtitulo <- if (n_bajo > 0)
+      sprintf("%d item(s) por debajo del umbral (%.3f); el resto se conserva",
+              n_bajo, umbral_consenso)
+    else sprintf("Todos los items superan el umbral de consenso (%.3f)",
+                 umbral_consenso)
+
+  p <- ggplot2::ggplot(df, ggplot2::aes(x = .data$Consenso, y = .data$etiqueta,
+                                        color = .data$grupo)) +
+    ggplot2::geom_segment(ggplot2::aes(x = 0, xend = .data$Consenso,
+                                       y = .data$etiqueta, yend = .data$etiqueta),
+                          linewidth = 1.1) +
+    ggplot2::geom_point(size = 3.4) +
+    ggplot2::geom_vline(xintercept = umbral_consenso, linetype = "dashed",
+                        color = "grey40", linewidth = 0.7) +
+    ggplot2::scale_color_manual(values = colores, drop = TRUE, name = NULL) +
+    ggplot2::scale_x_continuous(limits = c(0, 1.08), breaks = seq(0, 1, 0.2)) +
+    ggplot2::facet_grid(rows = ggplot2::vars(.data$Dimension),
+                        scales = "free_y", space = "free_y", switch = "y") +
+    ggplot2::labs(title = titulo, subtitle = subtitulo,
+                  x = "Grado de consenso del ensemble", y = NULL) +
+    ggplot2::theme_minimal(base_size = 11) +
+    ggplot2::theme(
+      plot.title       = ggplot2::element_text(face = "bold", hjust = 0.5),
+      plot.subtitle    = ggplot2::element_text(hjust = 0.5, color = "grey40"),
+      strip.text.y.left = ggplot2::element_text(angle = 0, face = "bold", size = 8),
+      strip.placement  = "outside",
+      panel.spacing    = ggplot2::unit(4, "pt"),
+      legend.position  = "bottom",
+      panel.grid.major.y = ggplot2::element_blank()
+    )
+
+  if (mostrar_valores) {
+    p <- p + ggplot2::geom_text(
+      ggplot2::aes(label = sprintf("%.2f", .data$Consenso)),
+      hjust = -0.25, size = 2.9, show.legend = FALSE)
+  }
+
+  p
+}
+
+
 #' @title Grafico de Flujo de Items Problematicos
 #'
 #' @description
