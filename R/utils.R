@@ -627,9 +627,55 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
 # LLAMADAS A OPENAI
 # -----------------------------------------------------------------------------
 
+# Familias RAZONADORAS (GPT-5 y series o1/o3/o4): el contrato de la API de
+# chat cambia — 'max_tokens' se rechaza (usar 'max_completion_tokens'),
+# 'temperature'/'top_p' solo aceptan el default, y SIN
+# reasoning_effort = "minimal" el modelo consume TODO el presupuesto en
+# razonamiento interno y devuelve contenido VACIO (verificado empiricamente
+# con gpt-5-nano: 200/200 tokens a razonamiento, respuesta "").
+
+#' @keywords internal
+.es_modelo_razonador <- function(modelo) {
+  grepl("^(gpt-5|o[0-9])", tolower(modelo %||% ""))
+}
+
+# Construye la lista de argumentos correcta para chat$completions$create
+# segun la familia del modelo. TODA llamada de chat del paquete debe pasar
+# por aqui para que gpt-5-nano/mini funcionen igual que gpt-4.1-mini.
+#
+# 'razonamiento' (solo razonadores): "minimal" para GENERACION de texto/JSON
+# (mas barato y suficiente: probado con gpt-5-nano) y "low" para JUICIOS
+# evaluativos (deseabilidad, jueces, examinado). Calibrado empiricamente:
+# con minimal, gpt-5-nano califico un item claramente indeseable ("Ignoro a
+# quienes me piden ayuda") con deseabilidad 0.68-0.95 e inestabilidad
+# (r=.70); con "low" lo corrigio a 0.12, igual que gpt-5-mini (0.05) y
+# gpt-4.1-mini (0.10).
+
+#' @keywords internal
+.args_chat_modelo <- function(modelo, messages, max_tokens = NULL,
+                              temperature = NULL, seed = NULL, top_p = NULL,
+                              razonamiento = NULL) {
+  args <- list(model = modelo, messages = messages)
+  if (.es_modelo_razonador(modelo)) {
+    if (!is.null(max_tokens))
+      args$max_completion_tokens <- as.integer(max_tokens)
+    args$reasoning_effort <- razonamiento %||%
+      getOption("SeMiLLa.reasoning_effort", "minimal")
+    if (!is.null(seed)) args$seed <- as.integer(seed)
+    # temperature / top_p: estos modelos solo aceptan el default; se omiten.
+  } else {
+    if (!is.null(max_tokens))  args$max_tokens  <- as.integer(max_tokens)
+    if (!is.null(temperature)) args$temperature <- temperature
+    if (!is.null(seed))        args$seed        <- as.integer(seed)
+    if (!is.null(top_p))       args$top_p       <- top_p
+  }
+  args
+}
+
 #' @keywords internal
 .llamar_openai <- function(openai, messages, modelo = "gpt-4.1-mini", max_tokens = 4000L,
-                           temperature = NULL, seed = NULL, top_p = NULL) {
+                           temperature = NULL, seed = NULL, top_p = NULL,
+                           razonamiento = NULL) {
 
   # Temperatura: si no se especifica, lee opcion global (SeMiLLa.temperature).
   # Cuando el usuario pasa seed a semilla()/generar_escala(), esa opcion se
@@ -662,7 +708,10 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
       max_tokens = max_tokens,
       temperature = temperature,
       seed = seed,
-      top_p = top_p
+      top_p = top_p,
+      razonamiento = if (.es_modelo_razonador(modelo))
+        razonamiento %||% getOption("SeMiLLa.reasoning_effort", "minimal")
+      else NULL
     )
     cache_path <- .cache_key("chat", payload)
     cached <- .cache_get(cache_path)
@@ -673,15 +722,11 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
     .cache_msg_miss("chat")
   }
 
-  # Construir argumentos (omitiendo seed/top_p si son NULL para retrocompat)
-  args <- list(
-    model = modelo,
-    messages = messages,
-    max_tokens = max_tokens,
-    temperature = temperature
-  )
-  if (!is.null(seed)) args$seed <- as.integer(seed)
-  if (!is.null(top_p)) args$top_p <- top_p
+  # Construir argumentos segun la familia del modelo (los razonadores
+  # GPT-5 / o-series usan otro contrato de parametros).
+  args <- .args_chat_modelo(modelo, messages, max_tokens = max_tokens,
+                            temperature = temperature, seed = seed,
+                            top_p = top_p, razonamiento = razonamiento)
 
   respuesta <- tryCatch({
     do.call(openai$chat$completions$create, args)

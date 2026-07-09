@@ -92,9 +92,12 @@ calificar_deseabilidad <- function(x, api_key = Sys.getenv("OPENAI_API_KEY"),
       "ITEMS:\n", lista, "\n\nResponde SOLO el JSON: {\"d\": [",
       paste(rep("x", length(idx)), collapse = ","), "]} con ", length(idx), " numeros 0-1.")
     for (intento in 1:2) {
-      resp <- tryCatch(openai$chat$completions$create(
-                model = modelo, messages = list(list(role = "user", content = prompt)),
-                temperature = 0.3, max_tokens = 300L), error = function(e) NULL)
+      resp <- tryCatch(do.call(openai$chat$completions$create,
+                .args_chat_modelo(modelo,
+                  list(list(role = "user", content = prompt)),
+                  max_tokens = 300L, temperature = 0.3,
+                  razonamiento = "low")),
+                error = function(e) NULL)
       v <- if (!is.null(resp)) .parse_des(resp$choices[[1]]$message$content, length(idx)) else NULL
       if (!is.null(v)) return(v)
     }

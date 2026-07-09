@@ -1,5 +1,29 @@
 # SeMiLLa 2.7.0 (2026-07-09)
 
+## Soporte GPT-5 (gpt-5-nano / gpt-5-mini) en todo el paquete
+
+- Nuevo helper interno `.args_chat_modelo()`: TODA llamada de chat pasa por
+  el, y construye el contrato correcto segun la familia del modelo. Los
+  razonadores (GPT-5, o-series) rechazan `max_tokens` (se mapea a
+  `max_completion_tokens`) y solo aceptan `temperature`/`top_p` default
+  (se omiten). Con esto, `modelo = "gpt-5-nano"` ($0.05/$0.40 por millon,
+  el mas barato) funciona en cualquier funcion del paquete.
+- **Gotcha critico resuelto**: sin `reasoning_effort = "minimal"`, gpt-5-nano
+  consume TODO el presupuesto de tokens en razonamiento interno y devuelve
+  contenido VACIO (verificado: 200/200 tokens a razonamiento, respuesta "").
+  El default del paquete es "minimal" (opcion global
+  `SeMiLLa.reasoning_effort`).
+- **Razonamiento por tipo de tarea**: para GENERACION de items/JSON,
+  "minimal" es suficiente y mas barato (probado: items de buena calidad);
+  para JUICIOS evaluativos se fuerza "low" (calificar_deseabilidad, jueces
+  de validez de contenido, auditoria de redaccion, examinado de
+  verificar_clave). Evidencia: con minimal, nano califico un item
+  claramente indeseable con deseabilidad 0.68-0.95 e inestabilidad r=.70;
+  con "low" lo corrigio a 0.12, igual que gpt-5-mini (0.05) y gpt-4.1-mini
+  (0.10), con estabilidad r=1.00.
+- Validado en vivo con gpt-5-nano: .llamar_openai + parseo JSON, generacion
+  de items, calificar_deseabilidad, y retrocompatibilidad con gpt-4.1-mini.
+
 ## Mapa de fusion + hipotesis B pre-registrable (tercer caso real: VP)
 
 La escala de Valores Positivos (32 items, 4F de Schwartz) de la misma

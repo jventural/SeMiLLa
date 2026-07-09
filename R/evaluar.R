@@ -675,13 +675,10 @@ fiabilidad_semantica <- function(x,
     "- Solo responde con el JSON, sin explicaciones adicionales."
   )
 
-  respuesta <- openai$chat$completions$create(
-    model = modelo,
-    messages = list(
-      list(role = "user", content = prompt)
-    ),
-    temperature = 0.7
-  )
+  respuesta <- do.call(openai$chat$completions$create,
+    .args_chat_modelo(modelo,
+      list(list(role = "user", content = prompt)),
+      temperature = 0.7, razonamiento = "low"))
 
   texto <- respuesta$choices[[1]]$message$content
 
@@ -2275,11 +2272,10 @@ print.semilla_comparacion <- function(x, ...) {
   )
 
   respuesta <- tryCatch({
-    openai$chat$completions$create(
-      model = modelo,
-      messages = list(list(role = "user", content = prompt)),
-      temperature = 0.3
-    )
+    do.call(openai$chat$completions$create,
+      .args_chat_modelo(modelo,
+        list(list(role = "user", content = prompt)),
+        temperature = 0.3, razonamiento = "low"))
   }, error = function(e) NULL)
 
   if (is.null(respuesta)) {

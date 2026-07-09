@@ -364,7 +364,8 @@ verificar_clave <- function(
           list(role = "user",   content = msg_p)
         ),
         modelo = modelo, max_tokens = 400L,
-        temperature = if (p == 1) 0 else 0.7
+        temperature = if (p == 1) 0 else 0.7,
+        razonamiento = "low"   # resolver un item es un JUICIO, no generacion
       ),
       error = function(e) NULL
     )
