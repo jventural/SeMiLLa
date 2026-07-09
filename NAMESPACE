@@ -92,6 +92,7 @@ export(exportar_proyecto)
 export(guardar)
 export(cargar)
 export(comparar_escalas)
+export(comparar_generadores)
 
 # -----------------------------------------------------------------------------
 # Pasos 20-22 (Fase VII). Adaptacion y comparacion
@@ -158,6 +159,7 @@ S3method(print, semilla_transcultural)
 S3method(print, semilla_criterio)
 S3method(print, semilla_banco_cat)
 S3method(print, semilla_redundancia)
+S3method(print, semilla_benchmark_generadores)
 S3method(print, semilla_compuerta)
 S3method(print, semilla_verificacion_clave)
 S3method(print, semilla_deteccion_ilustracion)

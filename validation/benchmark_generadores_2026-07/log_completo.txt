@@ -1,0 +1,87 @@
+
+[comparar_generadores] Generando con gpt-4.1-mini...
+  12 items en 7 seg
+
+[comparar_generadores] Generando con gpt-5-nano...
+  12 items en 6 seg
+
+[comparar_generadores] Generando con gpt-5-mini...
+  12 items en 8 seg
+
+[comparar_generadores] Generando con gpt-5.4-nano...
+  12 items en 5 seg
+
+[comparar_generadores] Generando con gpt-5.4-mini...
+  12 items en 4 seg
+
+[comparar_generadores] Generando con gpt-5.2...
+  12 items en 10 seg
+
+[comparar_generadores] Jueces ciegos: gpt-4.1-mini, gpt-5-mini
+  gpt-5.4-mini: gpt-4.1-mini=8.25 | gpt-5-mini=7.25
+  gpt-4.1-mini: gpt-4.1-mini=7.50 | gpt-5-mini=6.75
+  gpt-5.2: gpt-4.1-mini=8.25 | gpt-5-mini=7.25
+  gpt-5-nano: gpt-4.1-mini=8.00 | gpt-5-mini=7.25
+  gpt-5.4-nano: gpt-4.1-mini=7.75 | gpt-5-mini=6.50
+  gpt-5-mini: gpt-4.1-mini=8.50 | gpt-5-mini=8.00
+
+===========================================================
+  Benchmark de generadores LLM (SeMiLLa)
+===========================================================
+  Constructo : autorregulacion del aprendizaje
+  Dimensiones: Planificacion del estudio / Manejo de distracciones digitales
+  Jueces     : gpt-4.1-mini, gpt-5-mini (ciegos, orden aleatorio)
+-----------------------------------------------------------
+       modelo n_items valido seg palabras_med sobre_tope muletillas
+ gpt-4.1-mini      12   TRUE   7           10          0          3
+   gpt-5-nano      12   TRUE   6           12          1          2
+   gpt-5-mini      12   TRUE   8           10          0          2
+ gpt-5.4-nano      12   TRUE   5           10          1          2
+ gpt-5.4-mini      12   TRUE   4            8          0          4
+      gpt-5.2      12   TRUE  10           10          0          3
+ separabilidad clasif_loo pares facetas jueces
+         0.124       0.92     2       2   7.12
+         0.124       1.00     0       1   7.62
+         0.085       1.00     0       2   8.25
+         0.188       1.00     4       2   7.12
+         0.188       1.00     4       2   7.75
+         0.139       1.00     4       1   7.75
+-----------------------------------------------------------
+  separabilidad = sim intra - inter (mayor mejor) | clasif_loo =
+  clasificacion leave-one-out (mayor mejor) | pares/facetas/
+  muletillas/sobre_tope (menor mejor). Items en x$items[[modelo]].
+===========================================================
+
+
+
+=== MUESTRA DE ITEMS (3 por modelo, dimension distracciones) ===
+
+--- gpt-4.1-mini ---
+  - Cuando estudio, silencio mi celular para evitar distracciones. 
+  - Dejo mi celular en otro lugar para concentrarme mejor al estudiar. 
+  - Bloqueo aplicaciones que me distraen mientras estudio. 
+
+--- gpt-5-nano ---
+  - Apago el celular antes de empezar a estudiar para evitar distracciones 
+  - Coloco el celular fuera de mi vista cuando entro a la biblioteca o a mi espacio de estudio 
+  - Bloqueo temporalmente apps de redes sociales cuando necesito concentrarme 
+
+--- gpt-5-mini ---
+  - Antes de estudiar, dejo el celular en otra habitación 
+  - Silencio las notificaciones del celular antes de una sesión de estudio 
+  - Bloqueo o limito temporalmente aplicaciones que me distraen al estudiar 
+
+--- gpt-5.4-nano ---
+  - Al estudiar, silenciamos las notificaciones del celular. 
+  - Mientras estudio, alejo mi celular para que no me tiente revisarlo. 
+  - Cuando estudio, bloqueo el acceso a redes sociales en mi celular. 
+
+--- gpt-5.4-mini ---
+  - Al estudiar, silencia mi celular. 
+  - Al estudiar, alejo mi celular de mi vista. 
+  - Al estudiar, cierro mis redes sociales. 
+
+--- gpt-5.2 ---
+  - Al empezar a estudiar, pongo el celular en modo silencio. 
+  - Durante una tarea, dejo el celular fuera de mi alcance. 
+  - Cuando estudio, activo el modo concentracion en el celular. 

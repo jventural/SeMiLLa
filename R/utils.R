@@ -651,6 +651,22 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
 # (r=.70); con "low" lo corrigio a 0.12, igual que gpt-5-mini (0.05) y
 # gpt-4.1-mini (0.10).
 
+# El "razonamiento apagado" tiene NOMBRE DISTINTO por sub-familia (verificado
+# contra la API): gpt-5 clasico (sin punto: gpt-5, gpt-5-mini, gpt-5-nano)
+# usa "minimal"; gpt-5.1+ (gpt-5.2, gpt-5.4-mini, ...) usa "none" y RECHAZA
+# "minimal" (error 400); las o-series no tienen apagado (se usa "low").
+
+#' @keywords internal
+.normalizar_razonamiento <- function(modelo, razonamiento) {
+  m <- tolower(modelo)
+  if (razonamiento %in% c("minimal", "none")) {
+    if (grepl("^gpt-5\\.[0-9]", m)) return("none")     # gpt-5.1+
+    if (grepl("^o[0-9]", m))        return("low")      # o-series
+    return("minimal")                                   # gpt-5 clasico
+  }
+  razonamiento
+}
+
 #' @keywords internal
 .args_chat_modelo <- function(modelo, messages, max_tokens = NULL,
                               temperature = NULL, seed = NULL, top_p = NULL,
@@ -659,8 +675,9 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
   if (.es_modelo_razonador(modelo)) {
     if (!is.null(max_tokens))
       args$max_completion_tokens <- as.integer(max_tokens)
-    args$reasoning_effort <- razonamiento %||%
-      getOption("SeMiLLa.reasoning_effort", "minimal")
+    args$reasoning_effort <- .normalizar_razonamiento(
+      modelo,
+      razonamiento %||% getOption("SeMiLLa.reasoning_effort", "minimal"))
     if (!is.null(seed)) args$seed <- as.integer(seed)
     # temperature / top_p: estos modelos solo aceptan el default; se omiten.
   } else {

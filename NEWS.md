@@ -1,5 +1,24 @@
 # SeMiLLa 2.7.0 (2026-07-09)
 
+## comparar_generadores(): benchmark reproducible de modelos LLM
+
+- Nueva funcion `comparar_generadores()`: genera el mismo conjunto de items
+  (constructo, dimensiones, reglas y poblacion identicos) con varios
+  modelos LLM y los compara con metricas objetivas (separabilidad
+  semantica intra/inter dimension, clasificacion leave-one-out por
+  centroides, pares y facetas redundantes, muletillas, longitud, tiempo) y
+  con DOBLE JUEZ LLM ciego y cruzado (cada juez evalua todos los conjuntos
+  en orden aleatorio sin conocer al autor; jueces de familias distintas
+  para mitigar el sesgo de auto-preferencia). Devuelve tabla comparativa +
+  items por modelo + parametros del experimento (reportable en un
+  articulo). Motivacion: decidir con datos si un modelo nuevo genera
+  mejores items, en vez de asumir que mas nuevo = mejor.
+- **Gotcha de sub-familias GPT-5** (`.normalizar_razonamiento()`): el
+  "razonamiento apagado" cambia de nombre — gpt-5 clasico usa "minimal";
+  gpt-5.1+ (5.2, 5.4-mini...) usa "none" y RECHAZA "minimal" (error 400);
+  las o-series no tienen apagado (se degrada a "low"). El paquete lo
+  normaliza automaticamente.
+
 ## Soporte GPT-5 (gpt-5-nano / gpt-5-mini) en todo el paquete
 
 - Nuevo helper interno `.args_chat_modelo()`: TODA llamada de chat pasa por
