@@ -145,6 +145,10 @@ generar_escala <- function(concepto,
                            evitar_cuantificadores = NULL,
                            max_palabras = NULL,
                            incluir_inversos = TRUE,
+                           blindaje = TRUE,
+                           contexto_prohibido = NULL,
+                           instrucciones_estilo = NULL,
+                           modelo_jueces = "gpt-4.1-mini",
                            seed = NULL,
                            verbose = TRUE) {
 
@@ -400,7 +404,8 @@ generar_escala <- function(concepto,
       tipo_escala_respuesta = tipo_escala_respuesta,
       evitar_cuantificadores = evitar_cuantificadores,
       max_palabras = max_palabras,
-      incluir_inversos = incluir_inversos
+      incluir_inversos = incluir_inversos,
+      instruccion_extra = instrucciones_estilo
     )
 
     if (!is.null(items_dim) && nrow(items_dim) > 0) {
@@ -440,6 +445,39 @@ generar_escala <- function(concepto,
     }
   }
 
+  # FASE 2b: BLINDAJE (jueces LLM de contexto poblacional y de parafrasis).
+  # El prompt anti-redundancia y el bloque de poblacion son necesarios pero
+  # NO suficientes: el modelo aun produce gemelos semanticos (que el coseno
+  # subdetecta) y ocasionales fugas de contexto. Este cierre garantiza que
+  # la escala salga limpia desde la generacion, sin depender de correcciones
+  # posteriores.
+  if (isTRUE(blindaje) && nrow(todos_items) > 1) {
+    if (verbose) {
+      cat("\n", .linea("-"), "\n", sep = "")
+      cat(.color_verde("FASE 2b: BLINDAJE (contexto + parafrasis, juez LLM)"), "\n")
+      cat(.linea("-"), "\n\n")
+    }
+    bl <- .blindar_items(
+      items_df = todos_items, info_concepto = info_concepto, openai = openai,
+      modelo = modelo, concepto_nombre = concepto,
+      poblacion = poblacion, idioma = idioma,
+      complejidad_linguistica = complejidad_linguistica,
+      max_palabras = max_palabras,
+      tipo_escala_respuesta = tipo_escala_respuesta,
+      contexto_prohibido = contexto_prohibido,
+      instrucciones_estilo = instrucciones_estilo,
+      modelo_jueces = modelo_jueces,
+      verbose = verbose)
+    todos_items <- bl$items
+    # Los reemplazos tambien pasan la auditoria de longitud
+    todos_items <- .auditar_longitud(todos_items, max_palabras,
+                                     verbose = FALSE, openai = openai,
+                                     modelo = modelo, idioma = idioma)
+    blindaje_reporte <- bl$reporte
+  } else {
+    blindaje_reporte <- NULL
+  }
+
   if (verbose) {
     cat("\n")
     cat(.linea("-"), "\n")
@@ -467,6 +505,9 @@ generar_escala <- function(concepto,
       evitar_cuantificadores = evitar_cuantificadores,
       max_palabras = max_palabras,
       incluir_inversos = incluir_inversos,
+      blindaje = blindaje_reporte,
+      contexto_prohibido = contexto_prohibido,
+      instrucciones_estilo = instrucciones_estilo,
       fecha = Sys.time()
     )
   )

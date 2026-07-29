@@ -98,9 +98,13 @@ ensamblar_test <- function(escala,
                            subtitulo          = NULL,
                            instrucciones      = NULL,
                            incluir_datos      = TRUE,
+                           # Default NEUTRO y universal. Antes traia "n_hijos" y
+                           # "edad_hijo" (restos de una plantilla de escala de
+                           # crianza), impropios para la mayoria de poblaciones
+                           # (p. ej. cadetes 17-24). Los campos de crianza siguen
+                           # disponibles pasandolos en datos_solicitados.
                            datos_solicitados  = c("edad", "sexo",
-                                                  "nivel_educativo",
-                                                  "n_hijos", "edad_hijo"),
+                                                  "nivel_educativo"),
                            orden              = c("intercalado", "original",
                                                   "aleatorio"),
                            archivo            = NULL,

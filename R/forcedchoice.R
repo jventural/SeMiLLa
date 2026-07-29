@@ -47,6 +47,9 @@
 #'   (e.g. los Big Five).
 #' @param descripcion_dimensiones Vector character (mismo largo) con la
 #'   definicion de cada dimension. Si NULL, el LLM infiere del nombre.
+#' @param poblacion Character opcional con la poblacion objetivo. Si se indica,
+#'   cada item se ancla a su rol, etapa vital/formativa y entorno real
+#'   (misma fidelidad de contexto que el generador Likert). Si NULL, general.
 #' @param polaridad_dimensiones Vector character (mismo largo) con la
 #'   polaridad de la SUBESCALA: \code{"positiva"} (puntaje alto = mas del
 #'   rasgo) o \code{"negativa"} (puntaje alto = menos). Default: todas
@@ -110,12 +113,15 @@ generar_escala_forcedchoice <- function(
   api_key,
   dimensiones,
   descripcion_dimensiones = NULL,
+  poblacion               = NULL,
   polaridad_dimensiones   = NULL,
   n_items_por_dimension   = 8L,
   proporcion_polo_negativo = 0.4,
   block_size              = 4L,
   n_bloques               = 15L,
   metodo                  = c("most_least", "ranking", "single_choice"),
+  complejidad_linguistica = "intermedio",
+  max_palabras            = NULL,
   estimar_valencia        = TRUE,
   balancear_valencia      = TRUE,
   tolerancia_valencia     = 1.0,
@@ -127,6 +133,17 @@ generar_escala_forcedchoice <- function(
 
   metodo <- match.arg(metodo)
   idioma <- match.arg(idioma)
+
+  # Nivel de lectura: el FC hereda el mismo mapeo complejidad -> tope de
+  # palabras que el generador Likert (antes tenia un tope fijo de 14 y no
+  # respetaba la complejidad pedida por el usuario).
+  complejidad_linguistica <- match.arg(
+    complejidad_linguistica, c("minimo", "basico", "intermedio", "avanzado"))
+  if (is.null(max_palabras)) {
+    max_palabras <- switch(complejidad_linguistica,
+                           minimo = 10L, basico = 12L,
+                           intermedio = 14L, avanzado = 18L)
+  }
 
   K_dim <- length(dimensiones)
   if (block_size > K_dim)
@@ -189,7 +206,9 @@ generar_escala_forcedchoice <- function(
       polo_item = "positivo",
       polaridad_dim = polaridad_dimensiones[d],
       n_items = n_pos_por_dim,
-      idioma = idioma
+      idioma = idioma,
+      poblacion = poblacion,
+      max_palabras = max_palabras
     )
 
     # Items en polo negativo (baja valencia esperada)
@@ -202,7 +221,9 @@ generar_escala_forcedchoice <- function(
         polo_item = "negativo",
         polaridad_dim = polaridad_dimensiones[d],
         n_items = n_neg_por_dim,
-        idioma = idioma
+        idioma = idioma,
+        poblacion = poblacion,
+        max_palabras = max_palabras
       )
     } else character(0)
 
@@ -312,9 +333,25 @@ generar_escala_forcedchoice <- function(
 .generar_items_dimension_fc <- function(openai, modelo, concepto, dimension,
                                           descripcion, polo_item,
                                           polaridad_dim, n_items,
-                                          idioma) {
+                                          idioma, poblacion = NULL,
+                                          max_palabras = 14L) {
 
   if (n_items <= 0L) return(character(0))
+
+  # Fidelidad de contexto a la poblacion (rol, etapa vital/formativa, entorno).
+  # Igual que en el generador Likert: restriccion explicita y negativa.
+  poblacion_fc <- if (!is.null(poblacion) && nzchar(poblacion)) {
+    if (idioma == "es") paste0(
+      "\n\nPOBLACION OBJETIVO (obligatorio): ", poblacion, ".\n",
+      "FIDELIDAD DE CONTEXTO (critico): cada item debe ser verosimil para ESTA ",
+      "poblacion segun su ROL, su ETAPA VITAL O FORMATIVA y su ENTORNO real. NO ",
+      "atribuyas actividades, responsabilidades u objetos que aun no le corresponden ",
+      "por su etapa o rol (p. ej. tareas de un profesional en ejercicio si todavia ",
+      "esta en formacion). Ancla las situaciones en su entorno cotidiano real."
+    ) else paste0("\n\nTarget population (mandatory): ", poblacion,
+      ". Each item must be realistic for this population's role, life/training stage ",
+      "and real setting; do not attribute activities that do not yet correspond to them.")
+  } else ""
 
   if (idioma == "es") {
     sys_msg <- paste(
@@ -323,7 +360,8 @@ generar_escala_forcedchoice <- function(
       "1) Son afirmaciones autodescriptivas en PRIMERA PERSONA.",
       "2) Cada item describe UNA conducta o disposicion concreta.",
       "3) NO uses cuantificadores absolutos ('siempre', 'nunca').",
-      "4) Vocabulario simple, una sola oracion (max 14 palabras).",
+      paste0("4) Vocabulario simple, una sola oracion (max ", max_palabras,
+             " palabras)."),
       "5) El item debe poder agruparse con items de otras dimensiones",
       "   en bloques de valencia social similar (mas adelante)."
     )
@@ -358,14 +396,17 @@ generar_escala_forcedchoice <- function(
       polo_msg, "\n\n",
       "Genera EXACTAMENTE ", n_items, " items distintos para esta",
       " dimension en el polo ", polo_item, ". Cada item: una sola",
-      " oracion declarativa en primera persona, max 14 palabras.",
+      " oracion declarativa en primera persona, max ", max_palabras,
+      " palabras.",
       " Devuelve cada item en una linea numerada (1., 2., ...). Sin",
-      " titulos ni comillas."
+      " titulos ni comillas.",
+      poblacion_fc
     )
   } else {
     sys_msg <- "You build forced-choice personality items, first-person, single sentence."
     user_msg <- paste0("Construct: ", concepto, ". Dimension: ", dimension,
-                        ". Pole: ", polo_item, ". Generate ", n_items, " items.")
+                        ". Pole: ", polo_item, ". Generate ", n_items, " items.",
+                        poblacion_fc)
   }
 
   raw <- .llamar_openai(

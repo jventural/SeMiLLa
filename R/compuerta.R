@@ -133,6 +133,42 @@ compuerta_pre_aplicacion <- function(x,
   if (verbose) cat("\n", .color_azul("[COMPUERTA 1/3] REDACCION"), "\n", sep = "")
   redaccion <- auditar_redundancia(x, umbral_sem = umbral_sem,
                                    umbral_faceta = umbral_faceta)
+
+  # Segunda capa: juez LLM de parafrasis. El coseno SUBDETECTA gemelos (pares
+  # con r policorica >= .70 en campo vivieron en coseno 0.43-0.78, bateria
+  # policial n=280); esos gemelos producen dependencia local y correlaciones
+  # interfactoriales infladas (Phi hasta .92), asi que NO pueden pasar.
+  gemelos_llm <- tryCatch(
+    .juzgar_parafrasis_llm(x$items, .configurar_openai(api_key),
+                           modelo = modelo),
+    error = function(e) NULL)
+  n_gemelos_llm <- if (!is.null(gemelos_llm)) nrow(gemelos_llm) else 0L
+  if (n_gemelos_llm > 0) {
+    S_g <- x$similitud
+    pr <- redaccion$pares_redundantes
+    clave <- function(a, b) paste(pmin(a, b), pmax(a, b))
+    ya <- if (nrow(pr) > 0) clave(pr$item1, pr$item2) else character(0)
+    nuevos <- gemelos_llm[!(clave(gemelos_llm$item1, gemelos_llm$item2) %in% ya),
+                          , drop = FALSE]
+    if (nrow(nuevos) > 0) {
+      add <- data.frame(
+        item1 = nuevos$item1, item2 = nuevos$item2,
+        similitud = round(mapply(function(a, b) S_g[a, b],
+                                 nuevos$item1, nuevos$item2), 4),
+        stringsAsFactors = FALSE)
+      pr <- rbind(pr, add)
+      redaccion$pares_redundantes <- pr[order(-pr$similitud), , drop = FALSE]
+    }
+    redaccion$gemelos_llm <- gemelos_llm
+    if (verbose) {
+      cat("  ", .color_warning(), " Juez LLM: ", n_gemelos_llm,
+          " par(es) de parafrasis-gemelas confirmado(s)\n", sep = "")
+      for (k in seq_len(nrow(gemelos_llm))) {
+        cat(sprintf("     %d ~ %d: %s\n", gemelos_llm$item1[k],
+                    gemelos_llm$item2[k], gemelos_llm$razon[k]))
+      }
+    }
+  }
   n_pares   <- nrow(redaccion$pares_redundantes)
   fac       <- redaccion$facetas_repetidas
   sint      <- isTRUE(redaccion$homogeneidad_sintactica$alerta)
@@ -166,15 +202,24 @@ compuerta_pre_aplicacion <- function(x,
   fac_fuertes <- fac[es_fuerte, , drop = FALSE]
   fac_debiles <- fac[!es_fuerte, , drop = FALSE]
 
-  if (nrow(fac_fuertes) > 0) {
+  if (nrow(fac_fuertes) > 0 || n_gemelos_llm > 0) {
     estados[1]  <- "riesgo"
-    detalles[1] <- sprintf("%d cluster(s) FUERTE(s) de faceta repetida, %d debil(es) y %d par(es)",
-                           nrow(fac_fuertes), nrow(fac_debiles), n_pares)
-    acciones <- c(acciones, sprintf(
-      paste0("Conservar 1-2 items por cluster de faceta repetida (%s) y ",
-             "reemplazar el resto por manifestaciones distintas ",
-             "(refinar_escala())."),
-      paste(fac_fuertes$nucleo_lexico, collapse = "; ")))
+    detalles[1] <- sprintf(
+      "%d gemelo(s) confirmado(s) por juez LLM, %d cluster(s) FUERTE(s), %d debil(es) y %d par(es)",
+      n_gemelos_llm, nrow(fac_fuertes), nrow(fac_debiles), n_pares)
+    if (n_gemelos_llm > 0) {
+      acciones <- c(acciones, paste0(
+        "Reescribir un miembro de cada par gemelo confirmado por el juez LLM ",
+        "(producen dependencia local y correlaciones interfactoriales ",
+        "infladas): optimizar_para_campo() lo hace automaticamente."))
+    }
+    if (nrow(fac_fuertes) > 0) {
+      acciones <- c(acciones, sprintf(
+        paste0("Conservar 1-2 items por cluster de faceta repetida (%s) y ",
+               "reemplazar el resto por manifestaciones distintas ",
+               "(refinar_escala())."),
+        paste(fac_fuertes$nucleo_lexico, collapse = "; ")))
+    }
   } else if (nrow(fac_debiles) > 0 || n_pares > 0 || sint) {
     estados[1]  <- "advertencia"
     detalles[1] <- sprintf("%d faceta(s) debil(es), %d par(es) redundante(s)%s: revisar, no bloquea",
@@ -294,6 +339,21 @@ compuerta_pre_aplicacion <- function(x,
         paste0("NO aplicar con esta version: la simulacion anticipa ",
                "estructura sucia. Corregir items segun pasos 1-2 y re-pasar ",
                "la compuerta."))
+    }
+    # Extremo opuesto al halo: dimensiones casi ORTOGONALES. Un |Phi| ~ 0
+    # tambien es problema (caso VP: Apertura casi ortogonal al resto): las
+    # subescalas no se relacionan, el puntaje total pierde sentido y el
+    # constructo como unidad queda en duda.
+    if (!is.na(estructura$phi_med) && abs(estructura$phi_med) < 0.15 &&
+        estados[3] == "ok") {
+      estados[3]  <- "advertencia"
+      detalles[3] <- paste0(detalles[3],
+        sprintf("; dimensiones casi ortogonales (|Phi| simulado = %.2f)",
+                abs(estructura$phi_med)))
+      acciones <- c(acciones, paste0(
+        "Las dimensiones apenas correlacionan entre si: verificar que ",
+        "pertenecen al mismo constructo (o reportar solo subescalas, sin ",
+        "puntaje total)."))
     }
   }
 

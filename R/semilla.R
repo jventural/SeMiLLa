@@ -30,6 +30,13 @@
 #' @param dimensiones Para fuente="manual": lista con dimensiones y sus definiciones.
 #'        Para fuente="usuario": lista nombrada \code{dim -> list(definicion, items)}
 #'        donde \code{items} es un vector nombrado (codigo = texto).
+#' @param complejidad_linguistica Nivel de lectura de los items: "minimo"
+#'        (secundaria incompleta, items cortos y vocabulario simple con
+#'        sustituciones), "basico" (primaria completa), "intermedio" (default,
+#'        secundaria completa) o "avanzado" (universitario). Se preserva en el
+#'        metadata para que la optimizacion/refinamiento mantengan el mismo nivel.
+#' @param max_palabras Numero maximo de palabras por item. Si NULL, se deriva del
+#'        nivel: minimo=10, basico=12, intermedio=18, avanzado=25.
 #' @param archivo Para fuente="usuario": ruta a archivo .xlsx o .csv con los items
 #'        del usuario (columnas: dimension, definicion_dimension, codigo, item, y
 #'        opcionalmente constructo y definicion_constructo). Usa el mismo formato
@@ -65,6 +72,13 @@
 #'        Default: TRUE. Requiere \code{compuerta = TRUE}.
 #' @param max_iteraciones_optimizar Iteraciones maximas de la optimizacion
 #'        automatica (default: 2).
+#' @param estres Ejecutar la PRUEBA DE ESTRES (\code{estres_escala()}) al final
+#'        del pipeline. Default \code{FALSE} (paso pesado; se corre a pedido).
+#'        Sirve tambien con \code{fuente = "usuario"} para estresar un test ya
+#'        redactado (p. ej. cargado de un articulo).
+#' @param optimizar_estres Si \code{estres = TRUE} y la escala resulta fragil a
+#'        algun sesgo, reescribir iterativamente los items criticos y adoptar la
+#'        escala mejorada. Default \code{TRUE}; \code{FALSE} = solo diagnostico.
 #' @param seed Semilla para reproducibilidad (default: NULL). Usar un numero
 #'        entero para obtener resultados reproducibles en los analisis.
 #' @param verbose Mostrar progreso en consola (default: TRUE)
@@ -156,6 +170,12 @@ semilla <- function(concepto = NULL,
                     fuente = "llm",
                     definicion = NULL,
                     dimensiones = NULL,
+                    complejidad_linguistica = "intermedio",
+                    max_palabras = NULL,
+                    blindaje = TRUE,
+                    contexto_prohibido = NULL,
+                    instrucciones_estilo = NULL,
+                    modelo_jueces = "gpt-4.1-mini",
                     archivo = NULL,
                     items_df = NULL,
                     hoja = 1,
@@ -171,8 +191,23 @@ semilla <- function(concepto = NULL,
                     compuerta = TRUE,
                     optimizar = TRUE,
                     max_iteraciones_optimizar = 2,
+                    estres = FALSE,
+                    optimizar_estres = TRUE,
                     seed = NULL,
                     verbose = TRUE) {
+
+  # Terminos vetados por el usuario: se inyectan UNA vez en la descripcion de
+  # la poblacion para que fluyan a TODOS los prompts del pipeline (generacion,
+  # forced-choice, optimizacion, estres); el blindaje ademas los aplica por
+  # regex deterministico (el juez LLM puede ser inconsistente en terminos
+  # ambiguos como "patrulla" para estudiantes en formacion policial).
+  if (!is.null(contexto_prohibido) && length(contexto_prohibido) &&
+      !is.null(poblacion)) {
+    poblacion <- paste0(
+      poblacion, ". PROHIBIDO ABSOLUTO mencionar o aludir a: ",
+      paste(contexto_prohibido, collapse = ", "),
+      " (no corresponden al contexto real de esta poblacion)")
+  }
 
   # Fijar semilla si se proporciona
   if (!is.null(seed)) {
@@ -277,6 +312,12 @@ semilla <- function(concepto = NULL,
       fuente = fuente,
       definicion = definicion,
       dimensiones = dimensiones,
+      complejidad_linguistica = complejidad_linguistica,
+      max_palabras = max_palabras,
+      blindaje = blindaje,
+      contexto_prohibido = contexto_prohibido,
+      instrucciones_estilo = instrucciones_estilo,
+      modelo_jueces = modelo_jueces,
       bases_datos = bases_datos,
       n_articulos = n_articulos,
       seed = seed,
@@ -346,6 +387,13 @@ semilla <- function(concepto = NULL,
       modelo = modelo,
       n_items_generados = nrow(items_result$items),
       seed = seed,
+      # Se preservan del objeto de generacion para que optimizar_para_campo()
+      # y refinar_escala() hereden el MISMO nivel de lectura y longitud (antes
+      # se perdian aqui y la optimizacion volvia al default "intermedio").
+      complejidad_linguistica =
+        items_result$metadata$complejidad_linguistica %||% complejidad_linguistica,
+      max_palabras = items_result$metadata$max_palabras %||% max_palabras,
+      tipo_escala_respuesta = items_result$metadata$tipo_escala_respuesta,
       fecha = Sys.time()
     )
   )
@@ -475,6 +523,67 @@ semilla <- function(concepto = NULL,
     if (verbose) cat("\n", .color_gris("[5/5] COMPUERTA PRE-APLICACION"),
                      " - Omitida (compuerta = FALSE). La escala NO ha sido",
                      " auditada para campo.\n", sep = "")
+  }
+
+  # PASO 6 (OPCIONAL, apagado por defecto): PRUEBA DE ESTRES + optimizacion.
+  #  estres = FALSE por defecto (paso pesado; se corre a pedido, tambien en el
+  #  camino fuente="usuario" para estresar un test cargado de un articulo).
+  #  Cuando estres = TRUE, optimizar_estres (default TRUE) reescribe los items
+  #  fragiles y adopta la escala mejorada.
+  if (isTRUE(estres)) {
+    if (verbose) {
+      cat("\n"); cat(.linea("="), "\n")
+      cat(.color_azul("[6/6] PRUEBA DE ESTRES DE ESCALA"), "\n")
+      cat(.linea("="), "\n")
+    }
+    est <- tryCatch(
+      estres_escala(resultado, optimizar_estres = optimizar_estres,
+                    modelo = modelo, poblacion = poblacion,
+                    api_key = api_key, seed = seed %||% 2026, verbose = verbose),
+      error = function(e) {
+        warning("La prueba de estres fallo (", conditionMessage(e),
+                "). Ejecutela manualmente con estres_escala().")
+        NULL
+      })
+    if (!is.null(est)) {
+      resultado$estres <- est
+      if (isTRUE(est$optimizacion$aplicada) && !is.null(est$escala_final)) {
+        ef <- est$escala_final
+        resultado$items      <- ef$items
+        resultado$embeddings <- ef$embeddings
+        resultado$similitud  <- ef$similitud
+      }
+    }
+  }
+
+  # PASO FINAL: CIERRE DE BLINDAJE. La optimizacion guiada por la compuerta y
+  # el optimizador de estres reescriben items por caminos que NO pasan por los
+  # jueces de la generacion; sin este cierre la escala final puede volver a
+  # salir con gemelos, fugas de contexto o items largos aunque la generacion
+  # saliera limpia (observado en la bateria policial v4). Se re-aplican los
+  # jueces LLM + la garantia de longitud sobre el objeto FINAL y se recalculan
+  # los embeddings si algo cambio.
+  if (isTRUE(blindaje) && fuente != "usuario" && !is.null(resultado$items)) {
+    if (verbose) {
+      cat("\n"); cat(.linea("="), "\n")
+      cat(.color_azul("[CIERRE] BLINDAJE FINAL (contexto + parafrasis + longitud)"), "\n")
+      cat(.linea("="), "\n")
+    }
+    antes <- resultado$items$item
+    resultado <- tryCatch(
+      blindar_escala(resultado, api_key = api_key, poblacion = poblacion,
+                     modelo = modelo, contexto_prohibido = contexto_prohibido,
+                     instrucciones_estilo = instrucciones_estilo,
+                     modelo_jueces = modelo_jueces, verbose = verbose),
+      error = function(e) {
+        warning("El blindaje final fallo (", conditionMessage(e),
+                "). Ejecutelo manualmente con blindar_escala().")
+        resultado
+      })
+    if (verbose && !identical(antes, resultado$items$item)) {
+      cat("  (el cierre corrigio ", sum(antes != resultado$items$item),
+          " item(s) que las etapas posteriores habian ensuciado)\n", sep = "")
+    }
   }
 
   if (verbose) {

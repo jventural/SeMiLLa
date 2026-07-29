@@ -15,6 +15,12 @@ semilla(
   fuente = "llm",
   definicion = NULL,
   dimensiones = NULL,
+  complejidad_linguistica = "intermedio",
+  max_palabras = NULL,
+  blindaje = TRUE,
+  contexto_prohibido = NULL,
+  instrucciones_estilo = NULL,
+  modelo_jueces = "gpt-4.1-mini",
   archivo = NULL,
   items_df = NULL,
   hoja = 1,
@@ -30,6 +36,8 @@ semilla(
   compuerta = TRUE,
   optimizar = TRUE,
   max_iteraciones_optimizar = 2,
+  estres = FALSE,
+  optimizar_estres = TRUE,
   seed = NULL,
   verbose = TRUE
 )
@@ -69,6 +77,15 @@ fiabilidad semantica, etc. Requiere uno de: \code{archivo},
 \item{dimensiones}{Para fuente="manual": lista con dimensiones y sus definiciones.
 Para fuente="usuario": lista nombrada \code{dim -> list(definicion, items)}
 donde \code{items} es un vector nombrado (codigo = texto).}
+
+\item{complejidad_linguistica}{Nivel de lectura de los items: "minimo"
+(secundaria incompleta, items cortos y vocabulario simple con
+sustituciones), "basico" (primaria completa), "intermedio" (default,
+secundaria completa) o "avanzado" (universitario). Se preserva en el
+metadata para que la optimizacion/refinamiento mantengan el mismo nivel.}
+
+\item{max_palabras}{Numero maximo de palabras por item. Si NULL, se deriva del
+nivel: minimo=10, basico=12, intermedio=18, avanzado=25.}
 
 \item{archivo}{Para fuente="usuario": ruta a archivo .xlsx o .csv con los items
 del usuario (columnas: dimension, definicion_dimension, codigo, item, y
@@ -119,6 +136,15 @@ Default: TRUE. Requiere \code{compuerta = TRUE}.}
 
 \item{max_iteraciones_optimizar}{Iteraciones maximas de la optimizacion
 automatica (default: 2).}
+
+\item{estres}{Ejecutar la PRUEBA DE ESTRES (\code{estres_escala()}) al final
+del pipeline. Default \code{FALSE} (paso pesado; se corre a pedido).
+Sirve tambien con \code{fuente = "usuario"} para estresar un test ya
+redactado (p. ej. cargado de un articulo).}
+
+\item{optimizar_estres}{Si \code{estres = TRUE} y la escala resulta fragil a
+algun sesgo, reescribir iterativamente los items criticos y adoptar la
+escala mejorada. Default \code{TRUE}; \code{FALSE} = solo diagnostico.}
 
 \item{seed}{Semilla para reproducibilidad (default: NULL). Usar un numero
 entero para obtener resultados reproducibles en los analisis.}

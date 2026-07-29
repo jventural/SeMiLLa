@@ -22,6 +22,10 @@ generar_escala(
   evitar_cuantificadores = NULL,
   max_palabras = NULL,
   incluir_inversos = TRUE,
+  blindaje = TRUE,
+  contexto_prohibido = NULL,
+  instrucciones_estilo = NULL,
+  modelo_jueces = "gpt-4.1-mini",
   seed = NULL,
   verbose = TRUE
 )

@@ -44,6 +44,7 @@ export(obtener_embeddings)
 export(items_similares)
 export(analizar_redundancia)
 export(auditar_redundancia)
+export(blindar_escala)
 export(coherencia_dimensional)
 export(homogeneidad_semantica)
 export(modelos_embeddings_libres)
@@ -60,12 +61,16 @@ export(efa_regularizado)
 export(validez_contenido)
 export(calificar_deseabilidad)
 export(simular_estructura)
+export(estres_escala)                 # v2.8.0: prueba de estres (bateria de sesgos)
+export(analizar_tolerancia)           # v2.9.3: wrapper de 1 comando + verbose educativo
+S3method(print, semilla_tolerancia)
 export(auditar_redaccion_items)
 export(evaluar_calidad_items)        # alias depreciado v1.x
 export(fiabilidad_semantica)
 export(omega_semantico)
 export(discriminacion_semantica)
 export(cargas_semanticas)
+export(cargas_por_cohesion)      # v2.9.1: cargas del generador (carga_propia="semantica") en modo suelto
 export(analizar_coherencia)
 export(validez_criterio_predicha)
 export(compuerta_pre_aplicacion)
@@ -146,6 +151,7 @@ export(flujo)
 # METODOS S3
 # =============================================================================
 S3method(print, semilla)
+S3method(print, semilla_cargas_cohesion)
 S3method(print, semilla_efa)
 S3method(print, semilla_cv)
 S3method(print, semilla_fiabilidad)
@@ -176,6 +182,8 @@ S3method(print, semilla_test_historias_multi)
 S3method(print, semilla_forcedchoice)
 S3method(print, semilla_test_forcedchoice)
 S3method(print, semilla_prompts_ilustracion)
+S3method(print, semilla_estres)
+S3method(plot,  semilla_estres)
 
 
 # =============================================================================
@@ -186,3 +194,4 @@ importFrom(stats, as.dist, as.hclust, ave, coef, cor, cutree, dist, hclust, kmea
 importFrom(utils, adist, combn, packageVersion, write.csv)
 importFrom(lavaan, cfa, fitmeasures, standardizedSolution)
 importFrom(MASS, mvrnorm)
+importFrom(parallel, detectCores, makeCluster, stopCluster, parLapplyLB, clusterEvalQ, nextRNGStream)

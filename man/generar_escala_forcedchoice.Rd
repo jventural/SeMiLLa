@@ -9,12 +9,15 @@ generar_escala_forcedchoice(
   api_key,
   dimensiones,
   descripcion_dimensiones = NULL,
+  poblacion = NULL,
   polaridad_dimensiones = NULL,
   n_items_por_dimension = 8L,
   proporcion_polo_negativo = 0.4,
   block_size = 4L,
   n_bloques = 15L,
   metodo = c("most_least", "ranking", "single_choice"),
+  complejidad_linguistica = "intermedio",
+  max_palabras = NULL,
   estimar_valencia = TRUE,
   balancear_valencia = TRUE,
   tolerancia_valencia = 1,
@@ -34,6 +37,10 @@ generar_escala_forcedchoice(
 
 \item{descripcion_dimensiones}{Vector character (mismo largo) con la
 definicion de cada dimension. Si NULL, el LLM infiere del nombre.}
+
+\item{poblacion}{Character opcional con la poblacion objetivo. Si se indica,
+cada item se ancla a su rol, etapa vital/formativa y entorno real
+(misma fidelidad de contexto que el generador Likert). Si NULL, general.}
 
 \item{polaridad_dimensiones}{Vector character (mismo largo) con la
 polaridad de la SUBESCALA: \code{"positiva"} (puntaje alto = mas del

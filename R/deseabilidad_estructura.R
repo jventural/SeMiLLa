@@ -152,11 +152,15 @@ calificar_deseabilidad <- function(x, api_key = Sys.getenv("OPENAI_API_KEY"),
   # varianza de metodo con signos opuestos que rompe el propio factor.
   sd_intra <- mean(tapply(des, dims, stats::sd), na.rm = TRUE)
   alerta_intra <- is.finite(sd_intra) && sd_intra > 0.15
-  uniforme <- sd_entre < umbral_uniforme
+  # v2.9.2: isTRUE protege el caso K=1 (una sola dimension -> sd_entre = NA,
+  # el contraste ENTRE dimensiones no aplica; antes el if fallaba con
+  # "valor ausente donde TRUE/FALSE es necesario").
+  uniforme <- isTRUE(sd_entre < umbral_uniforme)
   riesgo_halo <- uniforme && mean(des) > 0.65
   msg <- if (riesgo_halo)
     "RIESGO ALTO de halo: deseabilidad uniforme y alta entre dimensiones -> las dimensiones pueden colapsar. Considera anclas de frecuencia, contenido contrastante ENTRE dimensiones o formato ipsativo."
   else if (uniforme) "Deseabilidad uniforme entre dimensiones (vigilar separabilidad)."
+  else if (!is.finite(sd_entre)) "Escala unidimensional: el contraste de deseabilidad ENTRE dimensiones no aplica."
   else "Deseabilidad contrastante ENTRE dimensiones (favorable a la separabilidad)."
   if (alerta_intra) msg <- paste0(msg,
     " ADVERTENCIA: contraste de deseabilidad DENTRO de dimensiones (DE intra=",
@@ -209,13 +213,25 @@ calificar_deseabilidad <- function(x, api_key = Sys.getenv("OPENAI_API_KEY"),
 #'   \code{NULL}, se llama a \code{\link{calificar_deseabilidad}}.
 #' @param similitud Matriz de similitud de embeddings (para la dependencia local).
 #' @param carga_propia,phi_teorico,sd_aquiescencia Parametros del modelo
-#'   generador de datos.
+#'   generador de datos. \code{carga_propia} admite ademas (v2.9.0) el valor
+#'   \code{"semantica"}: el ORDEN de las cargas se toma de la cohesion de cada
+#'   item con su dimension (similitud media de embeddings) reescalado al rango
+#'   0.45-0.75, y se inyectan cargas cruzadas de 0.20 cuando la afinidad con
+#'   OTRA dimension alcanza el 90\% de la propia. La semantica es un proxy
+#'   DEBIL de las cargas empiricas (cor = .21 en la calibracion PM n=280):
+#'   por eso solo se usa el orden, no el nivel, y el default sigue siendo la
+#'   carga uniforme; recomendado reportar ambos como escenarios.
 #' @param fuerza_deseabilidad Escalar o vector de fuerzas del factor de
 #'   deseabilidad a simular. Por defecto \code{c(0.3, 0.6, 0.9)} (sensibilidad).
 #' @param umbral_ld,fuerza_ld Umbral de similitud y fuerza de la dependencia local.
 #' @param n,n_rep,k_cat Tamano muestral simulado, replicas por escenario y
 #'   categorias ordinales. \code{n_rep} por defecto 100 (con 40 el semaforo
 #'   cambia de color por ruido Monte Carlo de +-8 puntos).
+#' @param n_nucleos Nucleos para paralelizar las replicas (v2.8.0). Default 1
+#'   (apto para servidores compartidos como Connect Cloud). Con el mismo
+#'   \code{seed}, el resultado es IDENTICO con 1 o con N nucleos (streams
+#'   L'Ecuyer por replica); en una PC local use
+#'   \code{parallel::detectCores() - 1}.
 #' @param umbral_rmsea,umbral_phi Criterios de "estructura limpia". El
 #'   default de \code{umbral_phi} sube de 0.50 a 0.70 en v2.7.0: factores
 #'   correlacionados .50-.70 son comunes y discriminables (el propio caso
@@ -242,6 +258,7 @@ simular_estructura <- function(x, deseabilidad = NULL, similitud = NULL,
                                umbral_ld = 0.80, fuerza_ld = 1.4,
                                n = 300, n_rep = 100, k_cat = 5,
                                umbral_rmsea = 0.06, umbral_phi = 0.70,
+                               n_nucleos = 1,
                                api_key = Sys.getenv("OPENAI_API_KEY"),
                                seed = 2026, verbose = TRUE) {
   if (!requireNamespace("lavaan", quietly = TRUE)) stop("Necesitas el paquete 'lavaan'.")
@@ -257,7 +274,6 @@ simular_estructura <- function(x, deseabilidad = NULL, similitud = NULL,
 
   dims <- unique(dim_por_item); K <- length(dims); p <- length(dim_por_item)
   memb <- match(dim_por_item, dims)
-  cargas <- if (length(carga_propia) == 1) rep(carga_propia, p) else carga_propia
   dir_j  <- 2 * deseabilidad - 1
   int_j  <- 0.5 * dir_j
   taus   <- stats::qnorm(seq(1, k_cat - 1) / k_cat)
@@ -265,6 +281,12 @@ simular_estructura <- function(x, deseabilidad = NULL, similitud = NULL,
   its    <- sprintf("i%02d", seq_len(p))
   syn    <- paste(sapply(seq_len(K), function(kk)
              paste0("F", kk, " =~ ", paste(its[memb == kk], collapse = " + "))), collapse = "\n")
+  # v2.9.0: carga_propia numerica (uniforme/vector) o "semantica" (orden por
+  # cohesion de embeddings, rango 0.45-0.75, cargas cruzadas si afinidad con
+  # otra dimension >= 90% de la propia). Ver .lambda_semantica.
+  cg <- .resolver_cargas(carga_propia, similitud, memb, K, p, verbose)
+  LAMBDA <- cg$LAMBDA; cargas <- cg$lambda_main
+  var_theta <- diag(LAMBDA %*% Phi %*% t(LAMBDA))
   sd_e   <- sqrt(pmax(0.20, 1 - cargas^2))
 
   pares_ld <- list()
@@ -278,13 +300,22 @@ simular_estructura <- function(x, deseabilidad = NULL, similitud = NULL,
   for (pl in pares_ld) { g2_j[pl$a] <- g2_j[pl$a] + pl$g^2
                          g2_j[pl$b] <- g2_j[pl$b] + pl$g^2 }
 
+  # Cluster opcional (n_nucleos > 1): mismo resultado que secuencial gracias
+  # a los streams por replica; default 1 para servidores compartidos.
+  n_nucleos <- max(1L, as.integer(n_nucleos %||% 1L))
+  cl <- .cluster_estres(n_nucleos)
+  if (!is.null(cl)) on.exit(parallel::stopCluster(cl), add = TRUE)
+
   # ---- Un escenario (una fuerza de deseabilidad), n_rep replicas ----
-  sim_escenario <- function(f_des, seed_esc) {
-    set.seed(seed_esc)
+  #  v2.8.0: las replicas usan streams L'Ecuyer independientes (una por
+  #  replica) via .ejecutar_reps/.sim_rep -> el resultado es IDENTICO en
+  #  secuencial y en paralelo con el mismo seed (los numeros pueden diferir
+  #  levemente de v2.7.x, que usaba set.seed + replicate).
+  sim_escenario <- function(f_des, seed_esc, etiqueta = "") {
     dirf <- f_des * dir_j
     # Varianza analitica del indice latente -> estandarizar para que los
     # umbrales ordinales (taus) operen en la metrica prevista.
-    sd_tot <- sqrt(cargas^2 + dirf^2 + sd_aquiescencia^2 + g2_j + sd_e^2)
+    sd_tot <- sqrt(var_theta + dirf^2 + sd_aquiescencia^2 + g2_j + sd_e^2)
     # Vector de |Phi| por PAR de factores (para el mapa de fusion): permite
     # anticipar QUE dimensiones se fundiran, no solo si "algo" colapsa
     # (caso VP: 3 factores prosociales se funden y Apertura se separa).
@@ -293,41 +324,13 @@ simular_estructura <- function(x, deseabilidad = NULL, similitud = NULL,
       comb <- utils::combn(K, 2)
       paste0("phipar_", comb[1, ], "_", comb[2, ])
     } else character(0)
-    one_rep <- function() {
-      theta <- MASS::mvrnorm(n, rep(0, K), Phi)
-      delta <- stats::rnorm(n); alpha <- stats::rnorm(n, 0, sd_aquiescencia)
-      ld <- matrix(0, n, p)
-      for (pl in pares_ld) { s <- stats::rnorm(n); ld[, pl$a] <- ld[, pl$a] + pl$g * s
-                                                   ld[, pl$b] <- ld[, pl$b] + pl$g * s }
-      Y <- sapply(seq_len(p), function(j)
-        findInterval((int_j[j] + cargas[j] * theta[, memb[j]] + dirf[j] * delta +
-                      alpha + ld[, j] + stats::rnorm(n, 0, sd_e[j])) / sd_tot[j],
-                     taus) + 1L)
-      D <- as.data.frame(Y); names(D) <- its
-      fit <- tryCatch(lavaan::cfa(syn, data = D, ordered = its, estimator = "WLSMV",
-                                  std.lv = TRUE), error = function(e) NULL)
-      conv <- !is.null(fit) && isTRUE(tryCatch(lavaan::lavInspect(fit, "converged"),
-                                               error = function(e) FALSE))
-      base_na <- c(cfi = NA, rmsea = NA, srmr = NA, phi = NA, conv = 0, adm = 0)
-      if (n_par > 0) base_na <- c(base_na, stats::setNames(rep(NA_real_, n_par), nom_par))
-      if (!conv) return(base_na)
-      # Solucion inadmisible (Heywood, matrices no PD) = evidencia de mala
-      # estructura, no una replica valida.
-      adm <- isTRUE(tryCatch(suppressWarnings(lavaan::lavInspect(fit, "post.check")),
-                             error = function(e) FALSE))
-      fm <- lavaan::fitMeasures(fit, c("cfi.scaled", "rmsea.scaled", "srmr"))
-      phi <- NA_real_; phi_par <- numeric(0)
-      if (K > 1) {
-        R <- lavaan::lavInspect(fit, "cor.lv")
-        phi <- mean(abs(R[lower.tri(R)]))
-        phi_par <- stats::setNames(abs(R[lower.tri(R)]), nom_par)
-      }
-      out <- c(cfi = as.numeric(fm[1]), rmsea = as.numeric(fm[2]), srmr = as.numeric(fm[3]),
-               phi = phi, conv = 1, adm = as.numeric(adm))
-      if (n_par > 0) out <- c(out, phi_par)
-      out
-    }
-    M <- t(replicate(n_rep, one_rep()))
+    par <- list(n = n, K = K, p = p, memb = memb, Phi = Phi, LAMBDA = LAMBDA,
+                int_j = int_j, dirf = dirf, sd_aq = sd_aquiescencia,
+                sd_tot = sd_tot, taus = taus, pares_ld = pares_ld, sd_e = sd_e,
+                its = its, syn = syn, n_par = n_par, nom_par = nom_par)
+    M <- .ejecutar_reps_prog(.semillas_lecuyer(seed_esc, n_rep), .sim_rep, par,
+                             cl, verbose = verbose, etiqueta = etiqueta,
+                             n_nucleos = n_nucleos)
     conv <- M[, "conv"] == 1
     limpia <- conv & M[, "adm"] == 1 & M[, "rmsea"] <= umbral_rmsea
     if (K > 1) limpia <- limpia & M[, "phi"] < umbral_phi
@@ -344,7 +347,41 @@ simular_estructura <- function(x, deseabilidad = NULL, similitud = NULL,
   }
 
   fuerzas <- sort(unique(as.numeric(fuerza_deseabilidad)))
-  esc <- lapply(seq_along(fuerzas), function(i) sim_escenario(fuerzas[i], seed + (i - 1) * 1000L))
+  n_esc <- length(fuerzas)
+
+  # ---- Encabezado y ETA (mismo formato que estres_escala) --------------------
+  if (verbose) {
+    t_cfa <- 0.4 * (p / 16)^1.7
+    eta_min <- round(n_esc * n_rep * t_cfa / n_nucleos * 1.15 / 60, 1)
+    cat("=============================================================\n")
+    cat(" SeMiLLa - SIMULACION DE ESTRUCTURA (simular_estructura)\n")
+    cat("=============================================================\n")
+    cat(sprintf(" Escala: %d items | %d dimension(es) | n simulado = %d\n", p, K, n))
+    cat(sprintf(" Deseabilidad: media %.2f (DE %.2f) | pares con dependencia local: %d\n",
+                mean(deseabilidad), stats::sd(deseabilidad), length(pares_ld)))
+    cat(sprintf(" Escenarios: %d (fuerza de deseabilidad %s) x %d replicas = %d CFAs\n",
+                n_esc, paste(sprintf("%.2f", fuerzas), collapse = ", "),
+                n_rep, n_esc * n_rep))
+    cat(sprintf(" Nucleos: %d de %d disponibles | ETA aproximada: %s\n",
+                n_nucleos, parallel::detectCores(), .eta_txt(eta_min)))
+    cat("-------------------------------------------------------------\n")
+    utils::flush.console()
+  }
+
+  esc <- vector("list", n_esc)
+  for (i in seq_len(n_esc)) {
+    esc[[i]] <- sim_escenario(
+      fuerzas[i], seed + (i - 1) * 1000L,
+      etiqueta = sprintf("[%d/%d] fuerza=%.2f", i, n_esc, fuerzas[i]))
+    if (verbose) {
+      cat(sprintf("        -> prob limpia %3.0f%% | RMSEAmed %.3f | |Phi|med %s\n",
+                  100 * esc[[i]]$prob, esc[[i]]$rmsea_med,
+                  ifelse(is.na(esc[[i]]$phi_med), "-",
+                         sprintf("%.2f", esc[[i]]$phi_med))))
+      utils::flush.console()
+    }
+  }
+  if (verbose) cat("-------------------------------------------------------------\n")
   sensibilidad <- data.frame(
     fuerza_deseabilidad = fuerzas,
     prob_limpia      = vapply(esc, `[[`, numeric(1), "prob"),
@@ -355,9 +392,15 @@ simular_estructura <- function(x, deseabilidad = NULL, similitud = NULL,
 
   i_c  <- ceiling(length(fuerzas) / 2)       # escenario central
   prob <- esc[[i_c]]$prob
-  ic   <- prob + c(-1, 1) * 1.96 * sqrt(prob * (1 - prob) / n_rep)
-  ic   <- pmin(1, pmax(0, ic))
-  veredicto <- if (prob >= .80) "ALTA (aplicar con confianza)"
+  # v2.9.5: IC de Wilson (no Wald): con prob cerca de 0 o 1 el Wald colapsa
+  # a ancho nulo; es el intervalo declarado en el articulo del metodo.
+  ic   <- .ic_wilson(prob, n_rep)
+  # v2.9.1: el rotulo acota el alcance al FRASEO. El pronostico cubre riesgo
+  # estructural inducido por el texto de los items (halo por deseabilidad,
+  # parafrasis, estilos); NO detecta covariacion sustantiva entre rasgos
+  # (p. ej. comorbilidad Depresion-Ansiedad-Estres en DASS-21), que no vive
+  # en el fraseo y puede fundir factores aunque este pronostico sea ALTA.
+  veredicto <- if (prob >= .80) "ALTA (sin riesgo estructural inducido por el fraseo)"
                else if (prob >= .40) "MEDIA (revisar antes de aplicar)"
                else "BAJA (las dimensiones colapsaran; redisenar items/formato)"
 
@@ -385,8 +428,6 @@ simular_estructura <- function(x, deseabilidad = NULL, similitud = NULL,
   }
 
   if (verbose) {
-    cat(sprintf("Dimensiones=%d | items=%d | n=%d | reps/escenario=%d | deseab. media=%.2f (DE=%.2f) | pares dep.local=%d\n",
-                K, p, n, n_rep, mean(deseabilidad), stats::sd(deseabilidad), length(pares_ld)))
     cat(sprintf("Carga estandarizada efectiva del rasgo (escenario central): %.2f\n",
                 esc[[i_c]]$carga_std))
     cat("-- Sensibilidad a la fuerza de deseabilidad (parametro supuesto):\n")
@@ -436,6 +477,52 @@ simular_estructura <- function(x, deseabilidad = NULL, similitud = NULL,
 # Calibrado con 3 escalas reales (n=280): PM Int+Sim (real .92) via (b);
 # ACO Cog+Con (real .84, "casi colineales") via (b); VP AT+CO (real .89)
 # via (b) con Apertura (.73) y Autopromocion (.62) fuera del bloque.
+
+# Una replica del escenario de simular_estructura. Funcion de paquete (no
+# closure) para poder serializarla a los nodos PSOCK sin arrastrar el frame
+# de la llamada; su RNG lo fija .rep_worker antes de invocarla.
+#' @keywords internal
+.sim_rep <- function(par) {
+  n <- par$n; K <- par$K; p <- par$p
+  theta <- MASS::mvrnorm(n, rep(0, K), par$Phi)
+  delta <- stats::rnorm(n); alpha <- stats::rnorm(n, 0, par$sd_aq)
+  ld <- matrix(0, n, p)
+  for (pl in par$pares_ld) { s <- stats::rnorm(n)
+    ld[, pl$a] <- ld[, pl$a] + pl$g * s
+    ld[, pl$b] <- ld[, pl$b] + pl$g * s }
+  TH <- theta %*% t(par$LAMBDA)   # admite cargas cruzadas (v2.9.0)
+  Y <- sapply(seq_len(p), function(j)
+    findInterval((par$int_j[j] + TH[, j] +
+                  par$dirf[j] * delta + alpha + ld[, j] +
+                  stats::rnorm(n, 0, par$sd_e[j])) / par$sd_tot[j],
+                 par$taus) + 1L)
+  D <- as.data.frame(Y); names(D) <- par$its
+  fit <- tryCatch(lavaan::cfa(par$syn, data = D, ordered = par$its,
+                              estimator = "WLSMV", std.lv = TRUE),
+                  error = function(e) NULL)
+  conv <- !is.null(fit) && isTRUE(tryCatch(lavaan::lavInspect(fit, "converged"),
+                                           error = function(e) FALSE))
+  base_na <- c(cfi = NA, rmsea = NA, srmr = NA, phi = NA, conv = 0, adm = 0)
+  if (par$n_par > 0) base_na <- c(base_na,
+    stats::setNames(rep(NA_real_, par$n_par), par$nom_par))
+  if (!conv) return(base_na)
+  # Solucion inadmisible (Heywood, matrices no PD) = evidencia de mala
+  # estructura, no una replica valida.
+  adm <- isTRUE(tryCatch(suppressWarnings(lavaan::lavInspect(fit, "post.check")),
+                         error = function(e) FALSE))
+  fm <- lavaan::fitMeasures(fit, c("cfi.scaled", "rmsea.scaled", "srmr"))
+  phi <- NA_real_; phi_par <- numeric(0)
+  if (K > 1) {
+    R <- lavaan::lavInspect(fit, "cor.lv")
+    phi <- mean(abs(R[lower.tri(R)]))
+    phi_par <- stats::setNames(abs(R[lower.tri(R)]), par$nom_par)
+  }
+  out <- c(cfi = as.numeric(fm[1]), rmsea = as.numeric(fm[2]),
+           srmr = as.numeric(fm[3]), phi = phi, conv = 1, adm = as.numeric(adm))
+  if (par$n_par > 0) out <- c(out, phi_par)
+  out
+}
+
 
 #' @keywords internal
 .mapa_fusion <- function(phi_pares, umbral = 0.70, des_por_dim = NULL,

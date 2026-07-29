@@ -118,9 +118,14 @@ auditar_redundancia <- function(x, umbral_sem = "auto", n_gram = 2,
   # Escalas de actitud hacia UN objeto nombrado en cada item tienen linea
   # base de similitud alta y un umbral fijo sobre-alarma; escalas de rasgo
   # con linea base baja lo necesitan mas sensible. La senal es RELATIVA.
+  # Techo 0.70: la calibracion con datos reales (bateria policial, n=280)
+  # mostro que los pares con r policorica >= .70 (dependencia local real)
+  # viven en coseno 0.43-0.78; un umbral de 0.80-0.85 no detecta NINGUNO.
+  # 0.70 es la linea de deteccion; por debajo, la deteccion fiable es el
+  # juez LLM de parafrasis (.juzgar_parafrasis_llm / blindar_escala).
   umbral_sem_auto <- identical(umbral_sem, "auto")
   if (umbral_sem_auto) {
-    umbral_sem <- min(0.85, max(0.70,
+    umbral_sem <- min(0.70, max(0.62,
       as.numeric(stats::quantile(S[ut], 0.95, na.rm = TRUE))))
   }
   umbral_faceta_auto <- identical(umbral_faceta, "auto")
@@ -148,10 +153,22 @@ auditar_redundancia <- function(x, umbral_sem = "auto", n_gram = 2,
   # interna >= umbral_faceta.
   dim_vec <- if (!is.null(items$dimension)) as.character(items$dimension)
              else rep(NA_character_, n)
-  facetas <- .detectar_facetas_repetidas(
-    S = S, textos = textos, codigos = codigos, dims = dim_vec,
-    umbral_faceta = umbral_faceta, min_items = min_items_faceta
-  )
+  # El clustering es un subanalisis OPCIONAL de la auditoria: si falla, se
+  # reporta y se sigue con los demas indices, en lugar de perder tambien la
+  # alerta de homogeneidad sintactica y los pares redundantes.
+  facetas <- tryCatch(
+    .detectar_facetas_repetidas(
+      S = S, textos = textos, codigos = codigos, dims = dim_vec,
+      umbral_faceta = umbral_faceta, min_items = min_items_faceta),
+    error = function(e) {
+      warning("Deteccion de facetas repetidas omitida (", conditionMessage(e),
+              "); el resto de la auditoria de redundancia se mantiene.",
+              call. = FALSE)
+      data.frame(cluster = integer(0), n_items = integer(0),
+                 sim_media = numeric(0), inter_dimension = logical(0),
+                 nucleo_lexico = character(0), codigos = character(0),
+                 items = character(0), stringsAsFactors = FALSE)
+    })
 
   # --- tokenizacion y n-gramas (base R) ------------------------------------
   .tok <- function(t) {
@@ -261,7 +278,12 @@ auditar_redundancia <- function(x, umbral_sem = "auto", n_gram = 2,
   n <- length(textos)
   if (n < min_items) return(vacio)
 
-  hc <- stats::hclust(stats::as.dist(1 - S), method = "average")
+  # El coseno puede volver como 1 + 1e-16 (o venir redondeado): se acota a
+  # [-1, 1] para que la distancia 1 - S nunca sea negativa, y las alturas se
+  # monotonizan porque los empates de similitud invierten el dendrograma por
+  # redondeo y cutree() lo rechazaria (ver .hc_monotono).
+  S <- pmin(pmax(as.matrix(S), -1), 1)
+  hc <- .hc_monotono(stats::hclust(stats::as.dist(1 - S), method = "average"))
   grupos <- stats::cutree(hc, h = 1 - umbral_faceta)
 
   stop_es <- c("de", "la", "el", "los", "las", "a", "en", "que", "cuando",

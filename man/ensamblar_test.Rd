@@ -17,7 +17,7 @@ ensamblar_test(
   subtitulo = NULL,
   instrucciones = NULL,
   incluir_datos = TRUE,
-  datos_solicitados = c("edad", "sexo", "nivel_educativo", "n_hijos", "edad_hijo"),
+  datos_solicitados = c("edad", "sexo", "nivel_educativo"),
   orden = c("intercalado", "original", "aleatorio"),
   archivo = NULL,
   formato = c("md"),

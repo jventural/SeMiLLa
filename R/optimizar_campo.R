@@ -197,6 +197,14 @@ optimizar_para_campo <- function(x,
     # reemplazos no deben destacar por largos; DeVellis: evitar items
     # excepcionalmente largos).
     rango_palabras <- .rango_palabras_escala(x$items$item)
+    # Los reemplazos deben respetar el tope de palabras pedido por el usuario
+    # (complejidad linguistica); sin este techo el rango derivado de la escala
+    # permitia items de hasta 16 palabras en escalas de nivel "minimo".
+    maxp_meta <- suppressWarnings(as.integer(x$metadata$max_palabras %||% NA))
+    if (!is.na(maxp_meta)) {
+      rango_palabras[2] <- min(rango_palabras[2], maxp_meta)
+      rango_palabras[1] <- min(rango_palabras[1], rango_palabras[2])
+    }
 
     if (verbose) {
       cat("  Items a reemplazar: ", nrow(plan),

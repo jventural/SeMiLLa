@@ -2697,14 +2697,18 @@ precision_clasificacion <- function(x, n_clusters = NULL, metodo = "kmeans",
       if (metodo_local == "kmeans") {
         kmeans(Xemb, centers = n_clusters, nstart = 25)$cluster
       } else if (metodo_local == "ward" || metodo_local == "jerarquico") {
-        hc <- hclust(as.dist(1 - Rsim), method = "ward.D2")
+        # .hc_monotono: los empates de similitud invierten las alturas por
+        # redondeo y cutree() rechazaria el dendrograma (dejando este metodo
+        # fuera del ensemble en silencio, por el tryCatch de arriba).
+        hc <- .hc_monotono(hclust(as.dist(1 - Rsim), method = "ward.D2"))
         cutree(hc, k = n_clusters)
       } else if (metodo_local == "pam") {
         if (!requireNamespace("cluster", quietly = TRUE)) return(NULL)
         cluster::pam(as.dist(1 - Rsim), k = n_clusters, diss = TRUE)$clustering
       } else if (metodo_local == "diana") {
         if (!requireNamespace("cluster", quietly = TRUE)) return(NULL)
-        cutree(as.hclust(cluster::diana(as.dist(1 - Rsim))), k = n_clusters)
+        cutree(.hc_monotono(as.hclust(cluster::diana(as.dist(1 - Rsim)))),
+               k = n_clusters)
       } else if (metodo_local == "gmm") {
         if (!requireNamespace("mclust", quietly = TRUE)) return(NULL)
         # Mclust con modelNames = "EII" (esferico) escala bien a 1536 dims.

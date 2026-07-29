@@ -572,6 +572,38 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
   return(mat_pd)
 }
 
+#' Dendrograma con alturas monotonas (apto para cutree)
+#'
+#' Los metodos de enlace monotonos (average, complete, single, ward.D2, diana)
+#' no pueden invertir alturas en teoria, pero SI las invierten por redondeo de
+#' coma flotante cuando hay distancias EMPATADAS: con una matriz de similitud
+#' constante o redondeada, average linkage promedia los mismos valores por
+#' caminos distintos y devuelve p. ej. 0.69999999999999996 seguido de
+#' 0.69999999999999984 (inversion de 1.2e-16). \code{stats::cutree} valida
+#' \code{is.unsorted(height)} y aborta con "the 'height' component of 'tree' is
+#' not sorted (increasingly)", tumbando el analisis completo por ruido numerico.
+#' \code{cummax} repara esas alturas sin alterar la particion. Si la inversion
+#' excede \code{tol} (senal de un metodo NO monotono, como centroid o median)
+#' se avisa, porque ahi la inversion es real y el corte por altura no es
+#' interpretable.
+#'
+#' @param hc Objeto \code{hclust}.
+#' @param tol Inversion maxima atribuible a redondeo (default 1e-8).
+#' @return El mismo objeto con \code{height} no decreciente.
+#' @keywords internal
+.hc_monotono <- function(hc, tol = 1e-8) {
+  h <- hc$height
+  if (is.null(h) || !length(h) || !is.unsorted(h)) return(hc)
+  h_mon <- cummax(h)
+  inv <- max(h_mon - h)
+  if (inv > tol)
+    warning("El dendrograma tiene inversiones de altura reales (",
+            format(inv, digits = 3), "): se monotonizan para poder cortarlo, ",
+            "pero revise el metodo de enlace.", call. = FALSE)
+  hc$height <- h_mon
+  hc
+}
+
 
 # -----------------------------------------------------------------------------
 # CONFIGURACION OPENAI
@@ -930,9 +962,34 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
     "Los items deben estar en espanol."
   )
 
-  # Poblacion
+  # Poblacion (con FIDELIDAD DE CONTEXTO: rol, etapa vital/formativa y entorno).
+  # La instruccion generica "adapta el lenguaje" era demasiado blanda: el modelo
+  # respetaba el tema pero inventaba escenarios de otra etapa o rol (p. ej. tareas
+  # de un profesional en ejercicio para una poblacion que aun esta en formacion).
+  # Aqui se convierte en una restriccion explicita y negativa, aplicable a
+  # cualquier poblacion.
   poblacion_texto <- if (!is.null(poblacion)) {
-    paste0("Poblacion: ", poblacion, ". Adapta el lenguaje y contenido.")
+    paste0(
+      "POBLACION OBJETIVO (obligatorio): ", poblacion, ".\n",
+      "FIDELIDAD DE CONTEXTO (critico): cada item debe ser verosimil y aplicable ",
+      "para ESTA poblacion segun su ROL, su ETAPA VITAL O FORMATIVA y su ENTORNO real.\n",
+      "- NO atribuyas al respondiente actividades, responsabilidades, escenarios ni ",
+      "objetos que aun NO le corresponden por su etapa o rol (p. ej. tareas propias ",
+      "de un profesional en ejercicio cuando la poblacion todavia esta en formacion, ",
+      "o experiencias propias de otra edad, cargo o condicion).\n",
+      "- Ancla cada situacion en el entorno COTIDIANO y verificable de esta poblacion; ",
+      "evita escenarios genericos o tomados de otra etapa, rol o profesion.\n",
+      "- Si el entorno es una INSTITUCION ESPECIFICA (p. ej. una escuela/academia de ",
+      "formacion policial o militar, un hospital, una empresa), usa SU vocabulario ",
+      "propio y NO el de OTRA institucion. En particular, no uses terminos de colegio ",
+      "de menores ('escolar', 'colegio', 'aula', 'maestro/a', 'acoso escolar', 'salon de ",
+      "clases') salvo que la poblacion sean realmente estudiantes de colegio: el hecho de ",
+      "que la institucion se llame 'escuela' NO la convierte en un colegio de ninos.\n",
+      "- Cuidado con la vida personal: no introduzcas 'mi pareja', 'mi jefe', 'mis hijos' u ",
+      "otros roles que no correspondan salvo que sean pertinentes al constructo y la poblacion.\n",
+      "- Ajusta el vocabulario, los ejemplos y el registro al nivel y contexto de esta ",
+      "poblacion, sin sacar al respondiente de su situacion real."
+    )
   } else {
     ""
   }

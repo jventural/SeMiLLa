@@ -19,6 +19,7 @@ simular_estructura(
   k_cat = 5,
   umbral_rmsea = 0.06,
   umbral_phi = 0.7,
+  n_nucleos = 1,
   api_key = Sys.getenv("OPENAI_API_KEY"),
   seed = 2026,
   verbose = TRUE
@@ -36,7 +37,14 @@ correlacion interfactorial que evaluar).}
 \item{similitud}{Matriz de similitud de embeddings (para la dependencia local).}
 
 \item{carga_propia, phi_teorico, sd_aquiescencia}{Parametros del modelo
-generador de datos.}
+generador de datos. \code{carga_propia} admite ademas (v2.9.0) el valor
+\code{"semantica"}: el ORDEN de las cargas se toma de la cohesion de cada
+item con su dimension (similitud media de embeddings) reescalado al rango
+0.45-0.75, y se inyectan cargas cruzadas de 0.20 cuando la afinidad con
+OTRA dimension alcanza el 90\\% de la propia. La semantica es un proxy
+DEBIL de las cargas empiricas (cor = .21 en la calibracion PM n=280):
+por eso solo se usa el orden, no el nivel, y el default sigue siendo la
+carga uniforme; recomendado reportar ambos como escenarios.}
 
 \item{fuerza_deseabilidad}{Escalar o vector de fuerzas del factor de
 deseabilidad a simular. Por defecto \code{c(0.3, 0.6, 0.9)} (sensibilidad).}
@@ -53,6 +61,12 @@ correlacionados .50-.70 son comunes y discriminables (el propio caso
 ACO funciono en campo con Phi = .64-.84 y Phi simulado = .58, que el
 criterio 0.50 marcaba como colapso); |Phi| >= .70 es la heuristica
 conservadora de discriminabilidad.}
+
+\item{n_nucleos}{Nucleos para paralelizar las replicas (v2.8.0). Default 1
+(apto para servidores compartidos como Connect Cloud). Con el mismo
+\code{seed}, el resultado es IDENTICO con 1 o con N nucleos (streams
+L'Ecuyer por replica); en una PC local use
+\code{parallel::detectCores() - 1}.}
 
 \item{api_key}{Clave OpenAI (solo si hay que calificar deseabilidad).}
 
