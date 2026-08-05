@@ -34,7 +34,11 @@
 #'   con DE = .059-.077 (Phi = .64-.84); el antiguo 0.10 marcaba como
 #'   "uniforme" tambien a ACO (falsa alarma).
 #' @param n_pasadas Numero de pasadas independientes del LLM que se promedian.
-#'   Por defecto 2.
+#'   Por defecto 4 (desde 2.9.12; antes 2). El motivo no es tanto la precision
+#'   del promedio como las IMPUTACIONES: con 2 pasadas se observaron hasta 5
+#'   items de 20 imputados a 0.5 en una sola corrida, y ese relleno entra
+#'   despues en la simulacion de estructura como si fuera dato. Con 4 pasadas
+#'   las imputaciones desaparecieron en las replicas medidas.
 #' @param max_imputados Proporcion maxima de items sin calificar tolerada; por
 #'   encima se aborta con error (evita diagnosticos optimistas tras un fallo de
 #'   API). Los pocos items no calificados se imputan a 0.5 con warning.
@@ -48,7 +52,7 @@
 #' @export
 calificar_deseabilidad <- function(x, api_key = Sys.getenv("OPENAI_API_KEY"),
                                     modelo = "gpt-4.1-mini", poblacion = NULL,
-                                    umbral_uniforme = 0.05, n_pasadas = 2,
+                                    umbral_uniforme = 0.05, n_pasadas = 4,
                                     max_imputados = 0.25, seed = NULL,
                                     verbose = TRUE) {
   items <- x$items
@@ -177,10 +181,17 @@ calificar_deseabilidad <- function(x, api_key = Sys.getenv("OPENAI_API_KEY"),
                   if (estabilidad < 0.70) "  (BAJA: interpretar con cautela o subir n_pasadas)" else ""))
     cat(">> ", msg, "\n")
   }
+  # 'pasadas' (2.9.12): la matriz de calificaciones individuales, p x n_pasadas.
+  # Se devuelve para que la compuerta pueda construir una BANDA de incertidumbre
+  # del eje 3 sin volver a llamar al LLM: basta remuestrear columnas. Medido en
+  # el Experimento 1: con n_pasadas=2 la prob. de estructura limpia de la misma
+  # escala oscilo entre 0.133 y 0.967 en 6 corridas; el punto solo, sin banda,
+  # da una precision que el dato no tiene.
   invisible(list(deseabilidad = des, por_dimension = por_dim, sd_entre_dim = sd_entre,
                  sd_intra_dim = sd_intra, alerta_intra = alerta_intra,
                  estabilidad = estabilidad, n_imputados = n_imputados,
-                 uniforme = uniforme, riesgo_halo = riesgo_halo, mensaje = msg))
+                 uniforme = uniforme, riesgo_halo = riesgo_halo, mensaje = msg,
+                 pasadas = des_mat))
 }
 
 
@@ -212,6 +223,45 @@ calificar_deseabilidad <- function(x, api_key = Sys.getenv("OPENAI_API_KEY"),
 #' @param deseabilidad Vector 0-1 por item. Si \code{x} es \code{semilla} y es
 #'   \code{NULL}, se llama a \code{\link{calificar_deseabilidad}}.
 #' @param similitud Matriz de similitud de embeddings (para la dependencia local).
+#' @section Calibracion 2.9.13:
+#' \code{carga_propia} y \code{phi_teorico} dejaron de ser los valores de
+#' conveniencia 0.60 y 0.30 y pasaron a los observados en 8 escalas clasicas con
+#' AFC empirico sobre n = 1500 (DASS-21, RSES, BigFive, ECR, NPI, SD3, DD, CFCS,
+#' RIASEC): carga estandarizada media \strong{.695} (p05-p95 = .48-.85) y
+#' correlacion entre factores media \strong{.47} (mediana .504, rango .054-.889).
+#'
+#' El 0.30 anterior quedaba por debajo del percentil 25 de lo observado, y el
+#' 0.60 de carga muy por debajo de la media real. Los dos errores se
+#' potenciaban: con cargas bajas los factores se vuelven indistinguibles en
+#' cuanto el phi sube, asi que la simulacion "rompia" estructuras que en campo
+#' aguantan (DASS-21 correlaciona .805 entre factores y ajusta con CFI .995).
+#'
+#' El valor final de \code{phi_teorico} (0.50) NO es la media empirica (.47)
+#' sino el resultado de un \emph{grid search} sobre los tres parametros del
+#' generador (carga x phi x aquiescencia, 27 combinaciones en 5 escalas), con
+#' validacion dejando una escala fuera. Los cinco pliegues coincidieron en
+#' \strong{phi = .50 y aquiescencia = .35}; solo variaba la carga, que resulto
+#' ser el parametro menos influyente (error 0.388 a 0.400 entre sus extremos,
+#' frente a 0.439 a 0.340 en el phi). Error medio del phi: 0.369 con la
+#' configuracion anterior, \strong{0.308} con esta (-17\%).
+#'
+#' Contraintuitivo pero medido: \strong{quitar la aquiescencia EMPEORA} el
+#' pronostico (error 0.411 con 0 frente a 0.368 con .35). La varianza de metodo
+#' comun no es solo ruido a eliminar: forma parte de como se comportan las
+#' respuestas reales.
+#'
+#' \strong{Techo del enfoque:} ninguna constante puede acertar a la vez en ECR
+#' (factores que correlacionan .054) y CFCS (.856). Para esos casos la salida no
+#' es afinar la constante sino declarar el rango esperado via
+#' \code{phi_teorico = c(min, max)}.
+#'
+#' Se probo tambien derivar ambos de la similitud semantica (afinidad relativa
+#' entre dimensiones y afinidad del item con la suya). Dentro de muestra parecia
+#' funcionar (r = .54 y .37), pero con validacion dejando una escala fuera se
+#' desplomaba (r = .18 y .24) y \strong{no superaba a una constante bien puesta}.
+#' Por eso NO se implemento: la senal semantica existe entre escalas, pero no
+#' generaliza a una escala nueva.
+#'
 #' @param carga_propia,phi_teorico,sd_aquiescencia Parametros del modelo
 #'   generador de datos. \code{carga_propia} admite ademas (v2.9.0) el valor
 #'   \code{"semantica"}: el ORDEN de las cargas se toma de la cohesion de cada
@@ -232,6 +282,30 @@ calificar_deseabilidad <- function(x, api_key = Sys.getenv("OPENAI_API_KEY"),
 #'   \code{seed}, el resultado es IDENTICO con 1 o con N nucleos (streams
 #'   L'Ecuyer por replica); en una PC local use
 #'   \code{parallel::detectCores() - 1}.
+#' @param umbral_fusion Phi simulado a partir del cual dos dimensiones se
+#'   declaran fundidas en el mapa de fusion (default 0.65 desde 2.9.14; antes
+#'   compartia el 0.70 de \code{umbral_phi}, que es OTRA decision: aquella
+#'   define cuando una replica cuenta como "limpia").
+#'
+#'   El 0.65 sale de comparar dos poblaciones de pares cuyo desenlace se conoce:
+#'   72 pares de escalas publicadas que MANTUVIERON sus factores (AFC empirico,
+#'   n = 1500) y 3 pares de la bateria EESTP que se FUNDIERON de verdad en campo.
+#'   Las distribuciones apenas se solapan -los que se separaron llegan como
+#'   maximo a .660 y los que se fundieron estan en .699, .712 y .729- asi que la
+#'   frontera sale de los datos y no del criterio de nadie:
+#'
+#'   \tabular{lll}{
+#'     umbral \tab detecta fusiones \tab falsas alarmas \cr
+#'     0.60   \tab 3 de 3           \tab 3 de 72 \cr
+#'     \strong{0.65} \tab \strong{3 de 3} \tab \strong{1 de 72} \cr
+#'     0.70   \tab 2 de 3           \tab 0 de 72
+#'   }
+#'
+#'   Con 0.70 se perdia el par Conductual ~ Afectivo de la escala de actitud
+#'   hacia la corrupcion (phi .6987) por TRECE MILESIMAS: se fundio en campo y
+#'   no se aviso. Bajar a 0.60 tampoco vale: ahi el NPI pasaria de 7 factores a
+#'   2, un aviso catastrofico y falso.
+#'
 #' @param umbral_rmsea,umbral_phi Criterios de "estructura limpia". El
 #'   default de \code{umbral_phi} sube de 0.50 a 0.70 en v2.7.0: factores
 #'   correlacionados .50-.70 son comunes y discriminables (el propio caso
@@ -252,12 +326,13 @@ calificar_deseabilidad <- function(x, api_key = Sys.getenv("OPENAI_API_KEY"),
 #'   \code{resumen} por replica del escenario central.
 #' @export
 simular_estructura <- function(x, deseabilidad = NULL, similitud = NULL,
-                               carga_propia = 0.60, phi_teorico = 0.30,
+                               carga_propia = 0.695, phi_teorico = 0.50,
                                fuerza_deseabilidad = c(0.3, 0.6, 0.9),
                                sd_aquiescencia = 0.35,
                                umbral_ld = 0.80, fuerza_ld = 1.4,
                                n = 300, n_rep = 100, k_cat = 5,
                                umbral_rmsea = 0.06, umbral_phi = 0.70,
+                               umbral_fusion = 0.65,
                                n_nucleos = 1,
                                api_key = Sys.getenv("OPENAI_API_KEY"),
                                seed = 2026, verbose = TRUE) {
@@ -390,6 +465,40 @@ simular_estructura <- function(x, deseabilidad = NULL, similitud = NULL,
     tasa_no_conv     = vapply(esc, `[[`, numeric(1), "tasa_no_conv"),
     tasa_inadmisible = vapply(esc, `[[`, numeric(1), "tasa_inadmisible"))
 
+  # ---- Sensibilidad al supuesto de correlacion entre factores (2.9.13) -------
+  # phi_teorico es un SUPUESTO, no una estimacion: no se deriva de la escala.
+  # Si se pasa un vector, se re-simula con cada valor (fuerza central) y se
+  # devuelve como escenarios. No predice el phi real -se comprobo que la
+  # semantica no generaliza-, pero responde "bajo que supuesto aguanta tu
+  # escala", que es la pregunta que el investigador si puede juzgar.
+  sensibilidad_phi <- NULL
+  if (length(phi_teorico) > 1) {
+    # DOS valores = RANGO de expectativa ("espero entre .32 y .50"): se simula
+    # en los extremos y en el centro. TRES o mas = valores discretos elegidos
+    # por el usuario, se respetan tal cual. El rango es la forma natural de
+    # declarar el supuesto: nadie sabe si sus factores correlacionaran .32 o
+    # .50, pero si puede acotar entre que valores los espera.
+    phis <- if (length(phi_teorico) == 2) {
+      r <- sort(phi_teorico); c(r[1], mean(r), r[2])
+    } else phi_teorico
+    if (verbose) cat(" Sensibilidad al phi supuesto: ",
+                     paste(sprintf("%.2f", phis), collapse = ", "), "\n", sep = "")
+    f_c <- fuerzas[ceiling(length(fuerzas) / 2)]
+    filas <- lapply(seq_along(phis), function(q) {
+      Phi <<- matrix(phis[q], K, K); diag(Phi) <<- 1
+      var_theta <<- diag(LAMBDA %*% Phi %*% t(LAMBDA))
+      e <- sim_escenario(f_c, seed + 50000L + q * 100L,
+                         etiqueta = sprintf("[phi=%.2f]", phis[q]))
+      data.frame(phi_supuesto = phis[q], prob_limpia = e$prob,
+                 rmsea_med = e$rmsea_med, phi_med = e$phi_med)
+    })
+    sensibilidad_phi <- do.call(rbind, filas)
+    # se deja el modelo en el valor central, que es el que manda en el resto
+    phi_teorico <- phis[ceiling(length(phis) / 2)]
+    Phi <- matrix(phi_teorico, K, K); diag(Phi) <- 1
+    var_theta <- diag(LAMBDA %*% Phi %*% t(LAMBDA))
+  }
+
   i_c  <- ceiling(length(fuerzas) / 2)       # escenario central
   prob <- esc[[i_c]]$prob
   # v2.9.5: IC de Wilson (no Wald): con prob cerca de 0 o 1 el Wald colapsa
@@ -423,7 +532,7 @@ simular_estructura <- function(x, deseabilidad = NULL, similitud = NULL,
         phi_pares[comb[2, q], comb[1, q]] <- esc[[i_c]]$phi_pares_med[q]
     }
     des_dim <- tapply(deseabilidad, dim_por_item, mean)[dims]
-    mapa_fusion <- .mapa_fusion(phi_pares, umbral = umbral_phi,
+    mapa_fusion <- .mapa_fusion(phi_pares, umbral = umbral_fusion,
                                 des_por_dim = des_dim)
   }
 
@@ -453,7 +562,7 @@ simular_estructura <- function(x, deseabilidad = NULL, similitud = NULL,
         cat("   ", etiqueta, paste(g, collapse = " + "), "\n", sep = "")
       }
     }
-    cat(sprintf(">> VEREDICTO: %s\n", veredicto))
+    cat(sprintf(">> ESCENARIO PREVISTO: %s\n", veredicto))
   }
   invisible(list(prob_limpia = prob, prob_ic = ic,
                  prob_min = min(sensibilidad$prob_limpia),
@@ -462,6 +571,7 @@ simular_estructura <- function(x, deseabilidad = NULL, similitud = NULL,
                  rmsea_med = esc[[i_c]]$rmsea_med, phi_med = esc[[i_c]]$phi_med,
                  phi_pares = phi_pares, mapa_fusion = mapa_fusion,
                  sensibilidad = sensibilidad,
+                 sensibilidad_phi = sensibilidad_phi,
                  carga_estandarizada_media = esc[[i_c]]$carga_std,
                  resumen = esc[[i_c]]$M))
 }

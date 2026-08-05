@@ -1,3 +1,45 @@
+# SeMiLLa 2.9.7 (2026-08-03)
+## optimizar_para_campo(): no regresion, umbral consistente y balance visible
+
+Corridas reales (escala de ansiedad ante la estadistica, 18 items, 3
+dimensiones) mostraron que el bucle podia DEGRADAR la escala mientras la
+corregia: elimino los 2 clusters de faceta repetida, pero introdujo 2
+parafrasis gemelas confirmadas por el juez LLM y abrio un desbalance de
+deseabilidad DENTRO de las dimensiones (DE intra 0.09 -> 0.16) que antes no
+existia. El veredicto seguia en "NO APLICAR TODAVIA", ahora por motivos
+distintos, y la funcion devolvia esa version degradada.
+
+- **No regresion**: cada version se puntua con `.score_compuerta()` (el
+  veredicto manda; dentro del mismo veredicto pesan gemelos, clusters, pares,
+  alertas de deseabilidad y probabilidad de estructura limpia) y se devuelve
+  la MEJOR version vista, no la ultima. `$optimizacion$revertido` indica si
+  hubo reversion y `$optimizacion$historial` incorpora la columna `score`.
+- **Umbral de aceptacion consistente**: el filtro que acepta un item nuevo
+  usaba coseno 0.70 FIJO mientras `auditar_redundancia()` detecta con un
+  umbral adaptativo en [0.62, 0.70]. En esa franja el candidato se aceptaba y
+  a la iteracion siguiente reaparecia como par redundante: el bucle perseguia
+  su propia cola (5 de 15 reemplazos fueron reemplazos de reemplazos). Ahora
+  el filtro toma el umbral efectivo de la compuerta menos un margen de 0.03.
+- **Embeddings vivos**: los candidatos se comparan contra una matriz que se
+  actualiza dentro de la misma tanda, de modo que dos reemplazos simultaneos
+  ya no pueden parecerse entre si. `.verificar_redundancia_item()` devuelve
+  ahora `embedding_nuevo` para permitirlo sin re-embeber toda la escala.
+- **Polaridad de deseabilidad preservada**: el prompt de reemplazo recibe la
+  deseabilidad del item que sustituye y exige que el nuevo cueste admitirlo
+  aproximadamente lo mismo. Antes solo habia restriccion anti-halo, y solo si
+  el semaforo de deseabilidad ya estaba en amarillo o rojo: por eso el bucle
+  CREABA el desbalance intra partiendo de un eje en verde.
+- **Facetas ya cubiertas**: el prompt lista los items que SI se conservan en
+  esa dimension y exige una manifestacion distinta de todas ellas. Sin esa
+  lista, 9 de 15 reemplazos de una misma dimension derivaron a la misma idea
+  ("dejar preguntas en blanco").
+- **Balance antes/despues**: `$optimizacion$balance` devuelve un data.frame
+  con el valor inicial, el final y el sentido del cambio por indicador
+  (gemelos, facetas, pares, deseabilidad intra/entre, probabilidad de
+  estructura limpia, |Phi|). En consola se imprime al terminar, marcando con
+  [EMPEORA] lo que se rompio. La funcion optimiza redundancia semantica y
+  puede pagar ese arreglo en otro eje: eso ahora se ve, no se descubre.
+
 # SeMiLLa 2.9.6 (2026-07-29)
 ## Progreso visible en simular_estructura() y avisos de API accionables
 

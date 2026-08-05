@@ -1,7 +1,7 @@
 Package: SeMiLLa
 Type: Package
 Title: SEmantic Measurement of Items via LLM Assistance
-Version: 2.9.6
+Version: 2.9.14
 Date: 2026-07-29
 Authors@R: c(
     person("Jose", "Ventura-Leon",
@@ -36,6 +36,7 @@ Imports:
     digest
 Suggests:
     testthat (>= 3.0.0),
+    hunspell,
     apcluster,
     catR,
     cluster,

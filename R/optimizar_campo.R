@@ -86,9 +86,21 @@
 #'   \item \code{compuerta}: la compuerta de la version final.
 #'   \item \code{optimizacion}: lista con \code{iteraciones},
 #'         \code{historial} (data.frame iteracion x veredicto x
-#'         n_reemplazos) y \code{reemplazos} (data.frame con item viejo,
-#'         item nuevo, dimension y motivo).
+#'         n_reemplazos x score), \code{reemplazos} (data.frame con item
+#'         viejo, item nuevo, dimension y motivo), \code{balance}
+#'         (data.frame antes/despues por indicador, con el sentido del
+#'         cambio) y \code{revertido} (TRUE si la ultima iteracion degrado
+#'         la escala y se devolvio una version anterior).
 #' }
+#'
+#' @section No regresion:
+#' El bucle puede \emph{empeorar} la escala mientras corrige: al romper un
+#' cluster de faceta puede introducir parafrasis gemelas, o desbalancear la
+#' deseabilidad DENTRO de una dimension. Por eso cada version se puntua con
+#' \code{.score_compuerta()} (veredicto primero; luego gemelos, facetas,
+#' pares, alertas de deseabilidad y probabilidad de estructura limpia) y se
+#' devuelve la MEJOR version vista, no la ultima. \code{$optimizacion$balance}
+#' muestra que indicador mejoro y cual empeoro respecto del punto de partida.
 #'
 #' @examples
 #' \dontrun{
@@ -138,9 +150,20 @@ optimizar_para_campo <- function(x,
     iteracion = 0L,
     veredicto = x$compuerta$veredicto,
     n_reemplazos = 0L,
+    score = round(.score_compuerta(x$compuerta), 2),
     stringsAsFactors = FALSE
   )
   reemplazos <- data.frame()
+
+  # NO-REGRESION: el bucle puede empeorar la escala mientras corrige (romper
+  # un cluster de faceta e introducir gemelos, o desbalancear la deseabilidad
+  # dentro de una dimension). Se guarda la MEJOR version vista y es esa la que
+  # se devuelve, no la ultima.
+  mejor <- list(items = x$items, embeddings = x$embeddings,
+                similitud = x$similitud, compuerta = x$compuerta,
+                score = .score_compuerta(x$compuerta), iteracion = 0L,
+                n_reemplazos = 0L)
+  compuerta_inicial <- x$compuerta
 
   # Conductas y muletillas prohibidas ACUMULADAS entre iteraciones: sin esta
   # memoria, los reemplazos de una tanda derivan hacia una formula nueva
@@ -217,17 +240,61 @@ optimizar_para_campo <- function(x,
           " palabras\n", sep = "")
     }
 
+    # Umbral de aceptacion del candidato = el MISMO que usara la compuerta
+    # para detectarlo. Antes el filtro era fijo en 0.70 mientras la compuerta
+    # detecta con un umbral adaptativo en [0.62, 0.70]: cada reemplazo se
+    # aceptaba y a la iteracion siguiente aparecia como par nuevo, y el bucle
+    # perseguia su propia cola (5 de 15 reemplazos del caso 2026-08-03 fueron
+    # reemplazos de reemplazos).
+    umbral_acept <- x$compuerta$redaccion$parametros$umbral_sem %||% 0.70
+    # Margen de seguridad: quedar JUSTO en el umbral vuelve a marcarse en
+    # cuanto la linea base de similitud se mueve al cambiar los items.
+    umbral_acept <- max(0.40, umbral_acept - 0.03)
+
+    # Deseabilidad por item (si la compuerta la calculo): sirve para pedir que
+    # el reemplazo conserve la POLARIDAD del item que sustituye. Sin esto, el
+    # optimizador mete conductas de evitacion (comprometedoras) junto a items
+    # fisiologicos (inocuos) y abre un contraste DENTRO de la dimension, que
+    # es justo la alerta que fragmenta el factor.
+    desea_vec <- x$compuerta$deseabilidad$deseabilidad
+    if (!is.null(desea_vec) && length(desea_vec) != nrow(x$items))
+      desea_vec <- NULL
+
+    # Embeddings vivos: se actualizan con cada candidato aceptado para que el
+    # siguiente reemplazo de la MISMA tanda ya lo tenga en cuenta.
+    emb_vivos <- x$embeddings
+
     n_ok <- 0L
     for (r in seq_len(nrow(plan))) {
+      idx_r <- plan$idx[r]
+      # Items que SI se conservan en esa dimension: el prompt debe listarlos
+      # para exigir una manifestacion distinta a todas ellas. Sin esta lista,
+      # los reemplazos de una dimension derivan todos hacia la misma idea
+      # (9 de 15 del caso 2026-08-03 acabaron en "dejar preguntas en blanco").
+      conservados <- x$items$item[x$items$dimension == x$items$dimension[idx_r]]
+      conservados <- setdiff(conservados, x$items$item[idx_r])
+
       nuevo <- .reemplazar_item_dirigido(
         x = x, openai = openai, modelo = modelo,
-        idx_item = plan$idx[r],
+        idx_item = idx_r,
         motivo = plan$motivo[r],
         conductas_prohibidas = prohibidas_acum,
         anti_halo = anti_halo,
         poblacion = poblacion,
-        rango_palabras = rango_palabras
+        rango_palabras = rango_palabras,
+        umbral_redundancia = umbral_acept,
+        embeddings_existentes = emb_vivos,
+        items_dimension_conservados = conservados,
+        deseabilidad_objetivo = if (!is.null(desea_vec)) desea_vec[idx_r] else NA_real_
       )
+      # Contrato ampliado: devuelve list(item, emb) para poder mantener
+      # emb_vivos sin re-embeber toda la escala en cada candidato.
+      emb_nuevo <- NULL
+      if (is.list(nuevo)) { emb_nuevo <- nuevo$emb; nuevo <- nuevo$item }
+      if (!is.null(nuevo) && !is.null(emb_nuevo) && !is.null(emb_vivos) &&
+          length(emb_nuevo) == ncol(emb_vivos)) {
+        emb_vivos[idx_r, ] <- emb_nuevo
+      }
       if (!is.null(nuevo)) {
         reemplazos <- rbind(reemplazos, data.frame(
           iteracion  = it,
@@ -266,9 +333,40 @@ optimizar_para_campo <- function(x,
       n_rep = n_rep_intermedio, modelo = modelo, seed = seed,
       verbose = verbose)
 
+    sc <- .score_compuerta(x$compuerta)
     historial <- rbind(historial, data.frame(
       iteracion = it, veredicto = x$compuerta$veredicto,
-      n_reemplazos = n_ok, stringsAsFactors = FALSE))
+      n_reemplazos = n_ok, score = round(sc, 2), stringsAsFactors = FALSE))
+
+    if (sc > mejor$score) {
+      mejor <- list(items = x$items, embeddings = x$embeddings,
+                    similitud = x$similitud, compuerta = x$compuerta,
+                    score = sc, iteracion = it, n_reemplazos = n_ok)
+    } else if (verbose) {
+      cat("  ", .color_warning(), " Esta iteracion NO mejora la version ",
+          "guardada (iter ", mejor$iteracion, "): se conserva aquella.\n",
+          sep = "")
+    }
+  }
+
+  # NO-REGRESION: se devuelve la MEJOR version vista, no la ultima. Si la
+  # ultima iteracion degrado la escala, se revierte a la guardada y se recorta
+  # la trazabilidad de reemplazos a las iteraciones que si sobrevivieron.
+  revertido <- FALSE
+  if (it > 0 && .score_compuerta(x$compuerta) < mejor$score) {
+    revertido <- TRUE
+    if (verbose) {
+      cat("\n  ", .color_warning(), " La ultima version es PEOR que la de la ",
+          "iteracion ", mejor$iteracion, ": se revierte a esa.\n", sep = "")
+    }
+    x$items      <- mejor$items
+    x$embeddings <- mejor$embeddings
+    x$similitud  <- mejor$similitud
+    x$compuerta  <- mejor$compuerta
+    if (nrow(reemplazos) > 0)
+      reemplazos <- reemplazos[reemplazos$iteracion <= mejor$iteracion, ,
+                               drop = FALSE]
+    it <- mejor$iteracion
   }
 
   # Compuerta FINAL con las replicas completas: es la que emite el veredicto
@@ -281,14 +379,24 @@ optimizar_para_campo <- function(x,
       n_rep = n_rep, modelo = modelo, seed = seed, verbose = verbose)
     historial <- rbind(historial, data.frame(
       iteracion = it, veredicto = x$compuerta$veredicto,
-      n_reemplazos = 0L, stringsAsFactors = FALSE))
+      n_reemplazos = 0L, score = round(.score_compuerta(x$compuerta), 2),
+      stringsAsFactors = FALSE))
   }
+
+  # Comparacion honesta antes/despues: que mejoro y que empeoro. El bucle
+  # optimiza redundancia semantica; puede pagar ese arreglo en otro eje, y el
+  # usuario tiene que verlo sin recalcular nada.
+  g0 <- historial$veredicto[1]
+  balance <- .balance_optimizacion(compuerta_inicial, x$compuerta)
 
   x$optimizacion <- list(
     iteraciones = max(historial$iteracion),
     veredicto_objetivo = veredicto_objetivo,
     objetivo_alcanzado = .veredicto_cumple(x$compuerta$veredicto,
                                            veredicto_objetivo),
+    veredicto_inicial = g0,
+    revertido = revertido,
+    balance = balance,
     historial = historial,
     reemplazos = reemplazos
   )
@@ -298,12 +406,29 @@ optimizar_para_campo <- function(x,
     cat("  Optimizacion terminada: ", nrow(reemplazos),
         " item(s) reemplazado(s) en ", max(historial$iteracion),
         " iteracion(es).\n", sep = "")
-    cat("  Veredicto final: ", x$compuerta$veredicto,
+    cat("  Escenario previsto final: ", x$compuerta$veredicto,
         if (x$optimizacion$objetivo_alcanzado) paste0(" (objetivo '",
           veredicto_objetivo, "' alcanzado)") else
           paste0(" (objetivo '", veredicto_objetivo,
                  "' NO alcanzado: revisar x$compuerta$acciones)"),
         "\n", sep = "")
+    if (revertido)
+      cat("  (se revirtio a la iteracion ", mejor$iteracion,
+          ": las posteriores empeoraban la escala)\n", sep = "")
+    cat("\n  BALANCE antes -> despues:\n")
+    for (i in seq_len(nrow(balance))) {
+      b <- balance[i, ]
+      cat(sprintf("    %-12s %6s -> %6s   %s\n", b$indicador,
+                  if (is.na(b$antes)) "-" else format(round(b$antes, 2)),
+                  if (is.na(b$despues)) "-" else format(round(b$despues, 2)),
+                  switch(b$cambio, "mejora" = "[mejora]",
+                         "empeora" = "[EMPEORA]", b$cambio)))
+    }
+    if (any(balance$cambio == "empeora")) {
+      cat("\n  ", .color_warning(), " Este optimizador minimiza redundancia ",
+          "semantica: puede pagar ese arreglo en otro eje. Revisa las filas ",
+          "marcadas [EMPEORA] antes de dar la escala por buena.\n", sep = "")
+    }
     cat(.linea("-"), "\n")
   }
 
@@ -345,6 +470,101 @@ optimizar_para_campo <- function(x,
   r_v <- rango[veredicto]; r_o <- rango[objetivo]
   if (is.na(r_v) || is.na(r_o)) return(FALSE)
   r_v >= r_o
+}
+
+
+# Puntaje ordenable de una compuerta: MAYOR = mejor. Existe porque el bucle
+# de optimizacion puede DEGRADAR la escala mientras corrige (caso verificado
+# 2026-08-03, escala de ansiedad ante la estadistica: los 2 clusters de
+# faceta se eliminaron, pero aparecieron 2 gemelos confirmados y un
+# desbalance de deseabilidad INTRA-dimension que antes no existia). Sin este
+# puntaje el bucle devolvia la ULTIMA version, no la mejor.
+#
+# El veredicto manda (bloque de 1000); dentro del mismo veredicto se premia
+# menos redundancia, ausencia de alertas de deseabilidad y mayor
+# probabilidad de estructura limpia.
+
+# Comparacion antes/despues de la optimizacion en los indicadores que la
+# compuerta vigila. Devuelve un data.frame con el valor inicial, el final y
+# el sentido del cambio, para que el usuario vea de un vistazo que se arreglo
+# y que se rompio (arreglar un eje a costa de otro es el modo de fallo tipico
+# de este optimizador).
+
+#' @title Comparar dos compuertas indicador por indicador
+#'
+#' @description
+#' Devuelve que mejoro y que empeoro entre dos ejecuciones de
+#' \code{\link{compuerta_pre_aplicacion}}: gemelos, facetas repetidas, pares,
+#' deseabilidad intra y entre dimensiones, probabilidad de estructura limpia y
+#' |Phi|. Es la tabla que \code{\link{optimizar_para_campo}} imprime al
+#' terminar, expuesta para poder compararla en cualquier otro punto del flujo
+#' (por ejemplo antes y despues del refinamiento).
+#'
+#' @param g0,g1 Objetos \code{semilla_compuerta} (antes y despues).
+#' @return \code{data.frame} con indicador, antes, despues y sentido del cambio
+#'   (\code{"mejora"}, \code{"empeora"}, \code{"igual"} o \code{"cambio"}).
+#' @seealso \code{\link{compuerta_pre_aplicacion}}, \code{\link{optimizar_para_campo}}
+#' @export
+balance_optimizacion <- function(g0, g1) .balance_optimizacion(g0, g1)
+
+#' @keywords internal
+.balance_optimizacion <- function(g0, g1) {
+  ind <- function(g) {
+    red <- g$redaccion
+    c(gemelos  = if (!is.null(red$gemelos_llm)) nrow(red$gemelos_llm) else 0,
+      facetas  = if (!is.null(red$facetas_repetidas)) nrow(red$facetas_repetidas) else 0,
+      pares    = if (!is.null(red$pares_redundantes)) nrow(red$pares_redundantes) else 0,
+      desea_intra = g$deseabilidad$sd_intra_dim %||% NA_real_,
+      desea_entre = g$deseabilidad$sd_entre_dim %||% NA_real_,
+      prob_limpia = g$estructura$prob_limpia %||% NA_real_,
+      phi         = g$estructura$phi_med %||% NA_real_)
+  }
+  a <- ind(g0); b <- ind(g1)
+  # Sentido deseable de cada indicador: -1 = conviene que baje, +1 = que suba.
+  bueno <- c(gemelos = -1, facetas = -1, pares = -1, desea_intra = -1,
+             desea_entre = 1, prob_limpia = 1, phi = 0)
+  cambio <- vapply(names(a), function(k) {
+    if (is.na(a[[k]]) || is.na(b[[k]])) return("—")
+    d <- b[[k]] - a[[k]]
+    if (abs(d) < 1e-8) return("igual")
+    if (bueno[[k]] == 0) return("cambio")
+    if (sign(d) == bueno[[k]]) "mejora" else "empeora"
+  }, character(1))
+  data.frame(indicador = names(a), antes = as.numeric(a),
+             despues = as.numeric(b), cambio = unname(cambio),
+             stringsAsFactors = FALSE, row.names = NULL)
+}
+
+
+#' @keywords internal
+.score_compuerta <- function(g) {
+  if (is.null(g)) return(-Inf)
+  rango <- c("NO APLICAR TODAVIA" = 1L,
+             "APLICAR COMO ESCALA GLOBAL" = 2L,
+             "APLICAR CON CAUTELA" = 3L,
+             "LISTA PARA CAMPO" = 4L)
+  niv <- rango[g$veredicto]
+  if (is.na(niv)) niv <- 0L
+
+  red   <- g$redaccion
+  n_gem <- if (!is.null(red$gemelos_llm)) nrow(red$gemelos_llm) else 0L
+  fac   <- red$facetas_repetidas
+  n_fac <- if (!is.null(fac)) nrow(fac) else 0L
+  n_par <- if (!is.null(red$pares_redundantes)) nrow(red$pares_redundantes) else 0L
+
+  des    <- g$deseabilidad
+  intra  <- if (isTRUE(des$alerta_intra)) 1L else 0L
+  halo   <- if (isTRUE(des$riesgo_halo))  1L else 0L
+  unifor <- if (isTRUE(des$uniforme))     1L else 0L
+
+  prob <- g$estructura$prob_limpia
+  if (is.null(prob) || is.na(prob)) prob <- 0
+
+  # Un gemelo confirmado por el juez LLM pesa mas que un cluster, y un
+  # cluster mas que un par suelto (jerarquia de la propia compuerta).
+  penal <- 4 * n_gem + 2.5 * n_fac + 0.5 * n_par +
+           5 * intra + 8 * halo + 2 * unifor
+  as.numeric(niv) * 1000 - penal + 10 * prob
 }
 
 
@@ -560,7 +780,11 @@ optimizar_para_campo <- function(x,
                                       conductas_prohibidas = character(0),
                                       anti_halo = FALSE,
                                       poblacion = NULL,
-                                      rango_palabras = c(6L, 16L)) {
+                                      rango_palabras = c(6L, 16L),
+                                      umbral_redundancia = 0.70,
+                                      embeddings_existentes = NULL,
+                                      items_dimension_conservados = character(0),
+                                      deseabilidad_objetivo = NA_real_) {
   dim_nombre <- x$items$dimension[idx_item]
   def_dim <- if (is.list(x$concepto$dimensiones))
                x$concepto$dimensiones[[dim_nombre]] %||% dim_nombre
@@ -588,6 +812,33 @@ optimizar_para_campo <- function(x,
     "LONGITUD OBLIGATORIA: el item debe tener entre ", rango_palabras[1],
     " y ", rango_palabras[2], " palabras, similar al resto de la escala. ",
     "Gasta las palabras en el contenido, no en adornos.\n",
+    # FACETAS YA CUBIERTAS: sin esta lista los reemplazos de una dimension
+    # derivan todos hacia la misma manifestacion (caso 2026-08-03: 9 de 15
+    # reemplazos acabaron siendo variantes de "dejar preguntas en blanco").
+    if (length(items_dimension_conservados) > 0) paste0(
+      "MANIFESTACIONES YA CUBIERTAS en esta dimension (el nuevo item debe ",
+      "medir una DISTINTA de todas ellas, no una variante):\n",
+      paste0("  - ", items_dimension_conservados, collapse = "\n"), "\n",
+      "Elige otra via de expresion de la misma dimension: si las cubiertas ",
+      "son conductas, considera una reaccion fisica o un pensamiento; si son ",
+      "reacciones fisicas, considera una conducta o una anticipacion.\n") else "",
+    # POLARIDAD DE DESEABILIDAD: mantener al nuevo item en el mismo nivel de
+    # "cuanto cuesta admitirlo" que el que sustituye. Mezclar items
+    # comprometedores con items inocuos DENTRO de una dimension abre varianza
+    # de metodo y la parte en dos (alerta_intra de la compuerta).
+    if (!is.na(deseabilidad_objetivo)) paste0(
+      "NIVEL DE EXPOSICION OBLIGATORIO: el item que sustituyes tiene una ",
+      "deseabilidad social de ", sprintf("%.2f", deseabilidad_objetivo),
+      " en escala 0-1 (0 = admitirlo deja mal, 1 = admitirlo queda bien). ",
+      "El nuevo item debe costar admitirlo APROXIMADAMENTE LO MISMO que los ",
+      "demas items de su dimension: ",
+      if (deseabilidad_objetivo < 0.40)
+        paste0("algo que a la persona le incomoda reconocer, pero sin ",
+               "convertirlo en una confesion grave.\n")
+      else if (deseabilidad_objetivo > 0.60)
+        paste0("algo que no compromete a quien lo admite, en la misma linea ",
+               "que el resto.\n")
+      else "algo de exposicion intermedia, ni confesion ni tramite.\n") else "",
     if (anti_halo) {
       tipo <- .tipo_dimension(dim_nombre, def_dim)
       switch(tipo,
@@ -664,11 +915,22 @@ optimizar_para_campo <- function(x,
       items_evitar <- unique(c(items_evitar, candidato))
       next
     }
+    # Aceptacion con el MISMO umbral con el que la compuerta va a detectar
+    # (adaptativo, no el 0.70 fijo de antes) y contra los embeddings VIVOS de
+    # la escala, que ya incluyen los reemplazos de esta misma tanda. Es lo que
+    # impide que el bucle persiga su propia cola.
     otros <- x$items$item[-idx_item]
+    emb_otros <- if (!is.null(embeddings_existentes) &&
+                     nrow(embeddings_existentes) == nrow(x$items))
+                   embeddings_existentes[-idx_item, , drop = FALSE] else NULL
     check <- .verificar_redundancia_item(
       openai = openai, nuevo_item = candidato,
-      items_existentes = otros, umbral = 0.70)
-    if (!check$redundante) return(candidato)
+      items_existentes = otros,
+      embeddings_existentes = emb_otros,
+      umbral = umbral_redundancia)
+    if (!check$redundante) {
+      return(list(item = candidato, emb = check$embedding_nuevo))
+    }
     items_evitar <- unique(c(items_evitar, candidato, check$items_similares))
   }
   NULL

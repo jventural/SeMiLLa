@@ -204,7 +204,14 @@
 #  cruzada queda visible en la simulacion aunque el AFC previsto no la modele.
 #' @keywords internal
 .lambda_semantica <- function(similitud, memb, K,
-                              rango = c(0.45, 0.75),
+                              # 2.9.13: rango recalibrado contra 246 items de 8
+                              # escalas con AFC empirico (n=1500). La carga
+                              # estandarizada real tiene media .695 y p05-p95 de
+                              # .48 a .85; el rango anterior (.45-.75) estaba
+                              # desplazado hacia abajo y hacia que los factores
+                              # se volvieran indistinguibles en cuanto el phi
+                              # subia -- justo lo que hacia fallar al oraculo.
+                              rango = c(0.48, 0.85),
                               umbral_cruce = 0.90,
                               carga_cruzada = 0.20) {
   S <- as.matrix(similitud)
@@ -900,7 +907,7 @@ print.semilla_estres <- function(x, ...) {
   }
   cat(sprintf(" >> INDICE GLOBAL DE FRAGILIDAD: %.2f (0 = robusta, 1 = fragil)\n",
               x$indice_global))
-  cat(sprintf(" >> VEREDICTO: %s\n", x$veredicto))
+  cat(sprintf(" >> ESCENARIO PREVISTO: %s\n", x$veredicto))
   if (!is.null(x$minutos)) cat(sprintf(" (completado en %.1f min con %d nucleo(s))\n",
                                        x$minutos, x$params$n_nucleos))
   invisible(x)
@@ -925,7 +932,7 @@ plot.semilla_estres <- function(x, ...) {
                                 limits = c(0, 1)) +
     ggplot2::labs(x = "Dosis del sesgo", y = "Prob. de estructura limpia",
                   title = "Prueba de estres de la escala",
-                  subtitle = sprintf("Linea roja: umbral de quiebre (%.0f%%). Veredicto: %s",
+                  subtitle = sprintf("Linea roja: umbral de quiebre (%.0f%%). Escenario previsto: %s",
                                      100 * x$umbral_quiebre, x$veredicto)) +
     ggplot2::theme_minimal(base_size = 12)
   if (nrow(qq)) g <- g + ggplot2::geom_vline(data = qq,

@@ -64,6 +64,14 @@
 #'   Default \code{"auto"} (adaptativo).
 #' @param n Tamano muestral simulado (default 300).
 #' @param n_rep Replicas por escenario de la simulacion (default 100).
+#' @param n_banda Numero de vectores de deseabilidad con los que se re-simula
+#'   para estimar la BANDA de incertidumbre del eje 3 (default 4; 0 desactiva).
+#'   No cuesta llamadas al LLM: los vectores se remuestrean de las pasadas que
+#'   el juez ya hizo. Existe porque el eje 3 amplifica diferencias minimas del
+#'   juez: con vectores correlacionados a r = .90 la probabilidad de estructura
+#'   limpia paso de .87 a .20 (Experimento 1), y en 6 corridas de la misma
+#'   escala oscilo entre .13 y .97. Reportar un punto sin banda transmite una
+#'   precision que el dato no tiene.
 #' @param modelo Modelo LLM para calificar deseabilidad.
 #' @param seed Semilla de la simulacion.
 #' @param verbose Mostrar el detalle de cada paso.
@@ -107,6 +115,8 @@ compuerta_pre_aplicacion <- function(x,
                                      umbral_faceta = "auto",
                                      n             = 300,
                                      n_rep         = 100,
+                                     n_pasadas     = 4,
+                                     n_banda       = 4,
                                      modelo        = "gpt-4.1-mini",
                                      seed          = 2026,
                                      verbose       = TRUE,
@@ -126,6 +136,50 @@ compuerta_pre_aplicacion <- function(x,
   estados  <- character(3)
   detalles <- character(3)
   acciones <- character(0)
+
+  # ---------------------------------------------------------------------------
+  # AVISOS DE DISENO (2.9.14) — se leen ANTES de simular, no cuestan nada
+  # ---------------------------------------------------------------------------
+  # Vienen del Experimento 3: tres escalas construidas con SeMiLLa que se
+  # aplicaron a 200 personas y COLAPSARON (5 factores -> 2, 3 -> 1, 10 -> 2),
+  # con correlaciones entre factores mayores que 1 en dos de ellas. La compuerta
+  # les habia dado probabilidad de estructura limpia de .80, 1.00 y .97.
+  #
+  # Los dos defectos que las hundieron eran visibles en el DISENO, sin simular
+  # ni recoger un dato. Cuestan una linea cada uno y no dependen del LLM.
+  avisos_diseno <- character(0)
+
+  # (a) RETIRADO. Se habia anadido un aviso para dimensiones con menos de 3
+  #     items, justificado en que "Valores positivos" tenia 10 factores de 2
+  #     items. Al verificarlo resulto que esa era una version TEMPRANA que nunca
+  #     se aplico: la bateria de campo tenia 4 factores de 8 items. El chequeo
+  #     puede ser razonable en teoria -un factor con 2 indicadores no queda
+  #     identificado- pero se queda sin la evidencia que lo motivaba, y aqui no
+  #     se anaden reglas sin un caso que las respalde.
+  n_por_dim <- table(x$items$dimension)
+
+  # (b) Dimensiones definidas por POLARIDAD y no por contenido. "Personalidad
+  #     moral" tenia una dimension llamada "Reflexion sociomoral (invertir
+  #     puntuaciones)" con 8 de sus 20 items: lo que emergio fue un factor de
+  #     METODO. De los 17 items inversos de aquella bateria, ninguno sobrevivio.
+  pol <- grepl("invert|inverso|reverse|recodific|puntuacion(es)? inversa",
+               names(n_por_dim), ignore.case = TRUE)
+  if (any(pol)) {
+    avisos_diseno <- c(avisos_diseno, sprintf(
+      paste0("Dimension(es) definida(s) por la POLARIDAD y no por el ",
+             "contenido (%s). Los items inversos tienden a agruparse por COMO ",
+             "se puntuan, no por lo que miden: lo que aparece es un factor de ",
+             "metodo. Definir la dimension por su contenido y repartir los ",
+             "items inversos entre las demas."),
+      paste(names(n_por_dim)[pol], collapse = ", ")))
+    acciones <- c(acciones, paste0(
+      "Redefinir por contenido la(s) dimension(es) nombrada(s) por su ",
+      "polaridad: ", paste(names(n_por_dim)[pol], collapse = ", ")))
+  }
+  if (verbose && length(avisos_diseno)) {
+    cat("\n", .color_amarillo("[AVISOS DE DISENO]"), "\n", sep = "")
+    for (a in avisos_diseno) cat("  - ", a, "\n", sep = "")
+  }
 
   # ---------------------------------------------------------------------------
   # PASO 1/3: REDACCION (pares + facetas + sintaxis)
@@ -239,7 +293,8 @@ compuerta_pre_aplicacion <- function(x,
   if (verbose) cat("\n", .color_azul("[COMPUERTA 2/3] DESEABILIDAD"), "\n", sep = "")
   deseab <- tryCatch(
     calificar_deseabilidad(x, api_key = api_key, modelo = modelo,
-                           poblacion = poblacion, verbose = verbose),
+                           poblacion = poblacion, n_pasadas = n_pasadas,
+                           verbose = verbose),
     error = function(e) e
   )
   # Robustez: si el juicio del LLM es INESTABLE entre pasadas (r < .70), el
@@ -248,11 +303,14 @@ compuerta_pre_aplicacion <- function(x,
   # items). Se recalifica con el doble de pasadas antes de emitir juicio.
   if (!inherits(deseab, "error") && is.finite(deseab$estabilidad %||% NA) &&
       deseab$estabilidad < 0.70) {
+    # Recalifica con el DOBLE de pasadas de las que se acaban de usar: con un
+    # 8 fijo, llamar a la compuerta con n_pasadas = 8 repetia lo ya hecho.
+    n_pas2 <- max(8L, as.integer(n_pasadas) * 2L)
     if (verbose) cat("  (estabilidad r=", sprintf("%.2f", deseab$estabilidad),
-                     " < .70: recalificando con 4 pasadas...)\n", sep = "")
+                     " < .70: recalificando con ", n_pas2, " pasadas...)\n", sep = "")
     deseab2 <- tryCatch(
       calificar_deseabilidad(x, api_key = api_key, modelo = modelo,
-                             poblacion = poblacion, n_pasadas = 4,
+                             poblacion = poblacion, n_pasadas = n_pas2,
                              verbose = verbose),
       error = function(e) NULL
     )
@@ -306,6 +364,47 @@ compuerta_pre_aplicacion <- function(x,
     estructura <- NULL
   } else {
     prob <- estructura$prob_limpia
+
+    # -------------------------------------------------------------------------
+    # BANDA DE INCERTIDUMBRE DEL JUEZ (2.9.12)
+    # -------------------------------------------------------------------------
+    # El motor de simulacion es determinista (mismo vector + misma semilla =
+    # mismo resultado, verificado 3/3), pero AMPLIFICA el ruido del juez: dos
+    # vectores con r = .90 dieron prob .87 y .20. Se re-simula con n_banda
+    # vectores remuestreados de las pasadas que el juez YA hizo -sin llamadas
+    # nuevas- y se decide con la MEDIANA, no con el punto de una sola pasada.
+    banda <- NULL
+    pas <- if (!inherits(deseab, "error")) deseab$pasadas else NULL
+    if (!is.null(pas) && is.matrix(pas) && ncol(pas) >= 2 && n_banda > 0) {
+      if (verbose) cat("  (banda: re-simulando con ", n_banda,
+                       " vectores del juez...)\n", sep = "")
+      n_rep_b <- max(10L, round(n_rep / 3))
+      probs_b <- vapply(seq_len(n_banda), function(b) {
+        set.seed((seed %||% 2026) + 1000L + b)
+        cols <- sample.int(ncol(pas), ncol(pas), replace = TRUE)
+        v <- rowMeans(pas[, cols, drop = FALSE], na.rm = TRUE)
+        v[!is.finite(v)] <- 0.5
+        v <- pmin(1, pmax(0, v))
+        s <- tryCatch(simular_estructura(x, deseabilidad = v,
+                                         similitud = x$similitud,
+                                         n = n, n_rep = n_rep_b,
+                                         api_key = api_key, seed = seed,
+                                         verbose = FALSE, ...),
+                      error = function(e) NULL)
+        if (is.null(s)) NA_real_ else s$prob_limpia
+      }, numeric(1))
+      probs_b <- probs_b[is.finite(probs_b)]
+      if (length(probs_b) >= 2) {
+        banda <- list(probs = probs_b,
+                      mediana = stats::median(probs_b),
+                      min = min(probs_b), max = max(probs_b),
+                      n_rep_banda = n_rep_b)
+        # La mediana de la banda sustituye al punto: es la misma medida, pero
+        # sin depender de que una sola llamada al juez saliera alta o baja.
+        prob <- banda$mediana
+      }
+    }
+
     # Distincion clave (caso PM policial): "estructura no limpia" puede
     # significar dos cosas MUY distintas. Si el RMSEA simulado es aceptable
     # y el fallo es solo la separabilidad (Phi alto), la escala SI es
@@ -340,6 +439,30 @@ compuerta_pre_aplicacion <- function(x,
                "estructura sucia. Corregir items segun pasos 1-2 y re-pasar ",
                "la compuerta."))
     }
+    # -------------------------------------------------------------------------
+    # INDETERMINACION (2.9.12): la banda cruza el umbral de decision
+    # -------------------------------------------------------------------------
+    # Un umbral duro sobre un input estocastico es fragil por construccion. Si
+    # con los vectores del propio juez unas simulaciones quedan por encima de
+    # .80 y otras por debajo, el "ok" no describe la escala: describe cual de
+    # las llamadas al LLM toco. En ese caso no se afirma que este limpia.
+    if (!is.null(banda) && banda$min < 0.80 && banda$max >= 0.80) {
+      if (estados[3] == "ok") estados[3] <- "advertencia"
+      detalles[3] <- sprintf(
+        paste0("INDETERMINADO: con los vectores del propio juez la prob. de ",
+               "estructura limpia va de %.0f%% a %.0f%% (mediana %.0f%%) y ",
+               "cruza el umbral de decision; no puede afirmarse que la ",
+               "estructura sea limpia"),
+        100 * banda$min, 100 * banda$max, 100 * banda$mediana)
+      acciones <- c(acciones, paste0(
+        "La estructura queda INDETERMINADA por la variabilidad del juez de ",
+        "deseabilidad: correr el modo Completo (mas replicas) o subir ",
+        "n_pasadas antes de decidir sobre las subescalas."))
+    } else if (!is.null(banda)) {
+      detalles[3] <- paste0(detalles[3], sprintf(
+        " [banda del juez: %.0f-%.0f%%]", 100 * banda$min, 100 * banda$max))
+    }
+
     # Extremo opuesto al halo: dimensiones casi ORTOGONALES. Un |Phi| ~ 0
     # tambien es problema (caso VP: Apertura casi ortogonal al resto): las
     # subescalas no se relacionan, el puntaje total pierde sentido y el
@@ -381,9 +504,16 @@ compuerta_pre_aplicacion <- function(x,
                         else which(idx), collapse = ", "),
           stringsAsFactors = FALSE)
       }))
-    detalles[3] <- paste0(detalles[3], sprintf(
-      "; estructura esperable: %d factor(es), no %d",
-      mapa$k_esperado, length(unique(x$items$dimension))))
+    # 2.9.14: la FUSION va DELANTE, no como coletilla. En el Experimento 3 la
+    # probabilidad de estructura limpia dio .80, 1.00 y .97 a tres escalas que
+    # colapsaron, mientras el mapa acertaba la direccion en dos de ellas (y en
+    # "Valores positivos" agrupo exactamente los valores adyacentes de Schwartz:
+    # Seguridad + Conformidad + Tradicion + Benevolencia + Universalismo).
+    # Para escalas NUEVAS el mapa es la senal util; la probabilidad, no.
+    detalles[3] <- sprintf(
+      paste0("SE ESPERAN %d FACTOR(ES), NO %d: la simulacion anticipa que ",
+             "algunas dimensiones no se separaran. [%s]"),
+      mapa$k_esperado, length(unique(x$items$dimension)), detalles[3])
     acciones <- c(acciones, sprintf(
       paste0("PRE-REGISTRAR la hipotesis alternativa antes de aplicar: ",
              "ademas del modelo teorico, declarar el modelo B con %d ",
@@ -393,7 +523,35 @@ compuerta_pre_aplicacion <- function(x,
         paste(g, collapse = "+"), character(1)), collapse = " | ")))
     # Una fusion anticipada no bloquea, pero tampoco es "todo limpio": la
     # estructura teorica no se reproducira tal cual.
-    if (estados[3] == "ok") estados[3] <- "advertencia"
+    #
+    # EXCEPCION (2.9.11). La ruta de "halo local" (.mapa_fusion) funde dos
+    # dimensiones por ser ambas deseables y parecidas, SIN exigir que la
+    # simulacion las haya visto correlacionar. Existe porque el motor
+    # INFRAESTIMA el nivel de fusion (PM real .92 / simulada .71), y como
+    # correccion a priori esta bien. Pero cuando la simulacion es contundente
+    # -90 CFAs y >= 95% de replicas limpias- esa correccion acaba
+    # sobrescribiendo la evidencia que la propia simulacion produjo, y el eje 3
+    # no puede dar "ok" ni con estructura 100% limpia y RMSEA de .02.
+    # Medido sobre los 4 constructos del Experimento 1: con la regla anterior
+    # NINGUNO podia tener el eje 3 en verde, pese a que dos superaban el
+    # umbral de prob_limpia. Ningun par alcanzo phi >= .70 en ningun caso.
+    #
+    # Con esta excepcion la fusion se sigue REPORTANDO (el mapa, la accion de
+    # pre-registro y el detalle no cambian): lo unico que no ocurre es la
+    # degradacion automatica del estado.
+    causas_reales <- mapa$causas[nzchar(mapa$causas)]
+    solo_halo <- length(causas_reales) > 0 &&
+      all(!grepl("phi", causas_reales, fixed = TRUE))
+    prob_sim <- if (!is.null(estructura)) estructura$prob_limpia else NA_real_
+    evidencia_fuerte <- !is.null(prob_sim) && length(prob_sim) == 1 &&
+      !is.na(prob_sim) && prob_sim >= 0.95
+    if (estados[3] == "ok" && !(solo_halo && evidencia_fuerte)) {
+      estados[3] <- "advertencia"
+    } else if (estados[3] == "ok") {
+      detalles[3] <- paste0(detalles[3],
+        "; fusion anticipada SOLO por halo local, no confirmada por la ",
+        "simulacion (se reporta como hipotesis, no degrada el veredicto)")
+    }
   }
 
   # ---------------------------------------------------------------------------
@@ -442,7 +600,103 @@ compuerta_pre_aplicacion <- function(x,
     "LISTA PARA CAMPO"
   }
 
+  # ---------------------------------------------------------------------------
+  # ESCENARIO (2.9.13): que le pasa a la escala, no si tiene permiso
+  # ---------------------------------------------------------------------------
+  # Medido en 9 escalas clasicas con AFC empirico (n = 1500): el veredicto
+  # decia "NO APLICAR TODAVIA" a DASS-21 (CFI .995), CFCS (.994), SD3 (.966) y
+  # NPI (.976). Cuatro instrumentos publicados que funcionan. El fallo no era
+  # del motor -el eje 3 acerto en 6 de 9- sino de convertir tres observaciones
+  # heterogeneas en un permiso, y de que el peor de los tres mandara.
+  #
+  # Dos correcciones:
+  #  1. La REDACCION se informa aparte y NO toca el escenario. Que dos items se
+  #     parezcan afecta a la fiabilidad y a la dependencia local, pero no dice
+  #     nada sobre si la estructura se sostiene: DASS-21 tiene el eje 1 en
+  #     riesgo, los ejes 2 y 3 en "ok", y ajusta con CFI .995 sobre n = 1500.
+  #     Llamarla "vulnerable" por como estan escritos sus items seria mezclar
+  #     dos juicios distintos; se dicen los dos, por separado y ambos ciertos:
+  #        "Estructura ROBUSTA · Redaccion con redundancia alta"
+  #  2. El resultado se enuncia como CONDICION, con el mismo vocabulario que
+  #     ya usa estres_escala(): decir de DASS-21 que es vulnerable ante
+  #     dependencia local es cierto; decir que no se aplique es falso.
+  peor <- function(v) {
+    v <- v[!is.na(v)]
+    if (!length(v)) return("ok")
+    if (any(v == "riesgo")) "riesgo" else if (any(v == "advertencia")) "advertencia" else "ok"
+  }
+  # solo deseabilidad y estructura deciden la condicion de la escala
+  nucleo <- peor(estados[2:3])
+  escenario <- if (caso_global) "SOLO PUNTAJE TOTAL" else
+    switch(nucleo,
+           "riesgo"      = "FRAGIL",
+           "advertencia" = "VULNERABLE",
+           "ROBUSTA")
+
+  # ---------------------------------------------------------------------------
+  # LA FUSION MANDA (2.9.14)
+  # ---------------------------------------------------------------------------
+  # El mapa de fusion existe desde 2.7.0 -nacio del caso "Valores positivos" de
+  # la bateria EESTP- pero iba como coletilla del eje 3, y quien mandaba era
+  # prob_limpia. Medido sobre las tres escalas de esa bateria, ya aplicadas a
+  # 200 personas:
+  #
+  #   escala  diseno  real  mapa    prob_limpia   escenario que salia
+  #   ACO       3       2     2 OK     0.800       VULNERABLE
+  #   PM        2       1     1 OK     0.333       FRAGIL
+  #   VP        4       2     3 ~      0.967       VULNERABLE
+  #
+  # El mapa acerto en dos y se quedo corto en una, mientras prob_limpia decia
+  # "saldra limpia el 97% de las veces" de una escala que perdio la mitad de sus
+  # items. Un usuario que lee 0.967 sigue adelante; el aviso estaba, pero no en
+  # el sitio que se mira.
+  #
+  # Que dos factores se fundan no es un matiz del ajuste: cambia QUE mide la
+  # escala. Por eso pasa al primer plano, con los grupos concretos.
+  K_teor <- length(unique(x$items$dimension))
+  if (!is.null(mapa) && isTRUE(mapa$hay_fusion) &&
+      !is.null(mapa$k_esperado) && mapa$k_esperado < K_teor) {
+    grupos_f <- Filter(function(g) length(g) > 1, mapa$grupos)
+    escenario <- sprintf("SE ESPERAN %d FACTOR(ES), NO %d", mapa$k_esperado, K_teor)
+    escenario_fusion <- paste(vapply(grupos_f, function(g)
+      paste(g, collapse = " + "), character(1)), collapse = " · ")
+    det_fusion <- sprintf(
+      paste0("la simulacion anticipa que estas dimensiones NO se separaran: %s. ",
+             "No es un matiz del ajuste: si se funden, la escala mide algo ",
+             "distinto de lo que se diseno%s"),
+      escenario_fusion,
+      if (nucleo == "riesgo") " (y ademas la estructura sale fragil)" else "")
+  } else {
+    escenario_fusion <- NULL; det_fusion <- NULL
+  }
+  calidad_redaccion <- switch(estados[1],
+    "ok"          = "limpia",
+    "advertencia" = "con solapamientos leves",
+    "riesgo"      = "con redundancia alta (revisar antes de publicar la escala)",
+    NA_character_)
+
+  # el detalle de la fusion, si lo hay, gana al generico
+  escenario_detalle <- if (!is.null(det_fusion)) det_fusion else switch(escenario,
+    "ROBUSTA"    = "la estructura se sostiene en las condiciones simuladas",
+    "VULNERABLE" = paste0("la estructura se sostiene, pero es sensible a ",
+                          "las condiciones simuladas: ver que eje avisa"),
+    "FRAGIL"     = paste0("la estructura NO se sostiene en las condiciones ",
+                          "simuladas: corregir antes de ir a campo"),
+    "SOLO PUNTAJE TOTAL" = paste0("utilizable puntuando el total; las ",
+                          "subescalas no se separaran"),
+    NA_character_)
+
   out <- list(
+    # veredicto: se conserva el vocabulario antiguo porque converger_escala(),
+    # optimizar_para_campo() y el asistente ramifican sobre estas cadenas.
+    # Lo que se muestra al usuario es 'escenario'.
+    escenario         = escenario,
+    # dimensiones que la simulacion anticipa que NO se separaran (NULL si no hay)
+    escenario_fusion  = escenario_fusion,
+    # defectos visibles en el diseno, sin simular (ver bloque de arriba)
+    avisos_diseno     = if (length(avisos_diseno)) avisos_diseno else NULL,
+    escenario_detalle = escenario_detalle,
+    calidad_redaccion = calidad_redaccion,
     semaforo = data.frame(
       paso    = c("redaccion", "deseabilidad", "estructura_simulada"),
       estado  = estados,
@@ -456,8 +710,11 @@ compuerta_pre_aplicacion <- function(x,
     estructura   = estructura,
     mapa_fusion  = mapa,
     estructura_alternativa = estructura_alternativa,
+    # banda: NULL si n_banda = 0 o si el juez no dejo pasadas utilizables
+    banda_estructura = if (exists("banda", inherits = FALSE)) banda else NULL,
     parametros   = list(umbral_sem = umbral_sem, umbral_faceta = umbral_faceta,
-                        n = n, n_rep = n_rep, fecha = format(Sys.Date()))
+                        n = n, n_rep = n_rep, n_banda = n_banda,
+                        fecha = format(Sys.Date()))
   )
   class(out) <- c("semilla_compuerta", "list")
 
@@ -497,9 +754,38 @@ print.semilla_compuerta <- function(x, ...) {
     cat("    Pre-registrar como modelo rival del teorico.\n")
   }
   cat("-----------------------------------------------------------\n")
-  col_ver <- if (x$veredicto == "LISTA PARA CAMPO") .color_verde
+  # 2.9.13: se muestra el ESCENARIO (condicion de la escala), no el permiso.
+  # Se mantiene x$veredicto en el objeto por compatibilidad interna.
+  esc <- x$escenario %||% x$veredicto
+  col_ver <- if (esc %in% c("ROBUSTA", "LISTA PARA CAMPO")) .color_verde
              else .color_amarillo
-  cat("  VEREDICTO: ", col_ver(x$veredicto), "\n", sep = "")
+  cat("  ESCENARIO PREVISTO: ", col_ver(esc), "\n", sep = "")
+  # la fusion, si la hay, con los grupos concretos y en su propia linea
+  if (!is.null(x$escenario_fusion))
+    cat("    NO se separaran: ", .color_amarillo(x$escenario_fusion), "\n", sep = "")
+  # Los pares ORDENADOS. El sí/no del umbral se queda con una decision binaria y
+  # tira el matiz: en "Valores positivos" un par estaba en .73 y los otros cinco
+  # entre .59 y .62 -- ver ese salto dice mas que el veredicto.
+  pp <- x$estructura$phi_pares
+  if (!is.null(pp) && is.matrix(pp) && nrow(pp) > 1) {
+    ij <- which(upper.tri(pp), arr.ind = TRUE)
+    v  <- pp[upper.tri(pp)]
+    o  <- order(-v)
+    cat("  PARES DE DIMENSIONES (phi simulado, de mayor a menor):\n")
+    for (q in utils::head(o, 6)) {
+      if (!is.finite(v[q])) next
+      marca <- if (v[q] >= 0.65) " <- riesgo de que no se separen" else ""
+      cat(sprintf("    %-28s ~ %-28s %.3f%s\n",
+                  substr(rownames(pp)[ij[q,1]], 1, 28),
+                  substr(colnames(pp)[ij[q,2]], 1, 28), v[q], marca))
+    }
+    if (length(o) > 6) cat("    ... y ", length(o) - 6, " par(es) mas\n", sep = "")
+  }
+  if (!is.null(x$escenario_detalle) && !is.na(x$escenario_detalle))
+    cat("    ", x$escenario_detalle, "\n", sep = "")
+  if (!is.null(x$calidad_redaccion) && !is.na(x$calidad_redaccion))
+    cat("  REDACCION DE LOS ITEMS: ", x$calidad_redaccion,
+        "\n    (afecta a la fiabilidad y a la dependencia local; no impide aplicar)\n", sep = "")
   if (length(x$acciones) > 0) {
     cat("  ACCIONES RECOMENDADAS:\n")
     for (a in x$acciones) {

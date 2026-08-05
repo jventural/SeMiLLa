@@ -981,7 +981,18 @@ ver_items <- function(x, dimension = NULL) {
 #'        un item bien clasificado (default: 0.667 = al menos 2/3 algoritmos).
 #'        Solo se usa cuando \code{criterio = "ensemble"}. Valores tipicos:
 #'        0.667 (mayoria simple), 0.999 (unanimidad).
-#' @param umbral_redundancia Similitud maxima permitida entre items 0-1 (default: 0.70).
+#' @param heredar_compuerta Si \code{TRUE} (default) y la escala trae
+#'        \code{$compuerta}, el refinamiento hereda su umbral de deteccion y
+#'        prohibe los nucleos lexicos que la compuerta mando a eliminar. Ademas
+#'        devuelve \code{$concordancia} con la re-verificacion del eje 1. Es lo
+#'        que impide que este paso reconstruya lo que la compuerta acababa de
+#'        podar: el consenso empirico PREMIA a los items parecidos entre si.
+#' @param umbral_redundancia Similitud maxima permitida entre items 0-1.
+#'        Default \code{"compuerta"}: toma el umbral efectivo de la compuerta
+#'        (adaptativo, tipicamente 0.62-0.70) menos 0.03 de margen; si no hay
+#'        compuerta, usa 0.70. Antes era 0.70 FIJO, y quedaba una franja en la
+#'        que este paso aceptaba items que la compuerta si marcaba.
+#'        Valor historico (0.70 fijo):
 #'        Items nuevos mas similares que este umbral seran regenerados. El default
 #'        bajo de 0.85 a 0.70 en v2.7.0: la calibracion con datos reales (escala
 #'        PM policial, n=280) mostro que las parafrasis que luego correlacionan
@@ -1025,8 +1036,9 @@ refinar_escala <- function(escala,
                            umbral_precision = 100,
                            criterio = c("kmeans", "ensemble"),
                            umbral_consenso = 0.667,
-                           umbral_redundancia = 0.70,
+                           umbral_redundancia = "compuerta",
                            max_intentos_redundancia = 3,
+                           heredar_compuerta = TRUE,
                            modelo = "gpt-4.1-mini",
                            exportar_excel = TRUE,
                            carpeta_salida = NULL,
@@ -1035,6 +1047,42 @@ refinar_escala <- function(escala,
   criterio <- match.arg(criterio)
   if (umbral_consenso < 0 || umbral_consenso > 1) {
     stop("umbral_consenso debe estar entre 0 y 1")
+  }
+
+  # ---------------------------------------------------------------------------
+  #  CONCORDANCIA CON LA COMPUERTA PRE-APLICACION
+  #  El refinamiento maximiza que cada item caiga en su cluster empirico; la via
+  #  mas facil de conseguirlo es que el item se PAREZCA MAS a sus vecinos de
+  #  dimension. Es decir, tiene un incentivo estructural hacia la redundancia,
+  #  justo lo que la compuerta acaba de podar. Si la escala trae una compuerta,
+  #  se heredan sus dos contratos: el umbral con el que DETECTA parecidos y las
+  #  conductas/muletillas que mando a eliminar.
+  # ---------------------------------------------------------------------------
+  comp_previa   <- if (isTRUE(heredar_compuerta)) escala$compuerta else NULL
+  vetos_compuerta <- character(0)
+  if (!is.null(comp_previa)) {
+    fac <- comp_previa$redaccion$facetas_repetidas
+    if (!is.null(fac) && nrow(fac) > 0)
+      vetos_compuerta <- unique(c(vetos_compuerta, fac$nucleo_lexico))
+    vetos_compuerta <- vetos_compuerta[nzchar(vetos_compuerta)]
+  }
+  # Umbral: por defecto el MISMO con el que la compuerta detecta (adaptativo,
+  # tipicamente 0.62-0.70), menos un margen. Antes era 0.70 fijo y quedaba una
+  # franja donde el refinamiento aceptaba lo que la compuerta rechazaba.
+  if (identical(umbral_redundancia, "compuerta")) {
+    u <- comp_previa$redaccion$parametros$umbral_sem
+    u <- suppressWarnings(as.numeric(u))
+    umbral_redundancia <- if (length(u) == 1 && !is.na(u))
+      max(0.40, u - 0.03) else 0.70
+    if (verbose) {
+      cat("  Umbral de redundancia: ", sprintf("%.2f", umbral_redundancia),
+          if (!is.null(comp_previa)) " (heredado de la compuerta)" else
+            " (por defecto: la escala no traia compuerta)", "\n", sep = "")
+    }
+  }
+  if (verbose && length(vetos_compuerta) > 0) {
+    cat("  Vetado por la compuerta (no reintroducir): ",
+        paste(vetos_compuerta, collapse = " | "), "\n", sep = "")
   }
 
   # Validaciones
@@ -1309,7 +1357,17 @@ refinar_escala <- function(escala,
           tipo_escala_respuesta = tipo_resp_meta,
           evitar_cuantificadores = evitar_cuant_meta,
           max_palabras = max_palabras_meta,
-          incluir_inversos = incluir_inversos_meta
+          incluir_inversos = incluir_inversos_meta,
+          # Sin esto el refinamiento puede reconstruir la misma plantilla que la
+          # compuerta acababa de podar: el consenso empirico premia justamente
+          # los items parecidos entre si.
+          instruccion_extra = if (length(vetos_compuerta) > 0) paste0(
+            "PROHIBIDO ABSOLUTO: la compuerta pre-aplicacion ya elimino items ",
+            "construidos sobre estas formulas o conductas, y no deben volver ",
+            "(tampoco con sinonimos ni reformulaciones): ",
+            paste0("\"", vetos_compuerta, "\"", collapse = ", "), ". ",
+            "El nuevo item debe medir una manifestacion DISTINTA de su ",
+            "dimension y no compartir plantilla con los demas items.\n") else NULL
         )
 
         # Anti-bucle: si el LLM devolvio un texto que ya estuvo en el historial
@@ -1571,6 +1629,63 @@ refinar_escala <- function(escala,
     }
   }
 
+  # ---------------------------------------------------------------------------
+  #  CIERRE: re-verificar el EJE 1 de la compuerta (barato: sin LLM ni
+  #  simulacion, solo la auditoria de redaccion sobre los embeddings nuevos).
+  #  Responde a la pregunta "el refinamiento reintrodujo lo que la compuerta
+  #  habia podado?" en segundos, en vez de exigir re-pasar la compuerta entera.
+  # ---------------------------------------------------------------------------
+  concordancia <- NULL
+  if (!is.null(comp_previa)) {
+    red_post <- tryCatch(
+      auditar_redundancia(escala_actual, umbral_sem = "auto"),
+      error = function(e) NULL)
+    if (!is.null(red_post)) {
+      red_pre <- comp_previa$redaccion
+      n_fac_pre  <- if (!is.null(red_pre$facetas_repetidas)) nrow(red_pre$facetas_repetidas) else 0L
+      n_fac_post <- nrow(red_post$facetas_repetidas)
+      n_par_pre  <- if (!is.null(red_pre$pares_redundantes)) nrow(red_pre$pares_redundantes) else 0L
+      n_par_post <- nrow(red_post$pares_redundantes)
+      # Un nucleo lexico vetado que reaparece es la senal mas clara de que el
+      # refinamiento deshizo el trabajo de la compuerta.
+      reincidentes <- if (n_fac_post > 0 && length(vetos_compuerta) > 0)
+        intersect(red_post$facetas_repetidas$nucleo_lexico, vetos_compuerta) else character(0)
+
+      concordancia <- list(
+        facetas_antes = n_fac_pre,   facetas_despues = n_fac_post,
+        pares_antes   = n_par_pre,   pares_despues   = n_par_post,
+        nucleos_reincidentes = reincidentes,
+        vetados = vetos_compuerta,
+        umbral_usado = umbral_redundancia,
+        # concuerda = el refinamiento no empeoro el eje 1 ni resucito un veto
+        concuerda = (n_fac_post <= n_fac_pre) && (n_par_post <= n_par_pre) &&
+                    length(reincidentes) == 0,
+        redaccion_post = red_post)
+
+      if (verbose) {
+        cat("\n  CONCORDANCIA CON LA COMPUERTA (eje 1):\n")
+        cat(sprintf("    facetas repetidas: %d -> %d\n", n_fac_pre, n_fac_post))
+        cat(sprintf("    pares redundantes: %d -> %d\n", n_par_pre, n_par_post))
+        if (length(reincidentes) > 0)
+          cat("    ", .color_warning(), " REAPARECIERON nucleos vetados: ",
+              paste(reincidentes, collapse = ", "), "\n", sep = "")
+        cat(if (concordancia$concuerda)
+              "    [OK] El refinamiento no deshizo el trabajo de la compuerta.\n"
+            else
+              "    [!] El refinamiento DEGRADO el eje 1: vuelve a pasar la compuerta.\n")
+      }
+    }
+  }
+
+  # La compuerta viaja con la escala, marcada como obsoleta: antes se perdia al
+  # devolver un objeto nuevo, y el paso siguiente (y el script reproducible)
+  # se quedaban sin ella sin que nadie lo notara.
+  if (!is.null(comp_previa)) {
+    escala_actual$compuerta <- comp_previa
+    escala_actual$compuerta_obsoleta <- TRUE
+    escala_actual$concordancia_refinamiento <- concordancia
+  }
+
   # Resultado
   resultado <- list(
     escala_final = escala_actual,
@@ -1579,6 +1694,7 @@ refinar_escala <- function(escala,
     precision_inicial = precision_inicial,
     precision_final = prec_final$precision_global,
     evolucion = evolucion,
+    concordancia = concordancia,
     items_no_convergentes = items_no_convergentes,
     textos_intentados = textos_intentados
   )

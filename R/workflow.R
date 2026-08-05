@@ -69,7 +69,7 @@ flujo <- function(tipo = "texto", archivo = NULL) {
 
   cat("  ", .color_amarillo("FASE V-B. COMPUERTA PRE-APLICACION (obligatoria antes de campo)"), "\n", sep = "")
   cat("    Paso 15b. compuerta_pre_aplicacion()      [redaccion + deseabilidad + simulacion]\n")
-  cat("              Veredicto: LISTA PARA CAMPO / APLICAR CON CAUTELA / NO APLICAR TODAVIA\n")
+  cat("     Escenario previsto: LISTA PARA CAMPO / APLICAR CON CAUTELA / NO APLICAR TODAVIA\n")
   cat("              semilla() la ejecuta automaticamente (compuerta = TRUE)\n")
   cat("    Paso 15c. optimizar_para_campo()          [correccion automatica guiada]\n")
   cat("              Poda facetas/pares -> regenera anti-halo -> re-pasa la compuerta\n")

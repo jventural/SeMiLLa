@@ -926,17 +926,24 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
   # Identificar items redundantes
   idx_redundantes <- which(similitudes >= umbral)
 
+  # Se devuelve tambien el embedding del candidato: quien llama en bucle
+  # (optimizar_para_campo) lo necesita para actualizar la matriz viva de la
+  # escala sin re-embeber todos los items en cada reemplazo.
+  emb_nuevo <- as.numeric(unlist(nuevo_emb))
+
   if (length(idx_redundantes) > 0) {
     return(list(
       redundante = TRUE,
       items_similares = items_existentes[idx_redundantes],
-      similitudes = similitudes[idx_redundantes]
+      similitudes = similitudes[idx_redundantes],
+      embedding_nuevo = emb_nuevo
     ))
   } else {
     return(list(
       redundante = FALSE,
       items_similares = character(0),
-      similitudes = numeric(0)
+      similitudes = numeric(0),
+      embedding_nuevo = emb_nuevo
     ))
   }
 }

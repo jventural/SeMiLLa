@@ -12,6 +12,8 @@ compuerta_pre_aplicacion(
   umbral_faceta = "auto",
   n = 300,
   n_rep = 100,
+  n_pasadas = 4,
+  n_banda = 4,
   modelo = "gpt-4.1-mini",
   seed = 2026,
   verbose = TRUE,
@@ -39,6 +41,21 @@ Default \code{"auto"} (adaptativo).}
 \item{n}{Tamano muestral simulado (default 300).}
 
 \item{n_rep}{Replicas por escenario de la simulacion (default 100).}
+
+\item{n_pasadas}{Pasadas independientes del juez LLM que se promedian para
+estimar la deseabilidad (default 4 desde 2.9.12; antes 2). El motivo no es
+tanto la precision del promedio como las IMPUTACIONES: con 2 pasadas se
+observaron hasta 5 items de 20 imputados a 0.5 en una sola corrida, y ese
+relleno entra despues en la simulacion de estructura como si fuera dato.}
+
+\item{n_banda}{Numero de vectores de deseabilidad con los que se re-simula
+para estimar la BANDA de incertidumbre del eje 3 (default 4; 0 desactiva).
+No cuesta llamadas al LLM: los vectores se remuestrean de las pasadas que el
+juez ya hizo. Existe porque el eje 3 amplifica diferencias minimas del juez:
+con vectores correlacionados a r = .90 la probabilidad de estructura limpia
+paso de .87 a .20, y en 6 corridas de la misma escala oscilo entre .13 y .97.
+Cuando la banda cruza el umbral de decision el eje 3 no afirma que la
+estructura sea limpia: lo marca como INDETERMINADO.}
 
 \item{modelo}{Modelo LLM para calificar deseabilidad.}
 
