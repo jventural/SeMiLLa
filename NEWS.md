@@ -1,3 +1,67 @@
+# SeMiLLa 2.9.15 (2026-08-05)
+## El juez de gemelos: menos falsos positivos y resultado reproducible
+
+Dos quejas del autor sobre el eje 1, medidas antes de tocar nada (gpt-4.1-mini,
+dos escalas reales de aburrimiento parental, 9 pasadas por condicion).
+
+**(a) No era reproducible, y el `seed` no lo arreglaba.** Misma escala, misma
+configuracion:
+
+| Condicion | Resultados distintos en 6 corridas | Algun par en las 6 |
+|---|---|---|
+| sin seed | 5 de 6 | ninguno |
+| con seed | 3 de 6 | ninguno |
+
+El `seed` de OpenAI es best-effort: no garantiza nada. Aparte, **no llegaba**:
+`compuerta_pre_aplicacion()` solo lo usaba en `set.seed()` de la simulacion y
+nunca fijaba la opcion `SeMiLLa.seed` que `.llamar_openai()` envia a la API. Los
+jueces de los ejes 1 y 2 corrian sin semilla mientras el usuario creia haberla
+fijado. Ahora se propaga; sirve de poco por si sola, pero deja de mentir.
+
+**(b) Era demasiado severo.** El prompt tenia 5 reglas de "SI son gemelos", todas
+con ejemplos concretos, frente a 2 de "NO", genericas y sin ninguno. Los ejemplos
+pesan mas que las reglas abstractas, y el juez llegaba inclinado al si:
+
+- "Miro el reloj con frecuencia" vs "digo EN VOZ ALTA cuanto falta": gemelos en
+  **8 de 9** pasadas. Una conducta es privada y la otra verbal.
+- "miro el telefono" vs "pongo el telefono EN OTRA HABITACION": llego a marcarse,
+  y son conductas opuestas.
+- La regla "misma conducta con escenario superficialmente distinto" -escrita para
+  'devuelvo dinero' vs 'devuelvo objetos'- se aplicaba a "a la hora de dormir
+  sigo el mismo procedimiento" vs "cuando salimos propongo los mismos lugares".
+
+### Lo que cambia
+
+- **Prompt reequilibrado.** Una PRUEBA DECISIVA operativa al principio -si una
+  persona puede puntuar alto en uno y bajo en el otro sin contradecirse, no son
+  gemelos-, que es la definicion misma de dependencia local; las reglas negativas
+  pasan a tener ejemplos, como las positivas; y se dice explicitamente que
+  cambiar la SITUACION rompe la gemelidad.
+- **Votacion por mayoria** (`n_pasadas_gemelos = 3`): un par se acepta si sale en
+  la mayoria de las consultas. Los pares legitimos salieron 9 de 9 y los dudosos
+  entre 1 y 5, asi que la frecuencia separa unos de otros. La salida incluye
+  `votos` y `de`, para distinguir "el juez lo vio siempre" de "lo vio por poco".
+  Con `n_pasadas_gemelos = 1` se recupera el comportamiento anterior.
+- **`seed` se propaga** a la opcion global que consume `.llamar_openai()`.
+
+### Por que hacen falta las dos cosas
+
+La votacion sola no basta: el falso positivo "miro el reloj" ~ "digo en voz alta
+cuanto falta" salia en **8 de 9** pasadas. Ninguna mayoria lo elimina; hace falta
+el prompt. Y el prompt solo tampoco: los casos limitrofes siguen oscilando entre
+corridas, y ahi es la mayoria la que estabiliza.
+
+### Verificacion
+
+| Escala | Antes | Despues (2.9.15) |
+|---|---|---|
+| La del autor (13 items) | 4 pares: 2 estables + 2 ruido (5/9 y 3/9) | los 2 legitimos, **4 corridas identicas** |
+| Experimento 1 (20 items) | falso positivo en 8/9 + 3 pares de ruido | ninguno, **4 corridas identicas** |
+| Control con gemelos plantados | los detecta | **los detecta**: la sensibilidad se conserva |
+
+El control positivo importa: sin el, "no marca nada" seria indistinguible de
+"se apago el juez".
+
 # SeMiLLa 2.9.7 (2026-08-03)
 ## optimizar_para_campo(): no regresion, umbral consistente y balance visible
 

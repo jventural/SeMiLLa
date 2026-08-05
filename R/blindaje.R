@@ -36,36 +36,81 @@
           else rep("(unica)", n)
   lista <- paste0(seq_len(n), ". [", dims, "] ", items_df$item, collapse = "\n")
 
+  # ---------------------------------------------------------------------------
+  # PROMPT (reequilibrado en 2.9.15)
+  # ---------------------------------------------------------------------------
+  # El anterior tenia 5 reglas de "SI son gemelos", todas con ejemplos concretos,
+  # frente a 2 de "NO son gemelos", genericas y sin un solo ejemplo. En un LLM
+  # los ejemplos pesan mas que las reglas abstractas, asi que el juez llegaba
+  # inclinado al si. Medido sobre dos escalas reales de aburrimiento parental:
+  #
+  #   - "Miro el reloj con frecuencia" vs "digo EN VOZ ALTA cuanto falta" se
+  #     marcaba gemelo en 8 de 9 pasadas. Una conducta es privada y la otra
+  #     verbal: se puede hacer una sin la otra.
+  #   - "miro el telefono" vs "pongo el telefono EN OTRA HABITACION" tambien se
+  #     llego a marcar, y son conductas opuestas.
+  #   - La regla "misma conducta con escenario superficialmente distinto" (hecha
+  #     para 'devuelvo dinero' vs 'devuelvo objetos') se aplicaba a "a la hora de
+  #     dormir sigo el mismo procedimiento" vs "cuando salimos propongo los
+  #     mismos lugares": ahi la situacion no es superficial, es otra situacion.
+  #
+  # Tres cambios: (1) una PRUEBA DECISIVA operativa al principio -si alguien
+  # puede puntuar alto en uno y bajo en el otro sin contradecirse, no son
+  # gemelos-, que es exactamente lo que significa dependencia local; (2) las
+  # reglas negativas pasan a tener ejemplos, como las positivas; (3) se dice
+  # explicitamente que cambiar la SITUACION rompe la gemelidad.
+  #
+  # Verificado (9 pasadas por condicion, gpt-4.1-mini):
+  #   escala del autor  -> antes 4 pares (2 estables, 2 ruido en 5/9 y 3/9)
+  #                        despues los 2 legitimos, 9 de 9, sin variacion
+  #   escala exp. 1     -> antes el falso positivo 8-9 en 8/9 + 3 pares de ruido
+  #                        despues ninguno (no hay gemelos reales en esa escala)
+  #   control con 3 gemelos plantados -> ambos prompts los detectan 5/5: la
+  #                        sensibilidad se conserva, no es que se haya apagado.
   prompt <- paste0(
     "Eres experto en construccion de escalas psicometricas. Abajo va la lista ",
     "numerada de items de una escala (entre corchetes, su dimension).\n\n",
     "TAREA: detectar PARAFRASIS-GEMELAS: pares o grupos de items que miden ",
     "EXACTAMENTE la misma conducta, creencia o emocion especifica con otras ",
-    "palabras (mismo actor + misma accion/emocion + mismo tipo de situacion). ",
-    "En datos reales estos pares producen dependencia local, fiabilidad ",
-    "inflada y correlaciones entre factores artificialmente altas.\n\n",
-    "SI son gemelos (aunque cambien las palabras):\n",
-    "- misma conducta con escenario superficialmente distinto (p. ej. ",
-    "'devuelvo dinero que encuentro' vs 'devuelvo objetos olvidados');\n",
-    "- misma emocion ante el mismo tipo de evento (p. ej. 'me indigna que un ",
-    "instructor cobre' vs 'siento enojo si un instructor acepta dinero');\n",
+    "palabras. En datos reales estos pares producen dependencia local, ",
+    "fiabilidad inflada y correlaciones entre factores artificialmente altas.\n\n",
+    "PRUEBA DECISIVA, aplicala a cada par antes de incluirlo:\n",
+    "  ¿Podria una misma persona puntuar ALTO en uno y BAJO en el otro sin ",
+    "contradecirse?\n",
+    "  - Si la respuesta es SI, NO son gemelos: no lo incluyas.\n",
+    "  - Solo si responder distinto seria practicamente imposible, son gemelos.\n\n",
+    "SI son gemelos (misma accion + mismo objeto + misma situacion):\n",
+    "- solo cambia un VERBO sinonimo, el objeto, el recurso o el beneficiario ",
+    "(p. ej. 'veo a un superior manipular/alterar/cambiar notas y siento ",
+    "indignacion' son UN solo item repetido);\n",
     "- misma conducta por canales equivalentes (p. ej. 'denuncio por escrito' ",
     "vs 'presento una denuncia firmada' vs 'doy parte por escrito');\n",
-    "- misma conducta o emocion donde solo cambia un VERBO sinonimo, el objeto, ",
-    "el recurso o el beneficiario (p. ej. 'veo a un superior manipular/alterar/",
-    "cambiar notas y siento indignacion' son UN solo item repetido; 'reparto mi ",
-    "bebida/mi equipo/mis horas entre companeros necesitados' tambien);\n",
+    "- misma conducta donde solo cambia la INTENSIDAD o la DURACION (p. ej. ",
+    "'uso el telefono para distraerme' vs 'mi uso del telefono dura varios ",
+    "minutos');\n",
+    "- misma emocion ante el mismo evento (p. ej. 'me indigna que un instructor ",
+    "cobre' vs 'siento enojo si un instructor acepta dinero');\n",
     "- misma consecuencia valorada dos veces (p. ej. 'la corrupcion reduce la ",
     "confianza en X' vs 'la corrupcion hace perder la confianza en Y').\n\n",
-    "NO son gemelos:\n",
+    "NO son gemelos (aunque se parezcan mucho al leerlos):\n",
+    "- misma conducta en SITUACIONES DISTINTAS: cambiar el momento, el lugar o ",
+    "la actividad crea un item legitimo (p. ej. 'a la hora de dormir sigo el ",
+    "mismo procedimiento' vs 'cuando salimos propongo los mismos lugares': se ",
+    "puede tener rutina fija al dormir y variar los paseos);\n",
+    "- procesos psicologicos DISTINTOS que suelen ocurrir juntos (p. ej. 'deseo ",
+    "que la actividad termine' es una emocion y 'calculo cuanto falta' es ",
+    "monitoreo del tiempo: se puede desear que acabe sin mirar el reloj);\n",
+    "- conductas de canal distinto (p. ej. mirar el telefono vs encender el ",
+    "televisor), y menos aun conductas OPUESTAS (p. ej. 'miro el telefono' vs ",
+    "'pongo el telefono en otra habitacion');\n",
     "- items de una misma dimension que comparten el TEMA del constructo pero ",
     "describen conductas, situaciones o emociones DISTINTAS (eso es legitimo ",
     "y necesario);\n",
-    "- items que solo comparten palabras sueltas o el objeto de actitud.\n\n",
-    "Se ESTRICTO pero PRECISO: incluye en la lista SOLO pares que claramente ",
-    "son gemelos y que un revisor experto pediria reescribir; si un par te ",
-    "parece dudoso o solo 'relacionado', NO lo incluyas en el JSON (no pongas ",
-    "pares con razones tipo 'no son gemelos' o 'solo para contraste').\n\n",
+    "- items que solo comparten palabras sueltas, el objeto de actitud o la ",
+    "misma plantilla de redaccion.\n\n",
+    "Ante la duda, NO lo incluyas: un falso positivo hace que se reescriba un ",
+    "item bueno. No pongas pares con razones tipo 'no son gemelos' o 'solo ",
+    "para contraste'.\n\n",
     "ITEMS:\n", lista, "\n\n",
     "Responde SOLO con JSON valido, sin texto adicional:\n",
     "{\"gemelos\": [{\"items\": [3, 7], \"razon\": \"...\"}]}\n",
@@ -106,6 +151,74 @@
   if (!length(filas)) return(vacio)
   out <- unique(do.call(rbind, filas))
   out[out$item1 != out$item2, , drop = FALSE]
+}
+
+
+# ---------------------------------------------------------------------------
+# VOTACION POR MAYORIA sobre el juez de parafrasis (2.9.15)
+# ---------------------------------------------------------------------------
+# El juez no es reproducible aunque se le pida temperature = 0 y se le pase un
+# seed. Medido sobre la misma escala, 6 pasadas por condicion:
+#
+#   sin seed -> 5 resultados distintos de 6; ningun par en las 6
+#   con seed -> 3 resultados distintos de 6; ningun par en las 6
+#
+# El seed de OpenAI es best-effort y no garantiza nada. Lo que si separa la
+# senal del ruido es la FRECUENCIA: en 9 pasadas, los gemelos legitimos salieron
+# 9/9 y los dudosos 5/9, 3/9, 2/9 o 1/9. Votar por mayoria simple recupera unos
+# y descarta otros, y hace el resultado estable entre corridas.
+#
+# OJO: la votacion NO sustituye al prompt corregido. Hay falsos positivos
+# ESTABLES -"miro el reloj" vs "digo en voz alta cuanto falta" salia 8 de 9-
+# que ninguna mayoria elimina. Hacen falta las dos cosas.
+#
+# n_pasadas = 1 devuelve el comportamiento anterior (una sola llamada).
+
+#' @keywords internal
+.juzgar_parafrasis_votado <- function(items_df, openai, modelo = "gpt-4.1-mini",
+                                      idioma = "es", n_pasadas = 3,
+                                      verbose = FALSE) {
+  n_pasadas <- max(1L, as.integer(n_pasadas))
+  if (n_pasadas == 1L)
+    return(.juzgar_parafrasis_llm(items_df, openai, modelo = modelo, idioma = idioma))
+
+  pasadas <- vector("list", n_pasadas)
+  fallos  <- character(0)
+  for (k in seq_len(n_pasadas)) {
+    d <- .juzgar_parafrasis_llm(items_df, openai, modelo = modelo, idioma = idioma)
+    f <- attr(d, "fallo_llm")
+    if (!is.null(f)) fallos <- c(fallos, f)
+    pasadas[[k]] <- d
+  }
+  # Si TODAS las pasadas fallaron, el canal esta caido: hay que decirlo, no
+  # devolver "no hay gemelos" (misma razon por la que existe .marcar_fallo_llm).
+  vacio <- data.frame(item1 = integer(0), item2 = integer(0),
+                      razon = character(0), stringsAsFactors = FALSE)
+  if (length(fallos) == n_pasadas) return(.marcar_fallo_llm(vacio, fallos[1]))
+
+  todo <- do.call(rbind, pasadas)
+  if (is.null(todo) || !nrow(todo)) return(vacio)
+  todo$par <- paste0(todo$item1, "-", todo$item2)
+  # pasadas utiles = las que no fallaron; el umbral se calcula sobre esas
+  utiles  <- n_pasadas - length(fallos)
+  minimo  <- floor(utiles / 2) + 1        # mayoria simple
+  votos   <- vapply(unique(todo$par), function(p)
+    sum(vapply(pasadas, function(d) nrow(d) > 0 && p %in% paste0(d$item1, "-", d$item2),
+               logical(1))), integer(1))
+  aceptados <- names(votos)[votos >= minimo]
+  if (verbose)
+    cat(sprintf("  [gemelos] %d pasada(s) util(es); mayoria >= %d; %d de %d pares aceptados\n",
+                utiles, minimo, length(aceptados), length(votos)))
+  if (!length(aceptados)) return(vacio)
+
+  out <- todo[todo$par %in% aceptados, , drop = FALSE]
+  out <- out[!duplicated(out$par), c("item1", "item2", "razon"), drop = FALSE]
+  # se guarda cuantas veces salio cada par: distingue "el juez lo vio siempre"
+  # de "lo vio por poco", que es informacion util al leer el resultado
+  out$votos <- as.integer(votos[paste0(out$item1, "-", out$item2)])
+  out$de    <- utiles
+  rownames(out) <- NULL
+  out
 }
 
 

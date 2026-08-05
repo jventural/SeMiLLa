@@ -1,8 +1,8 @@
 Package: SeMiLLa
 Type: Package
 Title: SEmantic Measurement of Items via LLM Assistance
-Version: 2.9.14
-Date: 2026-07-29
+Version: 2.9.15
+Date: 2026-08-05
 Authors@R: c(
     person("Jose", "Ventura-Leon",
            email = "jventuraleon@gmail.com",

@@ -72,8 +72,18 @@
 #'   limpia paso de .87 a .20 (Experimento 1), y en 6 corridas de la misma
 #'   escala oscilo entre .13 y .97. Reportar un punto sin banda transmite una
 #'   precision que el dato no tiene.
+#' @param n_pasadas_gemelos Numero de consultas al juez de parafrasis-gemelas
+#'   (eje 1); un par se acepta si sale en la mayoria de ellas. Una sola llamada
+#'   no es reproducible: en 6 corridas de la misma escala se obtuvieron 5
+#'   resultados distintos, y con \code{seed} 3 de 6. Los pares legitimos salen
+#'   en 9 de 9 pasadas y los dudosos en 1 a 5, asi que la mayoria separa unos de
+#'   otros. Use 1 para volver al comportamiento de una sola consulta.
 #' @param modelo Modelo LLM para calificar deseabilidad.
-#' @param seed Semilla de la simulacion.
+#' @param seed Semilla. Alimenta \code{set.seed()} de la simulacion y, desde
+#'   2.9.15, tambien la opcion \code{SeMiLLa.seed} que \code{.llamar_openai()}
+#'   envia a la API. Ojo: el seed de OpenAI es best-effort y no garantiza
+#'   reproducibilidad; quien la aporta es la votacion del eje 1 y las
+#'   \code{n_pasadas} del eje 2.
 #' @param verbose Mostrar el detalle de cada paso.
 #' @param ... Argumentos adicionales para \code{\link{simular_estructura}}
 #'   (p. ej. \code{umbral_ld}, \code{carga_propia}, \code{k_cat}).
@@ -116,6 +126,7 @@ compuerta_pre_aplicacion <- function(x,
                                      n             = 300,
                                      n_rep         = 100,
                                      n_pasadas     = 4,
+                                     n_pasadas_gemelos = 3,
                                      n_banda       = 4,
                                      modelo        = "gpt-4.1-mini",
                                      seed          = 2026,
@@ -124,6 +135,25 @@ compuerta_pre_aplicacion <- function(x,
 
   if (is.null(x$items) || is.null(x$items$item))
     stop("'x' debe contener $items con la columna 'item'.")
+
+  # ---------------------------------------------------------------------------
+  # La semilla tambien viaja a la API (2.9.15)
+  # ---------------------------------------------------------------------------
+  # Hasta 2.9.14 'seed' solo alimentaba set.seed() de la simulacion (eje 3).
+  # .llamar_openai() toma el seed de la opcion global SeMiLLa.seed, que nadie
+  # fijaba aqui: los jueces LLM de los ejes 1 y 2 llamaban SIN seed. Quien
+  # pasaba seed = 2026 creia estar fijando toda la corrida y solo fijaba un
+  # tercio de ella.
+  #
+  # Aviso honesto: el seed de OpenAI es best-effort y NO garantiza
+  # reproducibilidad (medido: 6 corridas con seed -> 3 resultados distintos).
+  # Lo que estabiliza de verdad es la votacion por mayoria del eje 1 y las
+  # n_pasadas del eje 2. Esto solo deja de mentir sobre lo que hace el
+  # parametro y ayuda en el margen.
+  if (!is.null(seed)) {
+    .op_prev <- options(SeMiLLa.seed = as.integer(seed))
+    on.exit(options(.op_prev), add = TRUE)
+  }
 
   # Asegurar matriz de similitud (necesaria para redaccion y simulacion)
   if (is.null(x$similitud)) {
@@ -192,9 +222,13 @@ compuerta_pre_aplicacion <- function(x,
   # con r policorica >= .70 en campo vivieron en coseno 0.43-0.78, bateria
   # policial n=280); esos gemelos producen dependencia local y correlaciones
   # interfactoriales infladas (Phi hasta .92), asi que NO pueden pasar.
+  # Se vota por mayoria entre n_pasadas_gemelos llamadas: una sola no es
+  # reproducible (6 corridas -> 5 resultados distintos) ni con seed. Ver el
+  # bloque de .juzgar_parafrasis_votado() para la medicion.
   gemelos_llm <- tryCatch(
-    .juzgar_parafrasis_llm(x$items, .configurar_openai(api_key),
-                           modelo = modelo),
+    .juzgar_parafrasis_votado(x$items, .configurar_openai(api_key),
+                              modelo = modelo,
+                              n_pasadas = n_pasadas_gemelos, verbose = verbose),
     error = function(e) NULL)
   n_gemelos_llm <- if (!is.null(gemelos_llm)) nrow(gemelos_llm) else 0L
   if (n_gemelos_llm > 0) {
