@@ -17,7 +17,7 @@ Useful links:
 
 }
 \author{
-\strong{Maintainer}: Jose Ventura-Leon \email{info@joseventuraleon.com} (\href{https://orcid.org/0000-0003-2996-4244}{ORCID})
+\strong{Maintainer}: Jose Ventura-Leon \email{jventuraleon@gmail.com} (\href{https://orcid.org/0000-0003-2996-4244}{ORCID})
 
 }
 \keyword{internal}
