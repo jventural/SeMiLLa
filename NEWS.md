@@ -1,3 +1,29 @@
+# SeMiLLa 2.9.17 (2026-08-06)
+## converger_escala() se detiene cuando reescribir deja de ayudar
+
+Cada vuelta del ciclo recalcula la compuerta entera (3 ejes con LLM), la V de
+Aiken con jueces y la discriminacion semantica: del orden de **10 minutos** en
+una escala de 24 items. No habia corte por falta de mejora, asi que el bucle
+agotaba `max_iteraciones` aunque el puntaje bajara en todas.
+
+Caso real (ansiedad ante la estadistica, 24 items):
+
+    score  977 -> 961 -> 965 -> 959 -> 965 -> 954
+    5 vueltas | 25 items reescritos | 50.7 min | se devolvio la version 0
+
+Cincuenta minutos para volver al punto de partida.
+
+- Nuevo parametro **`paciencia = 2`**: se detiene tras 2 vueltas seguidas sin
+  superar la mejor version. `Inf` recupera el comportamiento anterior.
+- Comprobado sobre cuatro trayectorias de puntaje (ninguna mejora / mejora
+  sostenida / mejora tardia / mejora y estancamiento): **la version devuelta es
+  la misma en todas**; solo cambia el tiempo. En el caso real, de 5 vueltas a 2
+  (~20 min en vez de 50.7).
+
+Nota: el cuello de botella NO son las replicas Monte Carlo. La simulacion final
+-3 escenarios x 100 replicas = 300 CFAs- tarda menos de 1 minuto con 23 nucleos.
+Bajar `n_rep` no ahorra tiempo apreciable y si pierde resolucion.
+
 # SeMiLLa 2.9.16 (2026-08-06)
 ## converger_escala() habla el mismo idioma que la compuerta
 

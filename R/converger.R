@@ -50,6 +50,12 @@
 #' @param x Objeto \code{semilla} con \code{$items} y \code{$embeddings}.
 #' @param api_key Clave del proveedor LLM.
 #' @param modelo Modelo LLM (default "gpt-4.1-mini").
+#' @param paciencia Vueltas seguidas sin mejorar tras las que se detiene el
+#'   ciclo. Cada vuelta recalcula la compuerta completa, la V de Aiken con
+#'   jueces LLM y la discriminacion semantica: del orden de 10 minutos en una
+#'   escala de 24 items. Sin este corte el bucle agotaba \code{max_iteraciones}
+#'   aunque el puntaje bajara en todas. Use \code{Inf} para el comportamiento
+#'   anterior.
 #' @param max_iteraciones Tope de vueltas (default 5). No conviene subirlo: el
 #'   LLM se agota antes, ver la nota de calibracion arriba.
 #' @param objetivo Veredicto con el que se detiene: \code{"APLICAR CON CAUTELA"}
@@ -75,6 +81,7 @@ converger_escala <- function(x,
                              api_key,
                              modelo          = "gpt-4.1-mini",
                              max_iteraciones = 5L,
+                             paciencia       = 2L,
                              objetivo        = c("APLICAR CON CAUTELA",
                                                  "LISTA PARA CAMPO",
                                                  "APLICAR COMO ESCALA GLOBAL"),
@@ -134,6 +141,7 @@ converger_escala <- function(x,
   # las cadenas antiguas -esta funcion ramifica sobre ellas- pero quien lea el
   # historial tiene que poder mostrar el mismo vocabulario que la compuerta, o
   # la misma escala aparece descrita de dos formas en la misma pantalla.
+  sin_mejora <- 0L   # vueltas seguidas que no superan a la mejor version
   historial <- data.frame(iteracion = 0L, veredicto = dg$compuerta$veredicto,
                           escenario = dg$compuerta$escenario %||% NA_character_,
                           n_marcados = nrow(dg$marcados), reemplazos = 0L,
@@ -242,9 +250,28 @@ converger_escala <- function(x,
     if (dg$score > mejor$score) {
       mejor <- list(escala = x, dg = dg, score = dg$score, iter = it,
                     cambios = rbind(mejor$cambios, cambios))
+      sin_mejora <- 0L
       if (verbose) cat("     (nueva mejor version)\n")
-    } else if (verbose) {
-      cat(sprintf("     (no mejora: se conserva la iteracion %d)\n", mejor$iter))
+    } else {
+      sin_mejora <- sin_mejora + 1L
+      if (verbose)
+        cat(sprintf("     (no mejora: se conserva la iteracion %d) [%d seguida(s)]\n",
+                    mejor$iter, sin_mejora))
+    }
+
+    # ---- PARADA TEMPRANA (2.9.17) -------------------------------------------
+    # Cada vuelta cuesta ~10 minutos: recalcula la compuerta entera (3 ejes con
+    # LLM), la V de Aiken con jueces y la discriminacion semantica. Sin este
+    # corte el ciclo agotaba las 5 aunque ninguna mejorase. Caso real (ansiedad
+    # ante la estadistica, 24 items): score 977 -> 961 -> 965 -> 959 -> 965 ->
+    # 954, cinco vueltas, 50.7 min, y se devolvio la version 0. Unos 30 minutos
+    # gastados en versiones que ya se sabia que se iban a descartar.
+    if (sin_mejora >= paciencia) {
+      if (verbose)
+        cat(sprintf(paste0("\n  Se detiene: %d vueltas seguidas sin mejorar.\n",
+                           "  Reescribir mas no esta ayudando; se conserva la ",
+                           "iteracion %d.\n"), sin_mejora, mejor$iter))
+      break
     }
   }
 
