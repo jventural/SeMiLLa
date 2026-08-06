@@ -524,10 +524,18 @@ balance_optimizacion <- function(g0, g1) .balance_optimizacion(g0, g1)
   # Sentido deseable de cada indicador: -1 = conviene que baje, +1 = que suba.
   bueno <- c(gemelos = -1, facetas = -1, pares = -1, desea_intra = -1,
              desea_entre = 1, prob_limpia = 1, phi = 0)
+  # Minimo para considerar que algo cambio. Los conteos son enteros y cualquier
+  # diferencia cuenta; los continuos se PINTAN con dos decimales, asi que una
+  # diferencia por debajo de .005 produce una fila que dice "0.08 -> 0.08
+  # empeora" y se lee como un error de la app (visto en la corrida completa del
+  # 2026-08-06). Se declara igual lo que se muestra igual.
+  minimo <- c(gemelos = 1e-8, facetas = 1e-8, pares = 1e-8,
+              desea_intra = 0.005, desea_entre = 0.005,
+              prob_limpia = 0.005, phi = 0.005)
   cambio <- vapply(names(a), function(k) {
     if (is.na(a[[k]]) || is.na(b[[k]])) return("—")
     d <- b[[k]] - a[[k]]
-    if (abs(d) < 1e-8) return("igual")
+    if (abs(d) < (minimo[[k]] %||% 1e-8)) return("igual")
     if (bueno[[k]] == 0) return("cambio")
     if (sign(d) == bueno[[k]]) "mejora" else "empeora"
   }, character(1))
