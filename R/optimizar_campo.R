@@ -285,7 +285,7 @@ optimizar_para_campo <- function(x,
         umbral_redundancia = umbral_acept,
         embeddings_existentes = emb_vivos,
         items_dimension_conservados = conservados,
-        deseabilidad_objetivo = if (!is.null(desea_vec)) desea_vec[idx_r] else NA_real_
+        deseabilidad_objetivo = .desea_dimension(desea_vec, x$items, idx_r)
       )
       # Contrato ampliado: devuelve list(item, emb) para poder mantener
       # emb_vivos sin re-embeber toda la escala en cada candidato.
@@ -769,6 +769,43 @@ balance_optimizacion <- function(g0, g1) .balance_optimizacion(g0, g1)
 }
 
 
+# NIVEL DE EXPOSICION para un item de reemplazo. Mantener al item nuevo en el
+# mismo "cuanto cuesta admitirlo" que los demas de su dimension: mezclar items
+# comprometedores con items inocuos DENTRO de una dimension abre varianza de
+# metodo y la parte en dos (alerta_intra de la compuerta). Lo usan tanto el
+# reemplazo dirigido como el refinamiento, que antes generaba a ciegas.
+
+# Nivel de exposicion de referencia para el item idx: la MEDIANA de su dimension
+# SIN contarlo a el. Si justamente ese item era el desviado, copiarle su propio
+# valor perpetuaria la desviacion que se quiere corregir.
+
+#' @keywords internal
+.desea_dimension <- function(desea, items, idx) {
+  if (is.null(desea) || length(desea) != nrow(items)) return(NA_real_)
+  otros <- setdiff(which(items$dimension == items$dimension[idx]), idx)
+  if (length(otros) == 0) return(NA_real_)
+  stats::median(as.numeric(desea[otros]), na.rm = TRUE)
+}
+
+
+#' @keywords internal
+.bloque_exposicion <- function(deseabilidad_objetivo) {
+  if (length(deseabilidad_objetivo) != 1 || is.na(deseabilidad_objetivo))
+    return("")
+  paste0(
+    "NIVEL DE EXPOSICION OBLIGATORIO: los items de esta dimension tienen una ",
+    "deseabilidad social de ", sprintf("%.2f", deseabilidad_objetivo),
+    " en escala 0-1 (0 = admitirlo deja mal, 1 = admitirlo queda bien). ",
+    "El nuevo item debe costar admitirlo APROXIMADAMENTE LO MISMO que los ",
+    "demas items de su dimension: ",
+    if (deseabilidad_objetivo < 0.40)
+      "algo que a la persona le incomoda reconocer, pero sin convertirlo en una confesion grave.\n"
+    else if (deseabilidad_objetivo > 0.60)
+      "algo que no compromete a quien lo admite, en la misma linea que el resto.\n"
+    else "algo de exposicion intermedia, ni confesion ni tramite.\n")
+}
+
+
 # Genera el reemplazo de UN item bajo las restricciones de la compuerta:
 # conductas/muletillas vetadas (acumuladas), variacion sintactica, longitud
 # homogenea con la escala y, si hay riesgo de halo, conducta especifica con
@@ -826,19 +863,7 @@ balance_optimizacion <- function(g0, g1) .balance_optimizacion(g0, g1)
     # "cuanto cuesta admitirlo" que el que sustituye. Mezclar items
     # comprometedores con items inocuos DENTRO de una dimension abre varianza
     # de metodo y la parte en dos (alerta_intra de la compuerta).
-    if (!is.na(deseabilidad_objetivo)) paste0(
-      "NIVEL DE EXPOSICION OBLIGATORIO: el item que sustituyes tiene una ",
-      "deseabilidad social de ", sprintf("%.2f", deseabilidad_objetivo),
-      " en escala 0-1 (0 = admitirlo deja mal, 1 = admitirlo queda bien). ",
-      "El nuevo item debe costar admitirlo APROXIMADAMENTE LO MISMO que los ",
-      "demas items de su dimension: ",
-      if (deseabilidad_objetivo < 0.40)
-        paste0("algo que a la persona le incomoda reconocer, pero sin ",
-               "convertirlo en una confesion grave.\n")
-      else if (deseabilidad_objetivo > 0.60)
-        paste0("algo que no compromete a quien lo admite, en la misma linea ",
-               "que el resto.\n")
-      else "algo de exposicion intermedia, ni confesion ni tramite.\n") else "",
+    .bloque_exposicion(deseabilidad_objetivo),
     if (anti_halo) {
       tipo <- .tipo_dimension(dim_nombre, def_dim)
       switch(tipo,

@@ -1,3 +1,29 @@
+# SeMiLLa 2.9.18 (2026-08-06)
+## El refinamiento hereda tambien el nivel de exposicion
+
+`refinar_escala()` ya heredaba dos contratos de la compuerta: el umbral con el
+que detecta parecidos y las conductas vetadas. Faltaba el tercero. El
+refinamiento **solo optimiza estructura** —que cada item caiga en su cluster—,
+asi que un reemplazo podia entrar con una deseabilidad social muy distinta a la
+de su dimension sin que nadie lo mirara: la comprobacion de concordancia
+posterior revisa redaccion, no el eje 2.
+
+Mezclar items comprometedores con items inocuos dentro de una misma dimension
+abre varianza de metodo y la parte en dos, que es justo lo que la compuerta
+senala como `alerta_intra`. Ahora el generador recibe el nivel de exposicion
+objetivo y debe respetarlo.
+
+La referencia es la **mediana de la dimension sin contar al item que sale**. Si
+ese item era precisamente el desviado, copiarle su propio valor perpetuaria la
+desviacion. Por el mismo motivo se corrigio `converger_escala()` y
+`optimizar_para_campo()`, que pasaban el valor individual.
+
+El texto del requisito vive en una sola funcion (`.bloque_exposicion()`) que
+comparten los tres caminos. Sin deseabilidad medida el bloque queda vacio y todo
+sigue como antes; `verbose` lo dice en claro (`sin referencia`).
+
+No cuesta ninguna llamada extra a la API: es texto anadido al mismo prompt.
+
 # SeMiLLa 2.9.17 (2026-08-06)
 ## converger_escala() se detiene cuando reescribir deja de ayudar
 

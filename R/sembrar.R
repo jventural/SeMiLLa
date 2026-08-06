@@ -1060,11 +1060,34 @@ refinar_escala <- function(escala,
   # ---------------------------------------------------------------------------
   comp_previa   <- if (isTRUE(heredar_compuerta)) escala$compuerta else NULL
   vetos_compuerta <- character(0)
+  desea_compuerta <- NULL
   if (!is.null(comp_previa)) {
     fac <- comp_previa$redaccion$facetas_repetidas
     if (!is.null(fac) && nrow(fac) > 0)
       vetos_compuerta <- unique(c(vetos_compuerta, fac$nucleo_lexico))
     vetos_compuerta <- vetos_compuerta[nzchar(vetos_compuerta)]
+    # Tercer contrato heredado (2.9.18): el nivel de exposicion. El refinamiento
+    # solo optimizaba estructura, asi que un reemplazo podia entrar con una
+    # deseabilidad muy distinta a la de su dimension y romper el eje 2 sin que
+    # nadie lo mirara: la concordancia final solo revisa redaccion.
+    d <- comp_previa$deseabilidad$deseabilidad
+    if (!is.null(d) && length(d) == nrow(escala$items)) {
+      # Referencia por DIMENSION (mediana), no el valor del item que sale: si
+      # justamente ese item era el desviado, copiarle el nivel perpetuaria la
+      # desviacion. La mediana describe a donde debe parecerse el nuevo.
+      desea_compuerta <- tapply(as.numeric(d), escala$items$dimension,
+                                stats::median, na.rm = TRUE)
+      desea_compuerta <- desea_compuerta[!is.na(desea_compuerta)]
+      if (length(desea_compuerta) == 0) desea_compuerta <- NULL
+    }
+  }
+  if (verbose) {
+    cat("  Nivel de exposicion: ",
+        if (is.null(desea_compuerta))
+          "sin referencia (la escala no trae deseabilidad medida)"
+        else paste0("heredado por dimension (",
+                    paste(sprintf("%.2f", desea_compuerta), collapse = " / "), ")"),
+        "\n", sep = "")
   }
   # Umbral: por defecto el MISMO con el que la compuerta detecta (adaptativo,
   # tipicamente 0.62-0.70), menos un margen. Antes era 0.70 fijo y quedaba una
@@ -1361,13 +1384,20 @@ refinar_escala <- function(escala,
           # Sin esto el refinamiento puede reconstruir la misma plantilla que la
           # compuerta acababa de podar: el consenso empirico premia justamente
           # los items parecidos entre si.
-          instruccion_extra = if (length(vetos_compuerta) > 0) paste0(
-            "PROHIBIDO ABSOLUTO: la compuerta pre-aplicacion ya elimino items ",
-            "construidos sobre estas formulas o conductas, y no deben volver ",
-            "(tampoco con sinonimos ni reformulaciones): ",
-            paste0("\"", vetos_compuerta, "\"", collapse = ", "), ". ",
-            "El nuevo item debe medir una manifestacion DISTINTA de su ",
-            "dimension y no compartir plantilla con los demas items.\n") else NULL
+          instruccion_extra = {
+            bloque_vetos <- if (length(vetos_compuerta) > 0) paste0(
+              "PROHIBIDO ABSOLUTO: la compuerta pre-aplicacion ya elimino items ",
+              "construidos sobre estas formulas o conductas, y no deben volver ",
+              "(tampoco con sinonimos ni reformulaciones): ",
+              paste0("\"", vetos_compuerta, "\"", collapse = ", "), ". ",
+              "El nuevo item debe medir una manifestacion DISTINTA de su ",
+              "dimension y no compartir plantilla con los demas items.\n") else ""
+            bloque_exp <- .bloque_exposicion(
+              if (!is.null(desea_compuerta) && dim_nombre %in% names(desea_compuerta))
+                desea_compuerta[[dim_nombre]] else NA_real_)
+            extra <- paste0(bloque_vetos, bloque_exp)
+            if (nzchar(extra)) extra else NULL
+          }
         )
 
         # Anti-bucle: si el LLM devolvio un texto que ya estuvo en el historial

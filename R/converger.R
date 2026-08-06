@@ -190,7 +190,7 @@ converger_escala <- function(x,
         poblacion = x$metadata$poblacion, rango_palabras = rango,
         umbral_redundancia = u_ac, embeddings_existentes = emb,
         items_dimension_conservados = conservados,
-        deseabilidad_objetivo = if (!is.null(desea)) desea[j] else NA_real_),
+        deseabilidad_objetivo = .desea_dimension(desea, x$items, j)),
         error = function(e) NULL)
 
       emb_new <- NULL
