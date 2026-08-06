@@ -705,11 +705,25 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
                               razonamiento = NULL) {
   args <- list(model = modelo, messages = messages)
   if (.es_modelo_razonador(modelo)) {
-    if (!is.null(max_tokens))
-      args$max_completion_tokens <- as.integer(max_tokens)
-    args$reasoning_effort <- .normalizar_razonamiento(
+    esfuerzo <- .normalizar_razonamiento(
       modelo,
       razonamiento %||% getOption("SeMiLLa.reasoning_effort", "minimal"))
+    # max_completion_tokens NO es el tamano de la respuesta: incluye tambien los
+    # tokens de RAZONAMIENTO, que se gastan primero. Con un tope pensado para la
+    # respuesta (300) el modelo agota el presupuesto pensando y devuelve
+    # contenido VACIO. Medido 2026-08-06 con gpt-5-mini, esfuerzo "low", lotes de
+    # 6 items: con tope 300 el 58% de las llamadas (7 de 12) salieron
+    # inservibles y la mediana de razonamiento fue exactamente 300 -- el techo.
+    # Con 1200, 0 de 12 fallaron. Eso vaciaba el 60-75% de la matriz de
+    # deseabilidad y hundia su "estabilidad" sin que nadie lo viera.
+    # Se reserva presupuesto APARTE para pensar; no encarece, porque solo se
+    # facturan los tokens realmente generados.
+    if (!is.null(max_tokens)) {
+      reserva <- switch(esfuerzo, "none" = 0L, "minimal" = 0L,
+                        "low" = 1024L, "medium" = 3072L, "high" = 6144L, 2048L)
+      args$max_completion_tokens <- as.integer(max_tokens) + reserva
+    }
+    args$reasoning_effort <- esfuerzo
     if (!is.null(seed)) args$seed <- as.integer(seed)
     # temperature / top_p: estos modelos solo aceptan el default; se omiten.
   } else {

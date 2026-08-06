@@ -1,3 +1,41 @@
+# SeMiLLa 2.9.19 (2026-08-06)
+## El razonamiento se comia el presupuesto y vaciaba la deseabilidad
+
+En los modelos razonadores, `max_completion_tokens` **no** es el tamano de la
+respuesta: incluye los tokens de razonamiento, que se gastan primero. Las
+llamadas del paquete pasaban un tope pensado para la respuesta (300 en la
+calificacion de deseabilidad, hasta 80 en otras), asi que el modelo agotaba el
+presupuesto pensando y devolvia contenido **vacio**.
+
+Medido con gpt-5-mini, esfuerzo `low`, lotes de 6 items, 12 llamadas identicas:
+
+| tope | llamadas inservibles | razonamiento (mediana) |
+|------|----------------------|------------------------|
+| 300  | 7 de 12 (58 %)       | 300 -- el techo         |
+| 1200 | 0 de 12 (0 %)        | 256 (max 320)           |
+
+Efecto real en dos corridas del autor: la matriz de deseabilidad quedo con el
+**60 % y el 75 % de las celdas vacias**, con pasadas enteras a cero. Nadie lo
+veia porque el promedio se calcula con `na.rm` y `n_imputados` seguia en 0.
+
+`.args_chat_modelo()` reserva ahora presupuesto APARTE para pensar, segun el
+esfuerzo (`low` +1024, `medium` +3072, `high` +6144; `minimal`/`none` sin
+reserva). Arregla de una vez todas las llamadas, no solo la deseabilidad. No
+encarece: solo se facturan los tokens realmente generados, y antes se pagaban
+300 tokens por cada respuesta que no llegaba.
+
+Verificado en el camino real (15 items, 8 pasadas): **0 % de celdas vacias**,
+frente al 60 % de la misma escala antes del cambio.
+
+**Lo que este arreglo NO resuelve:** la estabilidad del juicio siguio en 0.46
+con la matriz completa (era 0.46 con el 40 % de los datos). La causa es otra: en
+12 llamadas identicas el mismo item recibio valores entre 0.20 y 0.60 (rango
+mediano 0.29). Con items de deseabilidad parecida entre si, ese ruido reordena
+el ranking y hunde la correlacion entre pasadas. Las **medias por dimension**,
+en cambio, si son estables: `sd_entre_dim` dio 0.033 con datos incompletos y
+0.035 con datos completos, y el diagnostico (`uniforme`) no cambio. La alerta
+agregada es fiable; la puntuacion de un item aislado no.
+
 # SeMiLLa 2.9.18 (2026-08-06)
 ## El refinamiento hereda tambien el nivel de exposicion
 
