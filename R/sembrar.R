@@ -1392,9 +1392,16 @@ refinar_escala <- function(escala,
               paste0("\"", vetos_compuerta, "\"", collapse = ", "), ". ",
               "El nuevo item debe medir una manifestacion DISTINTA de su ",
               "dimension y no compartir plantilla con los demas items.\n") else ""
+            # Se pasan tambien los niveles de las OTRAS dimensiones: sin eso el
+            # item nuevo se acerca al centro y el contraste ENTRE dimensiones
+            # cae, que es justo lo que la compuerta mide (medido 2026-08-06 en
+            # los 6 constructos del curso: bajaba en las 2 corridas que
+            # reescribieron items, con la herencia ya activa).
             bloque_exp <- .bloque_exposicion(
               if (!is.null(desea_compuerta) && dim_nombre %in% names(desea_compuerta))
-                desea_compuerta[[dim_nombre]] else NA_real_)
+                desea_compuerta[[dim_nombre]] else NA_real_,
+              if (!is.null(desea_compuerta))
+                desea_compuerta[setdiff(names(desea_compuerta), dim_nombre)] else NULL)
             extra <- paste0(bloque_vetos, bloque_exp)
             if (nzchar(extra)) extra else NULL
           }

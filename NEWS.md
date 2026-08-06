@@ -1,3 +1,27 @@
+# SeMiLLa 2.9.20 (2026-08-06)
+## Conservar el contraste ENTRE dimensiones, no solo el nivel de la propia
+
+La 2.9.18 hizo que el refinamiento heredara el nivel de exposicion de la
+compuerta. Probado sobre los **6 constructos de ejemplo del curso**, resulta que
+no basta: en las dos corridas donde el refinamiento reescribio items, el
+contraste entre dimensiones **bajo igualmente** —Ciberpereza 0.113 → 0.098,
+Habilidades de investigacion 0.026 → 0.020— con la herencia ya activa
+(comprobado: `deseabilidad` presente y de la longitud correcta en ambas).
+
+El fallo estaba en el objetivo, no en la transmision. Se le pedia al generador
+que el item nuevo se pareciera a **su** dimension, pero nada sobre las demas. Un
+item que cae hacia el centro cumple esa instruccion al pie de la letra y aun asi
+acerca las dimensiones entre si, que es lo que la compuerta mide como
+`sd_entre_dim` y lo que acaba fundiendo los factores.
+
+Ahora `.bloque_exposicion()` recibe tambien las medianas de las **otras**
+dimensiones (`.desea_otras_dim()`) y pide explicitamente mantener la distancia,
+explicando por que: si todas cuestan lo mismo de admitir, ese peso comun actua
+como un factor extra. Se aplica en los tres caminos que reemplazan items:
+`refinar_escala()`, `converger_escala()` y `optimizar_para_campo()`.
+
+Sin deseabilidad medida, o con una sola dimension, el bloque queda como estaba.
+
 # SeMiLLa 2.9.19 (2026-08-06)
 ## El razonamiento se comia el presupuesto y vaciaba la deseabilidad
 

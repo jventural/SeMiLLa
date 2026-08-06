@@ -285,7 +285,8 @@ optimizar_para_campo <- function(x,
         umbral_redundancia = umbral_acept,
         embeddings_existentes = emb_vivos,
         items_dimension_conservados = conservados,
-        deseabilidad_objetivo = .desea_dimension(desea_vec, x$items, idx_r)
+        deseabilidad_objetivo = .desea_dimension(desea_vec, x$items, idx_r),
+        deseabilidad_otras    = .desea_otras_dim(desea_vec, x$items, idx_r)
       )
       # Contrato ampliado: devuelve list(item, emb) para poder mantener
       # emb_vivos sin re-embeber toda la escala en cada candidato.
@@ -789,9 +790,24 @@ balance_optimizacion <- function(g0, g1) .balance_optimizacion(g0, g1)
 
 
 #' @keywords internal
-.bloque_exposicion <- function(deseabilidad_objetivo) {
+.bloque_exposicion <- function(deseabilidad_objetivo, otras = NULL) {
   if (length(deseabilidad_objetivo) != 1 || is.na(deseabilidad_objetivo))
     return("")
+  # Medido el 2026-08-06 sobre los 6 constructos del curso: pedir solo "parecete
+  # a tu dimension" NO conserva el contraste ENTRE dimensiones, que es lo que la
+  # compuerta mide como sd_entre_dim. En las dos corridas donde el refinamiento
+  # actuo, ese contraste BAJO (0.113 -> 0.098 y 0.026 -> 0.020) pese a que la
+  # herencia estaba activa: un item que cae hacia el centro cumple la
+  # instruccion y aun asi acerca las dimensiones entre si. Por eso se le dan
+  # tambien los niveles de las OTRAS y se le pide mantener la distancia.
+  otras <- otras[!is.na(otras)]
+  bloque_otras <- if (length(otras) > 0) paste0(
+    "Las demas dimensiones de esta escala estan en: ",
+    paste(sprintf("%s = %.2f", names(otras), otras), collapse = "; "), ". ",
+    "MANTEN LA DISTANCIA con ellas: no acerques el item nuevo a esos niveles. ",
+    "Que cada dimension cueste distinto de admitir es lo que impide que se ",
+    "peguen entre si; si todas acaban costando lo mismo, ese peso comun actua ",
+    "como un factor extra y las funde.\n") else ""
   paste0(
     "NIVEL DE EXPOSICION OBLIGATORIO: los items de esta dimension tienen una ",
     "deseabilidad social de ", sprintf("%.2f", deseabilidad_objetivo),
@@ -802,7 +818,20 @@ balance_optimizacion <- function(g0, g1) .balance_optimizacion(g0, g1)
       "algo que a la persona le incomoda reconocer, pero sin convertirlo en una confesion grave.\n"
     else if (deseabilidad_objetivo > 0.60)
       "algo que no compromete a quien lo admite, en la misma linea que el resto.\n"
-    else "algo de exposicion intermedia, ni confesion ni tramite.\n")
+    else "algo de exposicion intermedia, ni confesion ni tramite.\n",
+    bloque_otras)
+}
+
+# Medianas de deseabilidad de las dimensiones DISTINTAS a la del item idx.
+#' @keywords internal
+.desea_otras_dim <- function(desea, items, idx) {
+  if (is.null(desea) || length(desea) != nrow(items)) return(NULL)
+  d <- items$dimension[idx]
+  otras <- items$dimension != d
+  if (!any(otras)) return(NULL)
+  m <- tapply(as.numeric(desea)[otras], items$dimension[otras], stats::median,
+              na.rm = TRUE)
+  m[!is.na(m)]
 }
 
 
@@ -821,7 +850,8 @@ balance_optimizacion <- function(g0, g1) .balance_optimizacion(g0, g1)
                                       umbral_redundancia = 0.70,
                                       embeddings_existentes = NULL,
                                       items_dimension_conservados = character(0),
-                                      deseabilidad_objetivo = NA_real_) {
+                                      deseabilidad_objetivo = NA_real_,
+                                      deseabilidad_otras = NULL) {
   dim_nombre <- x$items$dimension[idx_item]
   def_dim <- if (is.list(x$concepto$dimensiones))
                x$concepto$dimensiones[[dim_nombre]] %||% dim_nombre
@@ -863,7 +893,7 @@ balance_optimizacion <- function(g0, g1) .balance_optimizacion(g0, g1)
     # "cuanto cuesta admitirlo" que el que sustituye. Mezclar items
     # comprometedores con items inocuos DENTRO de una dimension abre varianza
     # de metodo y la parte en dos (alerta_intra de la compuerta).
-    .bloque_exposicion(deseabilidad_objetivo),
+    .bloque_exposicion(deseabilidad_objetivo, deseabilidad_otras),
     if (anti_halo) {
       tipo <- .tipo_dimension(dim_nombre, def_dim)
       switch(tipo,
