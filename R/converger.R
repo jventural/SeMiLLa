@@ -108,7 +108,15 @@ converger_escala <- function(x,
   if (verbose) {
     cat("\n", .linea("="), "\n", sep = "")
     cat(.color_azul("  CONVERGENCIA PSICOMETRICA"), "\n")
-    cat("  objetivo: ", objetivo, " | max ", max_iteraciones, " iteraciones\n", sep = "")
+    # El objetivo se GUARDA con el vocabulario antiguo (esta funcion ramifica
+    # sobre esas cadenas), pero se MUESTRA con el de escenario, que es el que
+    # el usuario ve en la compuerta. Si no, la misma meta aparece con dos
+    # nombres distintos en la misma corrida.
+    .obj_legible <- c("LISTA PARA CAMPO"           = "estructura ROBUSTA",
+                      "APLICAR CON CAUTELA"        = "que deje de ser FRAGIL",
+                      "APLICAR COMO ESCALA GLOBAL" = "utilizable con puntaje total")
+    cat("  objetivo: ", .obj_legible[[objetivo]] %||% objetivo,
+        " | max ", max_iteraciones, " iteraciones\n", sep = "")
     cat(.linea("="), "\n", sep = "")
   }
 
@@ -122,7 +130,12 @@ converger_escala <- function(x,
 
   mejor <- list(escala = x, dg = dg, score = dg$score, iter = 0L,
                 cambios = data.frame())
+  # 'escenario' viaja junto al veredicto (2.9.16): el bucle sigue decidiendo con
+  # las cadenas antiguas -esta funcion ramifica sobre ellas- pero quien lea el
+  # historial tiene que poder mostrar el mismo vocabulario que la compuerta, o
+  # la misma escala aparece descrita de dos formas en la misma pantalla.
   historial <- data.frame(iteracion = 0L, veredicto = dg$compuerta$veredicto,
+                          escenario = dg$compuerta$escenario %||% NA_character_,
                           n_marcados = nrow(dg$marcados), reemplazos = 0L,
                           rechazos_texto = 0L, score = round(dg$score, 2),
                           stringsAsFactors = FALSE)
@@ -218,6 +231,7 @@ converger_escala <- function(x,
 
     historial <- rbind(historial, data.frame(
       iteracion = it, veredicto = dg$compuerta$veredicto,
+      escenario = dg$compuerta$escenario %||% NA_character_,
       n_marcados = nrow(dg$marcados), reemplazos = n_ok,
       rechazos_texto = n_tx, score = round(dg$score, 2),
       stringsAsFactors = FALSE))
