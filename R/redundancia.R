@@ -156,10 +156,16 @@ auditar_redundancia <- function(x, umbral_sem = "auto", n_gram = 2,
   # El clustering es un subanalisis OPCIONAL de la auditoria: si falla, se
   # reporta y se sigue con los demas indices, en lugar de perder tambien la
   # alerta de homogeneidad sintactica y los pares redundantes.
+  # Nombres declarados del constructo y de sus dimensiones: sirven para no
+  # confundir cohesion TEMATICA con plantilla repetida (ver la excepcion (c) de
+  # .detectar_facetas_repetidas). Solo los nombres, nunca las definiciones.
+  nombres_decl <- .tokens_nombres_constructo(x, dim_vec)
+
   facetas <- tryCatch(
     .detectar_facetas_repetidas(
       S = S, textos = textos, codigos = codigos, dims = dim_vec,
-      umbral_faceta = umbral_faceta, min_items = min_items_faceta),
+      umbral_faceta = umbral_faceta, min_items = min_items_faceta,
+      nombres_constructo = nombres_decl),
     error = function(e) {
       warning("Deteccion de facetas repetidas omitida (", conditionMessage(e),
               "); el resto de la auditoria de redundancia se mantiene.",
@@ -268,9 +274,38 @@ auditar_redundancia <- function(x, umbral_sem = "auto", n_gram = 2,
 # que nombran la conducta repetida (p. ej. "ayudo companeros").
 
 #' @keywords internal
+#' Palabras de contenido del NOMBRE del constructo y de sus dimensiones
+#'
+#' Deliberadamente NO incluye las definiciones: arrastran vocabulario incidental
+#' ("companeros", "escuela") que aparece tambien en items genuinamente repetidos,
+#' y usarlas silenciaba alarmas legitimas (medido el 2026-08-07 sobre PM).
+#' @keywords internal
+#' @noRd
+.tokens_nombres_constructo <- function(x, dims = NULL) {
+  stop_es <- c("de", "la", "el", "los", "las", "a", "en", "que", "y", "o", "u",
+               "un", "una", "por", "del", "al", "para", "ante", "hacia",
+               "sobre", "con", "sin", "su", "sus")
+  cc <- if (is.list(x)) x$concepto else NULL
+  d  <- if (is.list(cc)) cc$dimensiones else NULL
+  partes <- c(
+    if (!is.null(cc) && is.character(cc$concepto)) cc$concepto else
+      if (is.character(cc)) cc else character(0),
+    if (!is.null(names(d))) names(d) else
+      if (is.character(d)) d else character(0),
+    if (!is.null(dims)) unique(dims[!is.na(dims)]) else character(0))
+  partes <- partes[nzchar(partes)]
+  if (length(partes) == 0) return(character(0))
+  t <- tolower(paste(partes, collapse = " "))
+  t <- chartr("áéíóúüñ", "aeiouun", t)
+  t <- gsub("[^[:alnum:][:space:]]", " ", t)
+  w <- strsplit(trimws(t), "\\s+")[[1]]
+  unique(w[nzchar(w) & nchar(w) > 3 & !(w %in% stop_es)])
+}
+
 .detectar_facetas_repetidas <- function(S, textos, codigos, dims,
                                         umbral_faceta = 0.55,
-                                        min_items = 3L) {
+                                        min_items = 3L,
+                                        nombres_constructo = character(0)) {
   vacio <- data.frame(cluster = integer(0), n_items = integer(0),
                       sim_media = numeric(0), inter_dimension = logical(0),
                       nucleo_lexico = character(0), codigos = character(0),
@@ -346,7 +381,28 @@ auditar_redundancia <- function(x, umbral_sem = "auto", n_gram = 2,
         nucleo[1] %in% tt, logical(1)))
       es_objeto_escala <- pres_global > 0.50
     }
-    if ((es_dimension_completa || es_objeto_escala) && sim_media < 0.70) next
+
+    # (c) nucleo = el NOMBRE del constructo o de una dimension. La regla (b)
+    # queria cubrir esto pero lo infiere por frecuencia y exige presencia en mas
+    # del 50% de los items, asi que se le escapa el caso normal: en una escala
+    # de "Ansiedad ante la estadistica" la palabra "estadistica" aparecio en el
+    # 33% de los items -lo correcto: repetirla en los 24 seria redundancia de
+    # verdad- y 7 items que describian sintomas DISTINTOS (bloqueo, sudoracion,
+    # mente en blanco, no concentrarse...) se reportaron como "escritos con la
+    # misma plantilla". El umbral premiaba la mala redaccion.
+    # Aqui no se infiere: el nombre del constructo y los de las dimensiones son
+    # dato declarado. Que los items lo mencionen es TEMA, no parafraseo.
+    # Ojo, solo los NOMBRES: probado tambien con las definiciones largas
+    # (2026-08-07) silenciaba un grupo de PM con redundancia real -"uso el
+    # uniforme... frente a mis companeros" / "cuido mi uniforme para mostrar
+    # respeto a mis companeros"- porque "companeros" salia en la definicion.
+    # Apagar una alarma legitima es peor que dejar una de mas.
+    es_nombre_declarado <- length(nucleo) > 0 &&
+      length(nombres_constructo) > 0 &&
+      any(sub("^~", "", nucleo) %in% nombres_constructo)
+
+    if ((es_dimension_completa || es_objeto_escala || es_nombre_declarado) &&
+        sim_media < 0.70) next
 
     k <- k + 1L
     filas[[k]] <- data.frame(
