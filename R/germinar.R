@@ -65,10 +65,13 @@ obtener_embeddings <- function(items,
 
   # Determinar el backend: OpenAI (remoto) o sentence-transformers (local, libre)
   usar_local <- .es_modelo_local(modelo_embedding)
+  # Modelos "hf:..." van por el router de HuggingFace: ni son locales ni pasan
+  # por el cliente de OpenAI, asi que no deben validarse como clave sk-.
+  usar_hf_emb <- .es_modelo_hf_emb(modelo_embedding)
 
   # Validar API key solo si se usa un proveedor remoto (OpenAI)
   openai <- NULL
-  if (!usar_local) {
+  if (!usar_local && !usar_hf_emb) {
     if (!missing(api_key)) {
       .validar_api_key(api_key)
       openai <- .configurar_openai(api_key)
@@ -113,7 +116,14 @@ obtener_embeddings <- function(items,
   }
 
   if (is.null(embeddings_matrix)) {
-    if (usar_local) {
+    if (usar_hf_emb) {
+      # Backend GRATUITO por el router de HuggingFace: la api_key que llega
+      # aqui es el token hf_ (o se toma de HF_TOKEN).
+      tok <- if (!missing(api_key) && is.character(api_key) && nzchar(api_key))
+               api_key else Sys.getenv("HF_TOKEN", "")
+      embeddings_matrix <- .embeddings_hf(items_texto, modelo_embedding,
+                                          hf_token = tok, verbose = verbose)
+    } else if (usar_local) {
       # Backend local de acceso libre (sentence-transformers via reticulate)
       embeddings_matrix <- .embeddings_locales(items_texto, modelo_embedding, verbose = verbose)
     } else {

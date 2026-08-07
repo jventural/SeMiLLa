@@ -1,3 +1,28 @@
+# SeMiLLa 2.9.22 (2026-08-06)
+## Embeddings con HuggingFace tambien desde el paquete
+
+La App sabia calcular embeddings con HuggingFace (gratis) y el paquete NO. El
+script de analisis local que descarga el usuario corre sobre el PAQUETE, asi que
+quien elegia el modelo gratuito configuraba todo bien en el navegador,
+descargaba el script y se encontraba con:
+
+    openai.AuthenticationError: Error code: 401 - Incorrect API key provided
+
+porque los embeddings salian por OpenAI hubiera puesto lo que hubiera puesto.
+Caso real reportado por una estudiante el 2026-08-06.
+
+`obtener_embeddings()` reconoce ahora los modelos con prefijo `hf:` y los envia
+al router de HuggingFace (`.embeddings_hf()`, portado desde la App). Es una rama
+nueva: las rutas de OpenAI y de modelos locales quedan **exactamente igual**.
+
+Antes, un modelo `hf:org/modelo` caia en la rama local y se pasaba a
+sentence-transformers **con el prefijo puesto**, que no lo reconoce: ese camino
+ya estaba roto, no habia nada que conservar.
+
+Con `hf:` no se valida la clave como `sk-`: el token va en `api_key` (empieza por
+`hf_`) o en la variable de entorno `HF_TOKEN`. Los errores 401 y 429 del router
+se traducen a un mensaje que dice que hacer.
+
 # SeMiLLa 2.9.20 (2026-08-06)
 ## Conservar el contraste ENTRE dimensiones, no solo el nivel de la propia
 
