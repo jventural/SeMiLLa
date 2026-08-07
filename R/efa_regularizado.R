@@ -89,6 +89,30 @@ efa_regularizado <- function(x,
     return(invisible(NULL))
   }
 
+  # MEDIDO EL 2026-08-07, y por eso esta funcion salio del asistente de la app:
+  # su asignacion NO recupera la estructura. Contra las tres escalas del EESTP
+  # (N=254) dio ARI 0.12 / 0.27 / 0.40 donde el ensemble daba 1.00 sobre LOS
+  # MISMOS embeddings; en simulacion, 40 replicas por celda, no la recupero ni
+  # una sola vez, ni con factores trivialmente separables (un clustering
+  # jerarquico corriente sobre la MISMA matriz de similitud si lo hacia, asi que
+  # la informacion estaba ahi).
+  # La causa esta abajo, en la linea de $asignacion: which.max(abs(r)) borra el
+  # signo, y el signo es justo lo que separa los bloques en un eigenvector, que
+  # es un CONTRASTE (un bloque +, el otro -). Agrupando las cargas en vez de
+  # tomar el maximo absoluto, el ARI sube a 1.00... y coincide con el ensemble
+  # (0.039 de diferencia media), o sea que corregirlo lo vuelve redundante.
+  # Se conserva para poder desarrollarla mas adelante -habria que reemplazar el
+  # soft-thresholding de una pasada por la optimizacion penalizada iterativa que
+  # propone Goretzko, y arreglar la seleccion de lambda, que no deja nada fuera
+  # pese a llamarse leave-one-item-out-.
+  # Informe: Flor/13_version_corregida/mejorando/efa_regularizado/INFORME.md
+  if (verbose)
+    warning("efa_regularizado(): su asignacion por item NO recupera la ",
+            "estructura (medido 2026-08-07: ARI 0.12-0.40 donde el ensemble da ",
+            "1.00). Usa precision_clasificacion(metodo = 'ensemble') para ",
+            "decidir la estructura. Esta funcion se mantiene como base de ",
+            "desarrollo, no como diagnostico fiable.", call. = FALSE)
+
   if (!inherits(x, "semilla")) {
     stop("x debe ser un objeto 'semilla' con embeddings calculados.")
   }
