@@ -69,14 +69,25 @@
 #'        poda los clusters de faceta repetida y los pares redundantes,
 #'        regenera esos items con restricciones anti-parafraseo y anti-halo,
 #'        y re-pasa la compuerta (hasta \code{max_iteraciones_optimizar}).
-#'        Default: TRUE. Requiere \code{compuerta = TRUE}.
+#'        Requiere \code{compuerta = TRUE}.
+#'        Default \code{NULL}, que se resuelve segun el origen de los items
+#'        (2.9.24): \code{TRUE} cuando SeMiLLa los genero
+#'        (\code{fuente = "llm"}) y \code{FALSE} cuando los trajo el usuario
+#'        (\code{fuente = "usuario"}). El motivo: al VALIDAR un instrumento
+#'        publicado, reescribir sus items lo convierte en otro instrumento y
+#'        cualquier comparacion contra el articulo original deja de ser valida.
+#'        Es la misma regla que ya seguia el cierre de blindaje. Se puede
+#'        forzar con \code{optimizar = TRUE} de forma explicita.
 #' @param max_iteraciones_optimizar Iteraciones maximas de la optimizacion
 #'        automatica (default: 2).
 #' @param estres Ejecutar la PRUEBA DE ESTRES (\code{estres_escala()}) al final
 #'        del pipeline. Default \code{FALSE} (paso pesado; se corre a pedido).
 #'        Sirve tambien con \code{fuente = "usuario"} para estresar un test ya
 #'        redactado (p. ej. cargado de un articulo).
-#' @param optimizar_estres Si \code{estres = TRUE} y la escala resulta fragil a
+#' @param optimizar_estres Default \code{NULL}, que se resuelve como
+#'        \code{optimizar} (2.9.24): no reescribe items del usuario salvo
+#'        peticion explicita.
+#'        Si \code{estres = TRUE} y la escala resulta fragil a
 #'        algun sesgo, reescribir iterativamente los items criticos y adoptar la
 #'        escala mejorada. Default \code{TRUE}; \code{FALSE} = solo diagnostico.
 #' @param seed Semilla para reproducibilidad (default: NULL). Usar un numero
@@ -189,12 +200,23 @@ semilla <- function(concepto = NULL,
                     exportar_csv = FALSE,
                     archivo_salida = NULL,
                     compuerta = TRUE,
-                    optimizar = TRUE,
+                    optimizar = NULL,
                     max_iteraciones_optimizar = 2,
                     estres = FALSE,
-                    optimizar_estres = TRUE,
+                    optimizar_estres = NULL,
                     seed = NULL,
                     verbose = TRUE) {
+
+  # 2.9.24 - QUIEN ESCRIBIO LOS ITEMS DECIDE SI SE PUEDEN REESCRIBIR.
+  # Con fuente = "usuario" la escala viene de un instrumento ya existente (un
+  # articulo, una bateria en uso): reescribir sus items lo convierte en OTRO
+  # instrumento y arruina cualquier comparacion contra la fuente original —
+  # justo el caso de uso de VALIDACION. Por eso optimizar y optimizar_estres
+  # llegan como NULL y se resuelven aqui. Es la misma regla que el cierre de
+  # blindaje ya aplicaba mas abajo (fuente != "usuario"). Ambos siguen
+  # forzandose de forma explicita con TRUE.
+  if (is.null(optimizar))        optimizar        <- (fuente != "usuario")
+  if (is.null(optimizar_estres)) optimizar_estres <- (fuente != "usuario")
 
   # Terminos vetados por el usuario: se inyectan UNA vez en la descripcion de
   # la poblacion para que fluyan a TODOS los prompts del pipeline (generacion,
@@ -518,6 +540,20 @@ semilla <- function(concepto = NULL,
           resultado
         }
       )
+    } else if (!optimizar && identical(fuente, "usuario") &&
+               !is.null(resultado$compuerta) &&
+               identical(resultado$compuerta$veredicto, "NO APLICAR TODAVIA")) {
+      # 2.9.24: la compuerta AUDITA, pero los items son del usuario y no se
+      # tocan. Decirlo, para que el veredicto no se lea como "no hice nada".
+      if (verbose) {
+        cat("\n")
+        cat(.color_amarillo(
+          "[5b/5] La compuerta dice NO APLICAR TODAVIA, y los items NO se han modificado"),
+          "\n", sep = "")
+        cat("       (fuente = \"usuario\": son items suyos, no generados por SeMiLLa).\n")
+        cat("       Para corregirlos: optimizar_para_campo(escala, api_key)\n")
+        cat("       o semilla(..., optimizar = TRUE) de forma explicita.\n")
+      }
     }
   } else {
     if (verbose) cat("\n", .color_gris("[5/5] COMPUERTA PRE-APLICACION"),

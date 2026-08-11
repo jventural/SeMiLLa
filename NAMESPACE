@@ -54,6 +54,10 @@ export(modelos_embeddings_libres)
 # -----------------------------------------------------------------------------
 export(precision_clasificacion)
 export(efa_regularizado)
+# v2.9.25: el paso fusionado. Mide con el ensemble, decide con una regla escrita
+# y, si falla, refina con EL MISMO umbral, blinda y VUELVE A MEDIR (en ciclos).
+export(estructura_por_consenso)
+S3method(print, semilla_estructura)
 
 # -----------------------------------------------------------------------------
 # Pasos 10-15 (Fase V). Evaluacion psicometrica sin datos
@@ -125,6 +129,15 @@ export(plot_evolucion_precision)
 export(plot_redundancia)
 export(plot_sankey)
 export(plot_consenso)
+# v2.9.25: los dos momentos de estructura_por_consenso(). El nombre largo es
+# deliberado: plot_estructura() ya existe arriba y es otra figura distinta.
+export(plot_estructura_consenso)
+export(plot_indices_dos_momentos)
+export(plot_consenso_dos_momentos)
+# v2.9.27: el recorrido completo, con el punto POSTERIOR al blindaje. No es lo
+# mismo que plot_evolucion_precision(), que dibuja un solo ciclo y se detiene
+# antes de blindar (por eso siempre parecia una subida limpia).
+export(plot_evolucion_estructura)
 export(plot_cargas)
 export(plot_scree)
 export(plot_forma_corta)

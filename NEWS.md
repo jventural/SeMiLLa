@@ -1,3 +1,29 @@
+# SeMiLLa 2.9.24 (2026-08-09)
+## Validar un instrumento existente ya no lo reescribe
+
+`semilla(fuente = "usuario")` es el camino de VALIDACION: los items vienen de un
+articulo o de una bateria en uso, no los escribe SeMiLLa. Hasta 2.9.23, si la
+compuerta devolvia "NO APLICAR TODAVIA" —cosa nada rara en instrumentos
+publicados—, `optimizar` (TRUE por defecto) disparaba `optimizar_para_campo()` y
+**los items del usuario salian reescritos sin haberlo pedido**. Quien comparaba
+despues contra el articulo original comparaba contra otro instrumento.
+
+El paquete ya seguia la regla correcta en otro sitio: el cierre de blindaje se
+salta con `fuente != "usuario"`. Faltaba aqui.
+
+- `optimizar` y `optimizar_estres` pasan a `NULL` por defecto y se resuelven
+  segun el origen de los items: `TRUE` con `fuente = "llm"`, `FALSE` con
+  `fuente = "usuario"`. Ambos se fuerzan con `TRUE` explicito.
+- Cuando la compuerta dice "NO APLICAR TODAVIA" sobre items del usuario, se
+  informa que **no se ha modificado nada** y como corregirlos a peticion
+  (`optimizar_para_campo()`), para que el veredicto no se lea como inaccion.
+- Sin cambios para quien genera items con SeMiLLa: ahi `optimizar` sigue
+  valiendo TRUE.
+
+Detectado al re-correr con 2.9.23 la validacion empirica de mayo (14 escalas
+publicadas contra sus papers): con los defaults, la comparacion habria medido
+items distintos de los del articulo.
+
 # SeMiLLa 2.9.22 (2026-08-06)
 ## Embeddings con HuggingFace tambien desde el paquete
 

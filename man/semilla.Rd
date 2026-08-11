@@ -34,10 +34,10 @@ semilla(
   exportar_csv = FALSE,
   archivo_salida = NULL,
   compuerta = TRUE,
-  optimizar = TRUE,
+  optimizar = NULL,
   max_iteraciones_optimizar = 2,
   estres = FALSE,
-  optimizar_estres = TRUE,
+  optimizar_estres = NULL,
   seed = NULL,
   verbose = TRUE
 )
@@ -132,7 +132,15 @@ automaticamente la escala con \code{\link{optimizar_para_campo}}:
 poda los clusters de faceta repetida y los pares redundantes,
 regenera esos items con restricciones anti-parafraseo y anti-halo,
 y re-pasa la compuerta (hasta \code{max_iteraciones_optimizar}).
-Default: TRUE. Requiere \code{compuerta = TRUE}.}
+Requiere \code{compuerta = TRUE}.
+Default \code{NULL}, que se resuelve segun el origen de los items
+(2.9.24): \code{TRUE} cuando SeMiLLa los genero
+(\code{fuente = "llm"}) y \code{FALSE} cuando los trajo el usuario
+(\code{fuente = "usuario"}). El motivo: al VALIDAR un instrumento
+publicado, reescribir sus items lo convierte en otro instrumento y
+cualquier comparacion contra el articulo original deja de ser valida.
+Es la misma regla que ya seguia el cierre de blindaje. Se puede
+forzar con \code{optimizar = TRUE} de forma explicita.}
 
 \item{max_iteraciones_optimizar}{Iteraciones maximas de la optimizacion
 automatica (default: 2).}
@@ -142,7 +150,10 @@ del pipeline. Default \code{FALSE} (paso pesado; se corre a pedido).
 Sirve tambien con \code{fuente = "usuario"} para estresar un test ya
 redactado (p. ej. cargado de un articulo).}
 
-\item{optimizar_estres}{Si \code{estres = TRUE} y la escala resulta fragil a
+\item{optimizar_estres}{Default \code{NULL}, que se resuelve como
+\code{optimizar} (2.9.24): no reescribe items del usuario salvo
+peticion explicita.
+Si \code{estres = TRUE} y la escala resulta fragil a
 algun sesgo, reescribir iterativamente los items criticos y adoptar la
 escala mejorada. Default \code{TRUE}; \code{FALSE} = solo diagnostico.}
 
