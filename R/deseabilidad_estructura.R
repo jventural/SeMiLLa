@@ -85,9 +85,9 @@ calificar_deseabilidad <- function(x, api_key = Sys.getenv("OPENAI_API_KEY"),
     nums <- nums[!is.na(nums) & nums >= 0 & nums <= 1]
     if (length(nums) >= k) nums[seq_len(k)] else NULL
   }
-  .calificar_chunk <- function(openai, idx) {
+  .prompt_chunk <- function(idx) {
     lista <- paste(sprintf("%d. %s", seq_along(idx), txt[idx]), collapse = "\n")
-    prompt <- paste0(
+    paste0(
       "Eres experto en deseabilidad social.\nCONSTRUCTO: ", concepto, "\nPOBLACION: ", poblacion, "\n\n",
       "Para CADA item da un numero 0-1: cuan socialmente deseable es estar de acuerdo/endosarlo\n",
       "(0 = quedaria mal visto admitirlo, 0.5 = neutro, 1 = quedaria muy bien visto).\n",
@@ -95,17 +95,6 @@ calificar_deseabilidad <- function(x, api_key = Sys.getenv("OPENAI_API_KEY"),
       "'Ayudo a un companero'=0.9 ; 'Doy ordenes para que me obedezcan'=0.35 ; 'Busco emociones fuertes'=0.6.\n\n",
       "ITEMS:\n", lista, "\n\nResponde SOLO el JSON: {\"d\": [",
       paste(rep("x", length(idx)), collapse = ","), "]} con ", length(idx), " numeros 0-1.")
-    for (intento in 1:2) {
-      resp <- tryCatch(do.call(openai$chat$completions$create,
-                .args_chat_modelo(modelo,
-                  list(list(role = "user", content = prompt)),
-                  max_tokens = 300L, temperature = 0.3,
-                  razonamiento = "low")),
-                error = function(e) NULL)
-      v <- if (!is.null(resp)) .parse_des(resp$choices[[1]]$message$content, length(idx)) else NULL
-      if (!is.null(v)) return(v)
-    }
-    NULL
   }
 
   # Calificar por LOTES pequenos con ejemplo-ancla (evita la respuesta perezosa
@@ -113,16 +102,35 @@ calificar_deseabilidad <- function(x, api_key = Sys.getenv("OPENAI_API_KEY"),
   # items se BARAJAN por pasada: los lotes secuenciales coinciden con las
   # dimensiones (los items llegan agrupados) y cualquier deriva de escala entre
   # lotes sesgaria sd_entre_dim, que es justo el numero del diagnostico.
+  #
+  # PRIMERO se arman TODOS los lotes de TODAS las pasadas, en el mismo orden de
+  # siempre: asi el generador aleatorio se consume exactamente igual que en la
+  # version secuencial y el barajado sale identico. DESPUES se envian las
+  # llamadas a la vez. Antes eran n_pasadas x ceil(p/6) llamadas una detras de
+  # otra -24 con 33 items- cada una esperando a la anterior.
   if (!is.null(seed)) set.seed(seed)
-  openai <- .configurar_openai(api_key)
   des_mat <- matrix(NA_real_, nrow = p, ncol = n_pasadas)
+  plan <- list()
   for (pas in seq_len(n_pasadas)) {
-    orden <- sample.int(p)
+    orden  <- sample.int(p)
     chunks <- split(orden, ceiling(seq_along(orden) / 6))
-    for (ch in chunks) {
-      v <- .calificar_chunk(openai, ch)
-      if (!is.null(v)) des_mat[ch, pas] <- v
-    }
+    for (ch in chunks) plan[[length(plan) + 1L]] <- list(pas = pas, idx = ch)
+  }
+
+  respuestas <- .chat_en_paralelo(
+    prompts      = vapply(plan, function(z) .prompt_chunk(z$idx), character(1)),
+    api_key      = api_key,
+    modelo       = modelo,
+    max_tokens   = 300L,
+    temperature  = 0.3,
+    razonamiento = "low",
+    max_paralelo = getOption("SeMiLLa.max_paralelo", 6L),
+    verbose      = verbose)
+
+  for (k in seq_along(plan)) {
+    v <- if (is.null(respuestas[[k]])) NULL else
+      .parse_des(respuestas[[k]], length(plan[[k]]$idx))
+    if (!is.null(v)) des_mat[plan[[k]]$idx, plan[[k]]$pas] <- v
   }
   des <- rowMeans(des_mat, na.rm = TRUE)   # NaN si el item fallo en todas las pasadas
 
