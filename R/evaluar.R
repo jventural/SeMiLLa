@@ -94,8 +94,41 @@ validez_contenido <- function(x,
     items_df <- x
     concepto <- NULL
     concepto_original <- "constructo evaluado"
+  } else if (inherits(x, "semilla_prueba_objetiva") ||
+             inherits(x, "semilla_test_cognitivo") ||
+             inherits(x, "semilla_guttman") ||
+             inherits(x, "semilla_historias") ||
+             inherits(x, "semilla_forcedchoice")) {
+    # La validez de contenido por jueces SI se aplica a estos instrumentos: es
+    # el metodo estandar para una prueba de conocimientos, donde lo que hay que
+    # demostrar es que cada item pertenece a su celda de la tabla de
+    # especificaciones. Lo que no se les aplica es el analisis semantico
+    # (embeddings, estructura por consenso), que es otra cosa.
+    # Solo hace falta traducir los nombres: sus items viven en 'enunciado' y su
+    # celda teorica en 'tema', no en 'item' y 'dimension'.
+    df <- x$items
+    if (is.null(df) || !is.data.frame(df) || !nrow(df))
+      stop("El objeto no trae items.", call. = FALSE)
+    col_txt <- intersect(c("item", "enunciado", "texto", "pregunta", "premisa"), names(df))
+    col_dim <- intersect(c("dimension", "tema", "dominio", "nivel_bloom"), names(df))
+    if (!length(col_txt))
+      stop(sprintf("No encuentro el texto de los items. Columnas: %s.",
+                   paste(names(df), collapse = ", ")), call. = FALSE)
+    items_df <- df
+    items_df$item <- as.character(df[[col_txt[1]]])
+    items_df$dimension <- if (length(col_dim)) as.character(df[[col_dim[1]]]) else "General"
+    # .calcular_v_aiken() arma su tabla con items_df$numero, y una prueba
+    # objetiva llama a esa columna 'n_item': sin esto el data.frame final
+    # mezclaba un vector de longitud 0 con otro de 20 y abortaba.
+    if (!("numero" %in% names(items_df)))
+      items_df$numero <- if ("n_item" %in% names(df)) df$n_item else seq_len(nrow(df))
+    concepto <- NULL
+    concepto_original <- x$dominio %||% x$concepto %||% "dominio evaluado"
   } else {
-    stop("Objeto no valido. Usa un objeto semilla o dataframe.")
+    stop(paste0("Objeto no valido. Usa un objeto semilla, un instrumento generado ",
+                "por SeMiLLa (prueba objetiva, historias, Guttman, cognitivo, ",
+                "eleccion forzada) o un dataframe con columnas 'item' y 'dimension'."),
+         call. = FALSE)
   }
 
   .validar_api_key(api_key)
