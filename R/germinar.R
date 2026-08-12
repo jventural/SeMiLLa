@@ -57,7 +57,44 @@ obtener_embeddings <- function(items,
   } else if (is.data.frame(items) && "item" %in% names(items)) {
     items_df <- items
   } else {
-    stop("Objeto no valido. Usa un objeto semilla, semilla_items, o dataframe con columna 'item'")
+    # Antes se respondia siempre lo mismo -"Objeto no valido. Usa un objeto
+    # semilla, semilla_items, o dataframe con columna 'item'"- y quien llegaba
+    # aqui con una prueba objetiva no tenia forma de entender que su
+    # instrumento, sencillamente, no se analiza asi. Caso real del 11-ago-2026:
+    # una prueba objetiva de 20 items cuyos enunciados viven en la columna
+    # 'enunciado'. Ahora se reconoce el objeto y se explica el porque.
+    tipado <- c(semilla_prueba_objetiva = "prueba objetiva",
+                semilla_historias       = "escala de historias",
+                semilla_guttman         = "escala de Guttman",
+                semilla_test_cognitivo  = "test cognitivo",
+                semilla_forcedchoice    = "escala de eleccion forzada")
+    cual <- tipado[intersect(class(items), names(tipado))]
+    if (length(cual)) {
+      stop(sprintf(paste0(
+        "Los embeddings son para escalas tipo Likert y esto es una %s.\n",
+        "  El analisis semantico compara el PARECIDO entre los textos de los items ",
+        "para ver si se agrupan como dice la teoria. En una %s la estructura la fija ",
+        "la tabla de especificaciones, y sus propiedades se estudian con las ",
+        "respuestas de las personas (dificultad, discriminacion, funcionamiento de ",
+        "los distractores), no con el parecido entre enunciados.\n",
+        "  Tus items ya estan completos: pasa directamente a ensamblar el ",
+        "entregable con ensamblar_test()."), cual[[1]], cual[[1]]), call. = FALSE)
+    }
+    # Un data.frame con los items en otra columna: se dice cual falta y cuales hay.
+    if (is.data.frame(items)) {
+      stop(sprintf(paste0(
+        "El data.frame no tiene columna 'item'. Columnas encontradas: %s.\n",
+        "  Renombra a 'item' la que contiene el texto de los items."),
+        paste(names(items), collapse = ", ")), call. = FALSE)
+    }
+    if (is.list(items) && is.data.frame(items$items)) {
+      stop(sprintf(paste0(
+        "El objeto trae $items pero sin columna 'item'. Columnas: %s.\n",
+        "  Si es un instrumento que no es una escala Likert, los embeddings no ",
+        "se le aplican."), paste(names(items$items), collapse = ", ")), call. = FALSE)
+    }
+    stop("Objeto no valido. Usa un objeto semilla, semilla_items, o dataframe con columna 'item'",
+         call. = FALSE)
   }
 
   items_texto <- items_df$item
