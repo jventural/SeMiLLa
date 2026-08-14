@@ -781,6 +781,136 @@ plot_discriminacion <- function(disc) {
 }
 
 
+#' @title Visualizar Validez de Criterio Predicha
+#'
+#' @description
+#' Grafico de bastones (\emph{lollipop}) con el peso de cada item en el modelo
+#' penalizado que \code{\link{validez_criterio_predicha}} ajusta sobre los
+#' embeddings. Los items quedan ordenados por peso absoluto, de mayor a menor.
+#'
+#' Hay dos lecturas y conviene hacerlas en este orden: los \strong{pesos} dicen
+#' QUE items predicen el criterio, y el \strong{r validado por CV} del titulo
+#' dice CUANTO lo predice el conjunto. Pesos grandes con un r bajo son senal de
+#' sobreajuste, no de un buen instrumento.
+#'
+#' Los items con peso exactamente cero se dibujan como un circulo vacio sobre el
+#' eje. No son items malos: con \code{alpha} distinto de 0 la penalizacion tiene
+#' componente lasso, que apaga los que no anaden nada \emph{dado lo que ya
+#' aportan los demas} para predecir ese criterio concreto.
+#'
+#' @param crit Resultado de \code{\link{validez_criterio_predicha}} (objeto de
+#'   clase \code{semilla_criterio}).
+#' @param top_n Numero maximo de items a dibujar, los de mayor peso absoluto.
+#'   \code{NULL} (por defecto) los dibuja todos.
+#' @param titulo Titulo del grafico. \code{NULL} (por defecto) lo compone con el
+#'   r (o el AUC) validado por CV.
+#'
+#' @return Objeto ggplot2.
+#'
+#' @details
+#' A diferencia de \code{\link{analizar_coherencia}} (,10 / ,15 / ,20) o de
+#' \code{\link{discriminacion_semantica}} (,30 / ,50), este paso \strong{no trae
+#' umbrales}: el grafico no pinta ninguna linea de corte porque el liston
+#' depende del uso previsto de la escala y lo fija quien la aplica.
+#'
+#' @examples
+#' \dontrun{
+#' crit <- validez_criterio_predicha(esc, criterio = puntajes,
+#'                                   respuestas = respuestas_piloto)
+#' plot_criterio(crit)
+#' plot_criterio(crit, top_n = 15)
+#' }
+#'
+#' @seealso \code{\link{validez_criterio_predicha}}
+#' @export
+plot_criterio <- function(crit, top_n = NULL, titulo = NULL) {
+
+  .verificar_ggplot2()
+
+  if (!inherits(crit, "semilla_criterio")) {
+    stop("Necesitas el resultado de validez_criterio_predicha()")
+  }
+
+  df <- crit$items_clave
+  if (is.null(df) || !nrow(df)) {
+    stop("El objeto no trae items_clave: nada que dibujar.")
+  }
+
+  # La columna cambia de nombre segun la modalidad: 'Peso' cuando el criterio
+  # es de sujeto y 'Contribucion' cuando es de item (rating de expertos).
+  col_valor <- if ("Peso" %in% names(df)) "Peso" else "Contribucion"
+  df$valor <- as.numeric(df[[col_valor]])
+  df <- df[order(-abs(df$valor)), , drop = FALSE]
+  if (!is.null(top_n) && is.finite(top_n) && top_n < nrow(df)) {
+    df <- df[seq_len(top_n), , drop = FALSE]
+  }
+
+  # El orden del eje se fija con scale_y_discrete(limits = ...) mas abajo, y no
+  # con el orden de los niveles: probado mirando el grafico, invertir los
+  # niveles dejaba los ceros arriba y los pesos grandes abajo.
+  df$etiqueta <- paste0(df$Codigo, ": ", substr(df$Item, 1, 32))
+  df$etiqueta <- factor(df$etiqueta, levels = df$etiqueta)
+  orden_eje <- rev(levels(df$etiqueta))
+  df$signo <- ifelse(df$valor > 0, "positivo",
+                     ifelse(df$valor < 0, "negativo", "apagado"))
+
+  n_cero <- sum(df$valor == 0)
+  es_auc <- identical(crit$tipo, "logistico")
+
+  if (is.null(titulo)) {
+    titulo <- paste0("Validez de criterio predicha: ",
+                     if (es_auc) "AUC" else "r",
+                     " validado por CV = ", sprintf("%.3f", crit$r_cv))
+  }
+  subtitulo <- if (n_cero > 0) {
+    paste0(n_cero, " de ", nrow(df),
+           " items con peso cero (apagados por la penalizacion)")
+  } else {
+    paste0("Los ", nrow(df), " items conservan peso en el modelo")
+  }
+
+  colores <- c("positivo" = "#27AE60", "negativo" = "#E74C3C",
+               "apagado" = "#BDC3C7")
+
+  no_cero <- df[df$valor != 0, , drop = FALSE]
+
+  p <- ggplot2::ggplot(df, ggplot2::aes(x = valor, y = etiqueta)) +
+    ggplot2::geom_vline(xintercept = 0, color = "gray55", linewidth = 0.7)
+
+  if (nrow(no_cero) > 0) {
+    p <- p + ggplot2::geom_segment(
+      data = no_cero,
+      ggplot2::aes(x = 0, xend = valor, y = etiqueta, yend = etiqueta,
+                   color = signo),
+      linewidth = 1.1, alpha = 0.85, show.legend = FALSE)
+  }
+
+  p <- p +
+    ggplot2::geom_point(ggplot2::aes(color = signo), size = 2.8) +
+    ggplot2::scale_color_manual(values = colores, name = "Peso",
+                                breaks = c("positivo", "negativo", "apagado"),
+                                labels = c("positivo", "negativo",
+                                           "cero (apagado)")) +
+    ggplot2::scale_y_discrete(limits = orden_eje) +
+    ggplot2::labs(
+      title = titulo,
+      subtitle = subtitulo,
+      x = if (col_valor == "Peso") "Peso en el modelo" else "Contribucion del item",
+      y = ""
+    ) +
+    ggplot2::theme_minimal(base_size = 11) +
+    ggplot2::theme(
+      plot.title = ggplot2::element_text(face = "bold", hjust = 0.5),
+      plot.subtitle = ggplot2::element_text(hjust = 0.5, color = "gray40"),
+      panel.grid.minor = ggplot2::element_blank(),
+      panel.grid.major.y = ggplot2::element_blank(),
+      legend.position = "right"
+    )
+
+  return(p)
+}
+
+
 #' @title Visualizar Parametros IRT Estimados
 #'
 #' @description

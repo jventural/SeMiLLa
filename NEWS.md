@@ -1,3 +1,31 @@
+# SeMiLLa 2.9.28 (2026-08-14)
+## El paso de criterio ya tiene grafico
+
+De los cinco pasos de evaluacion, el de validez de criterio era el unico sin
+figura: `validez_contenido()`, `fiabilidad_semantica()`, `discriminacion_
+semantica()` y `analizar_coherencia()` tenian la suya, y
+`validez_criterio_predicha()` solo devolvia texto y tabla. En la galeria de la
+App habia quince graficos y ninguno de criterio.
+
+* **`plot_criterio()`**: grafico de bastones con el peso de cada item en el
+  modelo penalizado, ordenados por peso absoluto. Verde los positivos, rojo los
+  negativos y un circulo vacio los que la penalizacion dejo en **cero exacto**,
+  que con `alpha` distinto de 0 son los que no anaden nada dado lo que ya
+  aportan los demas. El titulo lleva el r (o el AUC) validado por CV y el
+  subtitulo, cuantos items quedaron apagados.
+* Sirve con las dos modalidades: lee `Peso` cuando el criterio es de sujeto y
+  `Contribucion` cuando es de item, que es como las nombra `items_clave`.
+* `top_n` recorta a los de mayor peso absoluto y `titulo` permite cambiar el
+  encabezado.
+* **No dibuja ninguna linea de corte**, y es deliberado: a diferencia de
+  `analizar_coherencia()` (,10 / ,15 / ,20) o `discriminacion_semantica()`
+  (,30 / ,50), este paso no trae umbrales en el codigo. El liston depende del
+  uso previsto y lo fija quien aplica la escala.
+
+En la App, el grafico aparece en el propio Paso de criterio y en la galeria.
+En el paso se define **fuera** del `observeEvent` del boton, para que se
+repinte al retomar una sesion guardada.
+
 # SeMiLLa 2.9.24 (2026-08-09)
 ## Validar un instrumento existente ya no lo reescribe
 

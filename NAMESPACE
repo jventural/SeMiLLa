@@ -124,6 +124,7 @@ export(plot_estructura)
 export(plot_v_aiken)
 export(plot_fiabilidad)
 export(plot_discriminacion)
+export(plot_criterio)
 export(plot_coherencia)              # nuevo dispatcher v2.0
 export(plot_coherencia_boxplot)
 export(plot_coherencia_violin)
