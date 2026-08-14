@@ -331,7 +331,10 @@ calificar_deseabilidad <- function(x, api_key = Sys.getenv("OPENAI_API_KEY"),
 #'   \code{veredicto}, \code{fuerza_central}, medianas de RMSEA/|Phi|,
 #'   \code{sensibilidad} (data.frame por escenario, con tasas de no-convergencia
 #'   e inadmisibilidad), \code{carga_estandarizada_media} y la matriz
-#'   \code{resumen} por replica del escenario central.
+#'   \code{resumen} por replica del escenario central. Devuelve tambien los
+#'   umbrales con los que se juzgo la corrida (\code{umbral_phi},
+#'   \code{umbral_fusion}, \code{umbral_rmsea}), para que quien lea el resultado
+#'   despues no tenga que repetirlos a mano y desincronizarlos.
 #' @export
 simular_estructura <- function(x, deseabilidad = NULL, similitud = NULL,
                                carga_propia = 0.695, phi_teorico = 0.50,
@@ -559,7 +562,14 @@ simular_estructura <- function(x, deseabilidad = NULL, similitud = NULL,
       cat(sprintf(">> RANGO entre escenarios: %.0f%% - %.0f%% (la fuerza real es desconocida; interpretar el rango, no un numero unico)\n",
                   100 * min(sensibilidad$prob_limpia), 100 * max(sensibilidad$prob_limpia)))
     if (!is.null(mapa_fusion) && mapa_fusion$k_esperado < K) {
-      cat(">> MAPA DE FUSION (phi simulado >= ", umbral_phi,
+      # El mensaje anunciaba umbral_phi (0.70) cuando la decision se toma con
+      # umbral_fusion (0.65, ver la llamada a .mapa_fusion mas arriba). Es un
+      # residuo de la 2.9.14, que separo los dos umbrales y actualizo el calculo
+      # pero no este cat: un par con phi 0.67 se fundia mientras el informe decia
+      # que el corte era 0.70, y la decision no se podia reproducir a mano.
+      # Se precisa ademas "del PAR": el 0.70 se aplica al PROMEDIO de los pares,
+      # no a un par suelto, asi que nombrarlo aqui invitaba justo a la confusion.
+      cat(">> MAPA DE FUSION (phi simulado del PAR >= ", umbral_fusion,
           " o halo local): se esperan ",
           mapa_fusion$k_esperado, " factor(es) empirico(s), no ", K, ":\n", sep = "")
       for (gi in seq_along(mapa_fusion$grupos)) {
@@ -578,6 +588,13 @@ simular_estructura <- function(x, deseabilidad = NULL, similitud = NULL,
                  veredicto = veredicto, fuerza_central = fuerzas[i_c],
                  rmsea_med = esc[[i_c]]$rmsea_med, phi_med = esc[[i_c]]$phi_med,
                  phi_pares = phi_pares, mapa_fusion = mapa_fusion,
+                 # Los umbrales VIAJAN con el resultado. Sin esto, quien lo lea
+                 # despues (informe_compuerta(), la App, un script) tiene que
+                 # repetirlos a mano y se desincronizan en cuanto alguien corre
+                 # la simulacion con otros valores: el objeto diria una cosa y
+                 # el informe otra, sobre la MISMA corrida.
+                 umbral_phi = umbral_phi, umbral_fusion = umbral_fusion,
+                 umbral_rmsea = umbral_rmsea,
                  sensibilidad = sensibilidad,
                  sensibilidad_phi = sensibilidad_phi,
                  carga_estandarizada_media = esc[[i_c]]$carga_std,

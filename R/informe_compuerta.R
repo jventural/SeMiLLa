@@ -217,8 +217,18 @@
     if (!is.null(s$prob_min))
       add(.inf_campo("Rango entre escenarios",
                      sprintf("%s a %s", .inf_pct(s$prob_min), .inf_pct(s$prob_max))))
+    # Los umbrales se leen del OBJETO, no se escriben a mano: si alguien corre
+    # simular_estructura() con otros valores, el informe los sigue.
+    # (Los defaults cubren los resultados guardados antes de que
+    # simular_estructura() empezara a devolverlos, que no los traen.)
+    u_phi <- s$umbral_phi %|N|% 0.70
+    u_fus <- s$umbral_fusion %|N|% 0.65
+    # phi_med es el PROMEDIO de los pares, y al promedio se le aplica u_phi.
+    # Aqui figuraba "(umbral de fusion 0.65)", que es el corte de CADA PAR: el
+    # informe ponia al lado del promedio un umbral que no se le aplica.
     add(.inf_campo("Correlacion media (phi)", paste0(
-      .inf_num(s$phi_med, 3), "   (umbral de fusion 0.65)")))
+      .inf_num(s$phi_med, 3),
+      sprintf("   (limite de estructura limpia %s)", .inf_num(u_phi, 2)))))
     add(.inf_campo("RMSEA mediano", .inf_num(s$rmsea_med, 3)))
     add(.inf_campo("Fuerza del factor", .inf_num(s$fuerza_central, 3)))
     add(.inf_campo("Carga estandarizada", .inf_num(e3$carga_estandarizada_media, 3)))
@@ -226,13 +236,14 @@
     if (!is.null(pp)) {
       m <- try(as.matrix(pp), silent = TRUE)
       if (!inherits(m, "try-error") && nrow(m) > 1) {
-        add("", "  Pares de dimensiones (correlacion simulada; >= 0.65 se funden):")
+        add("", sprintf("  Pares de dimensiones (correlacion simulada; >= %s se funden):",
+                        .inf_num(u_fus, 2)))
         nn <- rownames(m) %|N|% paste0("dim", seq_len(nrow(m)))
         for (i in 1:(nrow(m) - 1)) for (j in (i + 1):ncol(m))
           add(sprintf("    %-30s <-> %-30s  %s%s",
                       substr(nn[i], 1, 30), substr(nn[j], 1, 30),
                       .inf_num(m[i, j], 3),
-                      if (isTRUE(m[i, j] >= 0.65)) "  <-- SE FUNDEN" else ""))
+                      if (isTRUE(m[i, j] >= u_fus)) "  <-- SE FUNDEN" else ""))
       }
     }
     b <- g$banda_estructura
@@ -388,10 +399,14 @@
                      "sd_entre_dim", "sd_intra_dim", "alerta_intra",
                      "estabilidad", "n_imputados", "uniforme", "riesgo_halo",
                      "mensaje", "pasadas")),
+    # Los tres umbrales YA se muestran en la seccion de estructura (junto a la
+    # cifra a la que se aplica cada uno), asi que se excluyen del apendice: si
+    # no, el informe los repite en crudo al final y el mismo dato sale dos veces.
     estructura   = setdiff(names(e3), c("prob_limpia", "prob_ic", "prob_min",
                      "prob_max", "veredicto", "fuerza_central", "rmsea_med",
                      "phi_med", "phi_pares", "mapa_fusion", "sensibilidad",
-                     "sensibilidad_phi", "carga_estandarizada_media", "resumen")))
+                     "sensibilidad_phi", "carga_estandarizada_media", "resumen",
+                     "umbral_phi", "umbral_fusion", "umbral_rmsea")))
   hay_resto <- length(resto) > 0 || any(lengths(sub_resto) > 0)
   if (hay_resto) {
     add("", .inf_regla("APENDICE · CAMPOS ADICIONALES"))
