@@ -1042,6 +1042,22 @@ refinar_escala <- function(escala,
                            modelo = "gpt-4.1-mini",
                            exportar_excel = TRUE,
                            carpeta_salida = NULL,
+                           # v2.9.29 ------------------------------------------------
+                           # max_reescrituras_item: tope de veces que un MISMO item
+                           #   puede reescribirse en toda la corrida. Sin tope, el
+                           #   bucle persigue su propia cola: en una corrida real
+                           #   hubo 54 reescrituras sobre 16 items, con dos de ellos
+                           #   reescritos OCHO veces. Un item que no converge en 2
+                           #   intentos no es un problema de redaccion: o la
+                           #   dimension esta mal definida, o ese item mide otra cosa.
+                           #   Copiado del patron de converger_escala().
+                           max_reescrituras_item = 2L,
+                           # devolver_mejor: entregar la mejor iteracion vista y no
+                           #   la ultima. El bucle es un paseo aleatorio (cada
+                           #   reemplazo mueve los embeddings y reordena la
+                           #   particion): en una corrida real paso por 75.0% y
+                           #   termino en 62.5%.
+                           devolver_mejor = TRUE,
                            verbose = TRUE) {
 
   criterio <- match.arg(criterio)
@@ -1186,6 +1202,28 @@ refinar_escala <- function(escala,
   # regenera el mismo texto en cada iteracion.
   textos_intentados <- list()      # lista[[numero_item]] = vector de textos
   items_no_convergentes <- integer()  # numeros de items marcados como estables
+
+  # v2.9.29 --------------------------------------------------------------
+  #  Contabilidad de los reemplazos que NO se pudieron generar sin redundancia.
+  #  Antes esto solo se imprimia ("Max intentos redundancia") y se perdia en el
+  #  scroll; dentro de callr::r_bg no lo veia nadie. Ahora sale en el resultado:
+  #  un numero alto significa que la dimension esta saturada y que lo que toca
+  #  no es reescribir mas, sino reducir el numero de items.
+  rechazos_redundancia <- 0L
+  rechazos_detalle <- list()
+
+  #  Cuantas veces se ha reescrito cada item (tope por item, ver max_reescrituras_item)
+  veces_reescrito <- integer()
+
+  #  Modelo de embedding de la escala. Estaba hardcodeado en el filtro de
+  #  redundancia, asi que con una escala construida con otro modelo el filtro
+  #  comparaba en un espacio distinto al de $similitud.
+  modelo_emb_escala <- escala$metadata$modelo_embedding %||% "text-embedding-3-small"
+
+  #  La mejor escala vista hasta ahora, para no entregar la ULTIMA vuelta si
+  #  fue peor que una anterior. En una corrida real el ciclo paso por 75.0% y
+  #  termino en 62.5%, y esa caida no la miraba nadie.
+  mejor <- list(escala = escala, score = -Inf, iteracion = 0L)
 
   # Calcular precision inicial
   prec_inicial <- precision_clasificacion(escala, verbose = FALSE)
@@ -1348,13 +1386,44 @@ refinar_escala <- function(escala,
         next
       }
 
+      # v2.9.29: tope de reescrituras por item. Reescribir el mismo item ocho
+      # veces no arregla nada: si tras max_reescrituras_item sigue sin encajar,
+      # el problema no es su redaccion. Se deja como esta y se avisa.
+      if (!is.na(num_original) && !is.null(max_reescrituras_item) &&
+          is.finite(max_reescrituras_item)) {
+        k <- as.character(num_original)
+        ya <- veces_reescrito[[k]] %||% 0L
+        if (ya >= max_reescrituras_item) {
+          if (verbose) cat(" tope de reescrituras alcanzado (", ya, "), se mantiene\n", sep = "")
+          items_no_convergentes <- unique(c(items_no_convergentes, num_original))
+          next
+        }
+      }
+
       # Cargar el historial persistente de textos previamente intentados
       # para este item original. La clave es el numero del item.
       key <- if (!is.na(num_original)) as.character(num_original) else ""
       historial_textos <- if (nzchar(key)) textos_intentados[[key]] else NULL
 
-      # Sembrar items_evitar con todo el historial previo
-      items_evitar <- unique(c(historial_textos, item_prob$item))
+      # v2.9.29: el item original YA NO va en items_evitar --------------------
+      #  Antes se metia ahi, es decir, bajo la cabecera "EVITA generar items
+      #  similares a estos". El efecto era que al modelo se le pedia ALEJARSE
+      #  del contenido que el item cubria: si el que salia decia "sin emitir
+      #  juicios de valor", esa faceta se expulsaba por diseno. Medido: dos
+      #  facetas declaradas del constructo se quedaron en 0 items tras refinar.
+      #  Ahora el original viaja por separado, como faceta a PRESERVAR.
+      items_evitar <- unique(historial_textos)
+
+      # La faceta que cubria el item que sale. Es lo que NO puede perderse.
+      faceta_orig <- if (!is.na(num_original) &&
+                         "caracteristica" %in% names(items_actuales)) {
+        f <- items_actuales$caracteristica[match(num_original, items_actuales$numero)]
+        if (length(f) && !is.na(f) && nzchar(trimws(as.character(f)))) as.character(f) else NULL
+      } else NULL
+
+      # Arranques de frase ya saturados en la escala VIVA (se recalculan en
+      # cada reemplazo, no se congelan al entrar en el bucle).
+      moldes_saturados <- .prefijos_frecuentes(items_actuales$item, k = 2L, min_frac = 0.20)
 
       # Loop de generacion con control de redundancia
       item_aceptado <- FALSE
@@ -1381,6 +1450,16 @@ refinar_escala <- function(escala,
           evitar_cuantificadores = evitar_cuant_meta,
           max_palabras = max_palabras_meta,
           incluir_inversos = incluir_inversos_meta,
+          # v2.9.29 --------------------------------------------------------
+          #  faceta_objetivo  : lo que el item nuevo TIENE que seguir midiendo
+          #  items_contexto   : el resto de la dimension, desde el 1er intento
+          #                     (antes solo se usaba despues, en el filtro de
+          #                     coseno: el modelo escribia a ciegas y se le
+          #                     rechazaba, gastando los intentos disponibles)
+          #  moldes_prohibidos: arranques de frase ya saturados en la escala
+          faceta_objetivo   = faceta_orig,
+          items_contexto    = items_misma_dim,
+          moldes_prohibidos = moldes_saturados,
           # Sin esto el refinamiento puede reconstruir la misma plantilla que la
           # compuerta acababa de podar: el consenso empirico premia justamente
           # los items parecidos entre si.
@@ -1454,12 +1533,32 @@ refinar_escala <- function(escala,
               openai = openai,
               nuevo_item = nuevo_texto,
               items_existentes = items_misma_dim,
-              umbral = umbral_redundancia
+              umbral = umbral_redundancia,
+              # v2.9.29: el modelo de embedding de la escala, no uno fijo
+              modelo_embedding = modelo_emb_escala
             )
 
-            if (check$redundante) {
-              # Agregar items similares a la lista de evitar
-              items_evitar <- unique(c(items_evitar, check$items_similares))
+            # v2.9.29: NA = no se pudo verificar (fallo el embedding). Antes
+            # esto llegaba como FALSE y el item entraba sin control.
+            if (is.na(check$redundante)) {
+              if (verbose) cat("\n      No verificable (",
+                               check$motivo %||% "fallo el embedding",
+                               "), no se acepta", sep = "")
+            } else if (check$redundante) {
+              # v2.9.29: se registra TAMBIEN el candidato rechazado. Antes solo
+              # se anadian los items EXISTENTES con los que choco, asi que el
+              # modelo podia volver a proponer casi lo mismo en el intento
+              # siguiente y quemar los 3 intentos en variantes de un mismo texto.
+              items_evitar <- unique(c(items_evitar, nuevo_texto, check$items_similares))
+              rechazos_detalle[[length(rechazos_detalle) + 1L]] <- data.frame(
+                iteracion = iteracion,
+                item_num  = if (is.na(num_original)) NA_integer_ else as.integer(num_original),
+                dimension = dim_nombre,
+                candidato = nuevo_texto,
+                similitud = round(max(check$similitudes), 3),
+                choco_con = check$items_similares[which.max(check$similitudes)],
+                stringsAsFactors = FALSE
+              )
               if (verbose && intento < max_intentos_redundancia) {
                 cat("\n      Redundante (", sprintf("%.0f%%", max(check$similitudes) * 100),
                     "), reintentando...", sep = "")
@@ -1494,6 +1593,12 @@ refinar_escala <- function(escala,
 
         if (length(idx) > 0) {
           idx <- idx[1]  # Usar el primero si hay duplicados
+
+          # v2.9.29: contabilizar la reescritura para el tope por item
+          if (!is.na(num_original)) {
+            k <- as.character(num_original)
+            veces_reescrito[[k]] <- (veces_reescrito[[k]] %||% 0L) + 1L
+          }
 
           # Guardar en historial
           historial <- rbind(historial, data.frame(
@@ -1543,9 +1648,19 @@ refinar_escala <- function(escala,
           if (verbose) cat(" No encontrado\n")
         }
       } else {
+        # v2.9.29: el reemplazo se descarta y el item original se CONSERVA
+        # (esto ya era asi y esta bien). Lo que faltaba era contarlo: si esto
+        # pasa muchas veces, la dimension no admite mas items distintos.
+        if (intento >= max_intentos_redundancia) {
+          rechazos_redundancia <- rechazos_redundancia + 1L
+          # Ese item volveria a salir marcado en la iteracion siguiente y se
+          # reintentaria indefinidamente. Se marca para no insistir.
+          if (!is.na(num_original))
+            items_no_convergentes <- unique(c(items_no_convergentes, num_original))
+        }
         if (verbose) {
           if (intento >= max_intentos_redundancia) {
-            cat(" Max intentos redundancia\n")
+            cat(" Max intentos redundancia (se mantiene el original)\n")
           } else {
             cat(" Error generando\n")
           }
@@ -1569,9 +1684,14 @@ refinar_escala <- function(escala,
     class(items_result) <- c("semilla_items", "list")
 
     # Recalcular embeddings
+    # v2.9.29: con el modelo de la escala, no con el default. Antes, una escala
+    # construida con text-embedding-3-large o con un modelo local se re-embebia
+    # en otro espacio sin avisar, y a partir de ahi los indices no eran
+    # comparables con los de la medicion anterior.
     emb_result <- obtener_embeddings(
       items = items_result,
       api_key = api_key,
+      modelo_embedding = modelo_emb_escala,
       verbose = FALSE
     )
 
@@ -1602,9 +1722,41 @@ refinar_escala <- function(escala,
     )
     class(escala_actual) <- c("semilla", "list")
 
+    # v2.9.29: guardar la MEJOR vuelta vista hasta ahora ---------------------
+    #  El bucle es un paseo aleatorio: cada reemplazo mueve los embeddings, la
+    #  particion se reorganiza y aparecen items problematicos que antes no lo
+    #  eran. En una corrida real la precision fue 66.7 -> 70.8 -> 75.0 -> 70.8
+    #  -> 66.7 -> 75.0 -> 75.0 -> 66.7 -> 66.7 -> 62.5, y se entregaba el 62.5
+    #  porque era la ultima. El score penaliza la redundancia: subir la
+    #  precision homogeneizando los items no puede salir gratis.
+    score_actual <- tryCatch({
+      red_it <- auditar_redundancia(escala_actual)
+      n_it   <- nrow(escala_actual$items)
+      n_pares_pos <- max(1, n_it * (n_it - 1) / 2)
+      (efa_result$precision_global / 100) -
+        0.5 * (nrow(red_it$pares_redundantes) / n_pares_pos) -
+        0.1 * nrow(red_it$facetas_repetidas)
+    }, error = function(e) efa_result$precision_global / 100)
+
+    if (is.finite(score_actual) && score_actual > mejor$score) {
+      mejor <- list(escala = escala_actual, score = score_actual, iteracion = iteracion)
+    }
+
     if (verbose) {
       cat("  ", .color_check(), " Iteracion completada\n\n", sep = "")
     }
+  }
+
+  # v2.9.29: entregar la mejor vuelta, no la ultima
+  iteracion_elegida <- iteracion
+  if (isTRUE(devolver_mejor) && is.finite(mejor$score) && mejor$iteracion > 0 &&
+      !identical(mejor$escala$items$item, escala_actual$items$item)) {
+    if (verbose) {
+      cat("  Se entrega la iteracion ", mejor$iteracion,
+          " (la mejor vista), no la ultima (", iteracion, ").\n", sep = "")
+    }
+    escala_actual <- mejor$escala
+    iteracion_elegida <- mejor$iteracion
   }
 
   # Calcular precision final
@@ -1627,6 +1779,27 @@ refinar_escala <- function(escala,
     cat("  Items reemplazados: ", nrow(historial), "\n", sep = "")
     cat("  Precision inicial: ", sprintf("%.1f", precision_inicial), "%\n", sep = "")
     cat("  Precision final: ", sprintf("%.1f", prec_final$precision_global), "%\n", sep = "")
+    if (!identical(iteracion_elegida, iteracion))
+      cat("  Se entrego la iteracion ", iteracion_elegida, " (la mejor), no la ", iteracion, "\n", sep = "")
+    # v2.9.29: lo que antes se perdia en el scroll
+    if (rechazos_redundancia > 0) {
+      cat(.linea("-"), "\n")
+      cat("  [!] ", rechazos_redundancia, " reemplazo(s) no se pudieron generar sin\n", sep = "")
+      cat("      parecerse a los items que ya existen. Esos items se quedaron\n")
+      cat("      como estaban. Es senal de que la dimension esta SATURADA: lo\n")
+      cat("      que toca no es reescribir mas, sino reducir su numero de items.\n")
+    }
+    # v2.9.29: si el refinamiento borro una faceta declarada, decirlo aqui
+    cob_fin <- tryCatch(auditar_cobertura_facetas(escala_actual, verbose = FALSE),
+                        error = function(e) NULL)
+    if (!is.null(cob_fin) && isTRUE(cob_fin$disponible) && nrow(cob_fin$huerfanas)) {
+      cat(.linea("-"), "\n")
+      cat("  [!] FACETAS DEL CONSTRUCTO QUE SE QUEDARON SIN ITEMS:\n")
+      for (i in seq_len(nrow(cob_fin$huerfanas)))
+        cat("      - ", cob_fin$huerfanas$dimension[i], " / ",
+            cob_fin$huerfanas$faceta[i], "\n", sep = "")
+      cat("      La escala ya no mide lo que su propia definicion promete.\n")
+    }
     cat(.linea("-"), "\n")
   }
 
@@ -1733,7 +1906,23 @@ refinar_escala <- function(escala,
     evolucion = evolucion,
     concordancia = concordancia,
     items_no_convergentes = items_no_convergentes,
-    textos_intentados = textos_intentados
+    textos_intentados = textos_intentados,
+    # v2.9.29 ---------------------------------------------------------------
+    #  iteracion_elegida : cual se entrego (puede no ser la ultima)
+    #  rechazos_redundancia : cuantos reemplazos no se pudieron generar sin
+    #    parecerse a lo que ya habia. Un numero alto NO es un fallo tecnico: es
+    #    el sintoma de que la dimension ya no admite mas items distintos, y de
+    #    que lo que toca es reducir su numero de items, no reescribirlos.
+    #  rechazos_detalle : que candidato choco con que item y con que similitud
+    #  veces_reescrito : cuantas veces se toco cada item
+    #  cobertura : facetas declaradas que siguen cubiertas al final
+    iteracion_elegida = iteracion_elegida,
+    rechazos_redundancia = rechazos_redundancia,
+    rechazos_detalle = if (length(rechazos_detalle))
+      do.call(rbind, rechazos_detalle) else NULL,
+    veces_reescrito = veces_reescrito,
+    cobertura = tryCatch(auditar_cobertura_facetas(escala_actual, verbose = FALSE),
+                         error = function(e) NULL)
   )
 
   class(resultado) <- c("semilla_refinamiento", "list")

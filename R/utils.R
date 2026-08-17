@@ -892,14 +892,44 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
 #' @param embeddings_existentes Matriz de embeddings existentes (opcional)
 #' @param umbral Umbral de similitud para considerar redundante (default 0.85)
 #' @return Lista con: redundante (logical), items_similares (textos), similitudes (valores)
+# v2.9.29 ---------------------------------------------------------------------
+#  Arranques de frase ya saturados en la escala viva. Se recalculan en CADA
+#  iteracion del refinamiento: los moldes que hay que prohibir no son los que
+#  detecto la compuerta al entrar, sino los que el propio refinamiento va
+#  fabricando. Sin esto, los reemplazos derivan todos a la misma plantilla
+#  ("cuando me...", "cuando estoy...") y la escala se homogeneiza en la forma
+#  aunque cada item hable de una conducta distinta.
+#
+#  Devuelve los prefijos de k palabras que aparecen en >= min_frac de los items.
+.prefijos_frecuentes <- function(textos, k = 2L, min_frac = 0.20, min_n = 2L) {
+  textos <- textos[!is.na(textos) & nzchar(trimws(textos))]
+  if (length(textos) < 3L) return(character(0))
+  limpio <- tolower(iconv(textos, from = "UTF-8", to = "ASCII//TRANSLIT"))
+  limpio[is.na(limpio)] <- ""
+  limpio <- gsub("[^a-z0-9 ]", " ", limpio)
+  pref <- vapply(limpio, function(t) {
+    w <- strsplit(trimws(gsub("\\s+", " ", t)), " ")[[1]]
+    if (length(w) < k) "" else paste(utils::head(w, k), collapse = " ")
+  }, character(1), USE.NAMES = FALSE)
+  pref <- pref[nzchar(pref)]
+  if (!length(pref)) return(character(0))
+  tb <- table(pref)
+  names(tb)[tb >= min_n & (as.numeric(tb) / length(textos)) >= min_frac]
+}
+
 .verificar_redundancia_item <- function(openai, nuevo_item, items_existentes,
                                         embeddings_existentes = NULL,
-                                        umbral = 0.70) {
+                                        umbral = 0.70,
+                                        # v2.9.29: el modelo estaba hardcodeado. Si la escala se
+                                        # construyo con otro (text-embedding-3-large, uno local,
+                                        # hf:...), este filtro comparaba en un espacio DISTINTO al
+                                        # de $similitud, sin avisar.
+                                        modelo_embedding = "text-embedding-3-small") {
 
   # Obtener embedding del nuevo item
   nuevo_emb <- tryCatch({
     resp <- openai$embeddings$create(
-      model = "text-embedding-3-small",
+      model = modelo_embedding,
       input = nuevo_item
     )
     resp$data[[1]]$embedding
@@ -908,15 +938,21 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
     return(NULL)
   })
 
+  # v2.9.29: FALLO CERRADO. Antes se devolvia redundante = FALSE cuando el
+  # embedding fallaba, asi que el item entraba SIN control y con un warning()
+  # que dentro de callr::r_bg no ve nadie. Un guardarrail que se abre cuando
+  # falla no es un guardarrail. Ahora devuelve NA y quien llama decide; en
+  # refinar_escala() un NA se trata como "no aceptar".
   if (is.null(nuevo_emb)) {
-    return(list(redundante = FALSE, items_similares = character(0), similitudes = numeric(0)))
+    return(list(redundante = NA, items_similares = character(0),
+                similitudes = numeric(0), motivo = "no se pudo embeber el candidato"))
   }
 
   # Si no tenemos embeddings existentes, calcularlos
   if (is.null(embeddings_existentes)) {
     emb_exist <- tryCatch({
       resp <- openai$embeddings$create(
-        model = "text-embedding-3-small",
+        model = modelo_embedding,
         input = items_existentes
       )
       do.call(rbind, lapply(resp$data, function(x) x$embedding))
@@ -928,8 +964,10 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
     emb_exist <- embeddings_existentes
   }
 
+  # v2.9.29: fallo cerrado tambien aqui (ver nota de arriba)
   if (is.null(emb_exist)) {
-    return(list(redundante = FALSE, items_similares = character(0), similitudes = numeric(0)))
+    return(list(redundante = NA, items_similares = character(0),
+                similitudes = numeric(0), motivo = "no se pudieron embeber los items existentes"))
   }
 
   # Calcular similitud coseno con cada item existente
@@ -972,7 +1010,25 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
                                      evitar_cuantificadores = TRUE,
                                      max_palabras = 18L,
                                      incluir_inversos = TRUE,
-                                     instruccion_extra = NULL) {
+                                     instruccion_extra = NULL,
+                                     # v2.9.29 -----------------------------------------------------
+                                     # faceta_objetivo : la caracteristica que el item saliente
+                                     #   cubria. Al reemplazar de uno en uno, el modelo recibia la
+                                     #   lista COMPLETA de facetas de la dimension y elegia la mas
+                                     #   prototipica, con lo que las facetas menos "tipicas" se
+                                     #   perdian. Medido: "Aceptacion sin juicio" paso de 4 items a
+                                     #   0 y "Cuidado de la salud fisica" de 1 a 0, siendo ambas
+                                     #   parte de la definicion declarada del constructo.
+                                     # items_contexto : los items que YA existen en la dimension.
+                                     #   Antes solo se usaban despues, en el filtro de coseno: el
+                                     #   modelo escribia a ciegas y se le rechazaba, gastando
+                                     #   intentos. Ahora los ve desde el primer intento.
+                                     # moldes_prohibidos : arranques de frase ya sobrerrepresentados
+                                     #   en la escala viva (p. ej. "cuando me"). Se recalculan en
+                                     #   cada iteracion, no se congelan al entrar.
+                                     faceta_objetivo = NULL,
+                                     items_contexto = NULL,
+                                     moldes_prohibidos = NULL) {
 
   # Instrucciones de idioma
   instrucciones_idioma <- switch(
@@ -1021,6 +1077,39 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
   } else {
     ""
   }
+
+  # v2.9.29: faceta obligatoria. Cuando se reemplaza UN item hay que decirle al
+  # modelo QUE faceta debe seguir midiendo, o la escala pierde contenido sin que
+  # nadie lo note. Lo que tiene que cambiar es la CONDUCTA y la REDACCION, no el
+  # constructo que el item representa.
+  faceta_texto <- if (!is.null(faceta_objetivo) && nzchar(trimws(faceta_objetivo))) {
+    paste0(
+      "\n\nFACETA OBLIGATORIA: el item nuevo DEBE seguir midiendo la faceta\n",
+      "\"", faceta_objetivo, "\", que es la que cubria el item que sale.\n",
+      "Cambia la CONDUCTA concreta y la REDACCION, NO el contenido.\n",
+      "Si esa faceta desaparece, la escala deja de medir su propia definicion.\n",
+      "Ninguna otra faceta es aceptable como reemplazo.\n"
+    )
+  } else ""
+
+  # v2.9.29: el resto de la escala, desde el PRIMER intento
+  contexto_texto <- if (!is.null(items_contexto) && length(items_contexto) > 0) {
+    paste0(
+      "\n\nITEMS QUE YA EXISTEN EN ESTA DIMENSION (no repitas su conducta ni su\n",
+      "plantilla; el item nuevo tiene que aportar una manifestacion distinta):\n",
+      paste0("- \"", items_contexto, "\"", collapse = "\n"), "\n"
+    )
+  } else ""
+
+  # v2.9.29: moldes sintacticos ya saturados en la escala
+  moldes_texto <- if (!is.null(moldes_prohibidos) && length(moldes_prohibidos) > 0) {
+    paste0(
+      "\n\nPROHIBIDO empezar el item con: ",
+      paste0("\"", moldes_prohibidos, "...\"", collapse = ", "), ".\n",
+      "Ya hay demasiados items de la escala con ese arranque. Usa OTRA\n",
+      "estructura de oracion (por ejemplo, empezar por el verbo).\n"
+    )
+  } else ""
 
   # Items a evitar (para evitar redundancia)
   evitar_texto <- if (!is.null(items_evitar) && length(items_evitar) > 0) {
@@ -1176,7 +1265,18 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
     "   - MAL: 'Me siento cerca de mi hijo'  (cerca: ?fisicamente? ?afectivamente?)\n",
     "   - BIEN: 'Abrazo a mi hijo cuando lo veo triste' (conductual)\n",
     "   - BIEN: 'Siento carino por mi hijo'             (emocional, claro)\n",
-    "7. Coloca la CONDICION o SITUACION al inicio del enunciado\n",
+    # v2.9.29: la version anterior decia "Coloca la CONDICION o SITUACION al
+    # inicio del enunciado", a secas. En espanol eso se realiza casi siempre
+    # como "Cuando me...", "Cuando estoy...", y al pedir items DE UNO EN UNO
+    # (refinamiento) todas las llamadas convergen al mismo arranque. Medido en
+    # una escala de regulacion emocional: los items que empezaban por "Cuando"
+    # pasaron de 4 a 15 de 24 tras refinar, con "cuando me" en 7 y "cuando
+    # estoy" en 6, y el TTR global bajo de .543 a .515. La condicion sigue
+    # permitida, pero deja de ser obligatoria y se pide variar la estructura.
+    "7. Si el item necesita una CONDICION o SITUACION, puede ir al inicio,\n",
+    "   pero NO es obligatorio. VARIA la estructura entre items: no todos\n",
+    "   pueden empezar con una subordinada temporal ('Cuando...', 'Si...',\n",
+    "   'Al...'). Alterna con enunciados que arranquen por el VERBO.\n",
     "8. Usa lenguaje CLARO y COMPRENSIBLE\n",
     "9. EVITA jerga y tecnicismos\n",
     "10. Ajusta la redaccion al NIVEL LECTOR de la poblacion\n",
@@ -1230,9 +1330,12 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
     "Dimension: ", dimension, "\n",
     "Definicion: ", definicion_dim, "\n",
     caract_texto, "\n\n",
+    faceta_texto,      # v2.9.29: que faceta NO se puede perder
     instrucciones_idioma, "\n",
     poblacion_texto,
+    contexto_texto,    # v2.9.29: que items ya existen, desde el primer intento
     evitar_texto, "\n\n",
+    moldes_texto,      # v2.9.29: que arranques de frase estan saturados
     reglas_complejidad, "\n",
     reglas_escala_resp, "\n",
     reglas_redaccion, "\n",

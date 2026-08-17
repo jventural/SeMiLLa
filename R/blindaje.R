@@ -196,8 +196,43 @@
                       razon = character(0), stringsAsFactors = FALSE)
   if (length(fallos) == n_pasadas) return(.marcar_fallo_llm(vacio, fallos[1]))
 
+  # v2.9.30: BANDA Y ESTABILIDAD DEL JUEZ ------------------------------------
+  #  El eje 2 (deseabilidad) reporta desde hace versiones su estabilidad entre
+  #  pasadas y una banda; el eje 1 devolvia un numero pelado. Medido sobre una
+  #  escala de 36 items, tres repeticiones del VOTADO (3 pasadas cada una)
+  #  dieron 15, 4 y 7 gemelos; y con una sola pasada, cuatro corridas de la
+  #  MISMA escala dieron 1, 17, 19 y 24. Con esa varianza, calidad_redaccion
+  #  salta entre "con solapamientos leves" y "con redundancia alta" en corridas
+  #  identicas, y quien compara dos versiones de su escala cree estar viendo
+  #  una mejora donde solo hay ruido del juez.
+  #
+  #  No se puede eliminar la varianza, pero si dejar de ocultarla: se adjuntan
+  #  el numero de gemelos que vio CADA pasada y el acuerdo entre ellas
+  #  (Jaccard medio de los conjuntos de pares). Quien lee decide.
+  pares_por_pasada <- lapply(pasadas, function(d)
+    if (is.null(d) || !nrow(d)) character(0) else paste0(d$item1, "-", d$item2))
+  n_por_pasada <- vapply(pares_por_pasada, length, integer(1))
+
+  .jacc <- function(a, b) {
+    if (!length(a) && !length(b)) return(1)          # acuerdo en "no hay gemelos"
+    length(intersect(a, b)) / length(union(a, b))
+  }
+  estabilidad <- if (length(pares_por_pasada) < 2L) NA_real_ else {
+    cmb <- utils::combn(length(pares_por_pasada), 2)
+    mean(vapply(seq_len(ncol(cmb)), function(j)
+      .jacc(pares_por_pasada[[cmb[1, j]]], pares_por_pasada[[cmb[2, j]]]),
+      numeric(1)), na.rm = TRUE)
+  }
+  .sellar <- function(df) {
+    attr(df, "n_por_pasada") <- n_por_pasada
+    attr(df, "banda")        <- c(min(n_por_pasada), max(n_por_pasada))
+    attr(df, "estabilidad")  <- estabilidad
+    attr(df, "n_pasadas")    <- utiles <- n_pasadas - length(fallos)
+    df
+  }
+
   todo <- do.call(rbind, pasadas)
-  if (is.null(todo) || !nrow(todo)) return(vacio)
+  if (is.null(todo) || !nrow(todo)) return(.sellar(vacio))
   todo$par <- paste0(todo$item1, "-", todo$item2)
   # pasadas utiles = las que no fallaron; el umbral se calcula sobre esas
   utiles  <- n_pasadas - length(fallos)
@@ -209,7 +244,7 @@
   if (verbose)
     cat(sprintf("  [gemelos] %d pasada(s) util(es); mayoria >= %d; %d de %d pares aceptados\n",
                 utiles, minimo, length(aceptados), length(votos)))
-  if (!length(aceptados)) return(vacio)
+  if (!length(aceptados)) return(.sellar(vacio))
 
   out <- todo[todo$par %in% aceptados, , drop = FALSE]
   out <- out[!duplicated(out$par), c("item1", "item2", "razon"), drop = FALSE]
@@ -218,7 +253,7 @@
   out$votos <- as.integer(votos[paste0(out$item1, "-", out$item2)])
   out$de    <- utiles
   rownames(out) <- NULL
-  out
+  .sellar(out)
 }
 
 
@@ -336,6 +371,10 @@
                            contexto_prohibido = NULL,
                            instrucciones_estilo = NULL,
                            modelo_jueces = "gpt-4.1-mini",
+                           # v2.9.29: estaba fijo en FALSE dentro del cuerpo, asi que un
+                           # item inverso reescrito por el blindaje volvia en polaridad
+                           # directa. Ahora lo decide quien llama, desde el metadata.
+                           incluir_inversos = FALSE,
                            max_rondas = 3L, verbose = TRUE) {
 
   # Las instrucciones de ESTILO (como escribir) van SOLO a los prompts de
@@ -370,7 +409,18 @@
     if (!is.null(attr(items_df, "similitud"))) {
       S_b <- attr(items_df, "similitud")
       if (is.matrix(S_b) && nrow(S_b) == nrow(items_df)) {
-        idx <- which(S_b >= 0.80 & upper.tri(S_b), arr.ind = TRUE)
+        # v2.9.29: el umbral era 0.80 fijo, muy por encima del que usa
+        # auditar_redundancia() para CONTAR un par redundante (0.62-0.70 en
+        # modo "auto"). Es decir: el blindaje podia introducir libremente pares
+        # en la franja [0.70, 0.80) que el refinamiento habria rechazado y que
+        # la auditoria si cuenta. Medido: los pares redundantes pasaron de 7 a
+        # 14 tras un refinamiento con blindaje de cierre. Ahora se usa el mismo
+        # umbral adaptativo que la auditoria.
+        umbral_gemelo <- tryCatch({
+          q <- stats::quantile(S_b[upper.tri(S_b)], 0.95, na.rm = TRUE)
+          min(0.80, max(0.62, as.numeric(q)))
+        }, error = function(e) 0.70)
+        idx <- which(S_b >= umbral_gemelo & upper.tri(S_b), arr.ind = TRUE)
         if (nrow(idx)) par_cos <- data.frame(
           item1 = idx[, 1], item2 = idx[, 2],
           razon = sprintf("gemelo lexico (coseno %.2f)",
@@ -459,7 +509,10 @@
           modelo = modelo, items_evitar = c(items_df$item, rechazados),
           complejidad_linguistica = complejidad_linguistica,
           tipo_escala_respuesta = tipo_escala_respuesta,
-          max_palabras = max_palabras, incluir_inversos = FALSE,
+          max_palabras = max_palabras,
+          # v2.9.29: respetar la escala. Estaba fijo en FALSE, asi que un item
+          # inverso reescrito por el blindaje volvia en polaridad directa.
+          incluir_inversos = isTRUE(incluir_inversos),
           instruccion_extra = extra_i), error = function(e) NULL)
         if (is.null(cand) || !nrow(cand)) next
         txt <- trimws(cand$item[1])
@@ -524,7 +577,9 @@
         modelo = modelo, items_evitar = c(items_df$item[-i], rechazados),
         complejidad_linguistica = complejidad_linguistica,
         tipo_escala_respuesta = tipo_escala_respuesta,
-        max_palabras = max_palabras, incluir_inversos = FALSE,
+        max_palabras = max_palabras,
+        # v2.9.29: idem (ver nota de arriba)
+        incluir_inversos = isTRUE(incluir_inversos),
         instruccion_extra = extra_i), error = function(e) NULL)
       if (is.null(cand) || !nrow(cand)) next
       txt <- trimws(cand$item[1])
@@ -610,6 +665,8 @@ blindar_escala <- function(x, api_key = Sys.getenv("OPENAI_API_KEY"),
       contexto_prohibido = contexto_prohibido,
       instrucciones_estilo = instrucciones_estilo,
       modelo_jueces = modelo_jueces,
+      # v2.9.29: respetar la polaridad declarada de la escala
+      incluir_inversos = isTRUE(x$metadata$incluir_inversos),
       max_rondas = max_rondas, verbose = verbose)
 
     cambio <- !identical(res$items$item, x$items$item)

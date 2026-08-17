@@ -231,6 +231,22 @@ compuerta_pre_aplicacion <- function(x,
                               n_pasadas = n_pasadas_gemelos, verbose = verbose),
     error = function(e) NULL)
   n_gemelos_llm <- if (!is.null(gemelos_llm)) nrow(gemelos_llm) else 0L
+
+  # v2.9.30: la BANDA del juez de gemelos --------------------------------------
+  #  El juez de parafrasis no es determinista, y el voto por mayoria reduce la
+  #  varianza pero no la elimina. Medido sobre una escala de 36 items, tres
+  #  repeticiones del votado dieron 15, 4 y 7 gemelos. Sin la banda, comparar
+  #  dos versiones de la misma escala hace creer que hubo una mejora donde solo
+  #  hubo suerte. El eje 2 ya reporta su estabilidad; este ahora tambien.
+  gem_banda <- attr(gemelos_llm, "banda")
+  gem_estab <- attr(gemelos_llm, "estabilidad")
+  gem_pasadas <- attr(gemelos_llm, "n_por_pasada")
+  txt_banda <- if (!is.null(gem_banda) && length(gem_banda) == 2 &&
+                   gem_banda[1] != gem_banda[2])
+    sprintf(" [el juez vio entre %d y %d segun la pasada%s]", gem_banda[1], gem_banda[2],
+            if (!is.null(gem_estab) && !is.na(gem_estab))
+              sprintf("; acuerdo entre pasadas %.2f", gem_estab) else "")
+  else ""
   if (n_gemelos_llm > 0) {
     S_g <- x$similitud
     pr <- redaccion$pares_redundantes
@@ -248,6 +264,10 @@ compuerta_pre_aplicacion <- function(x,
       redaccion$pares_redundantes <- pr[order(-pr$similitud), , drop = FALSE]
     }
     redaccion$gemelos_llm <- gemelos_llm
+    # v2.9.30: la banda viaja con el resultado, no solo en el texto
+    redaccion$gemelos_banda       <- gem_banda
+    redaccion$gemelos_estabilidad <- gem_estab
+    redaccion$gemelos_por_pasada  <- gem_pasadas
     if (verbose) {
       cat("  ", .color_warning(), " Juez LLM: ", n_gemelos_llm,
           " par(es) de parafrasis-gemelas confirmado(s)\n", sep = "")
@@ -293,8 +313,8 @@ compuerta_pre_aplicacion <- function(x,
   if (nrow(fac_fuertes) > 0 || n_gemelos_llm > 0) {
     estados[1]  <- "riesgo"
     detalles[1] <- sprintf(
-      "%d gemelo(s) confirmado(s) por juez LLM, %d cluster(s) FUERTE(s), %d debil(es) y %d par(es)",
-      n_gemelos_llm, nrow(fac_fuertes), nrow(fac_debiles), n_pares)
+      "%d gemelo(s) confirmado(s) por juez LLM%s, %d cluster(s) FUERTE(s), %d debil(es) y %d par(es)",
+      n_gemelos_llm, txt_banda, nrow(fac_fuertes), nrow(fac_debiles), n_pares)
     if (n_gemelos_llm > 0) {
       acciones <- c(acciones, paste0(
         "Reescribir un miembro de cada par gemelo confirmado por el juez LLM ",

@@ -47,6 +47,13 @@ export(obtener_embeddings)
 export(items_similares)
 export(analizar_redundancia)
 export(auditar_redundancia)
+# v2.9.29: contrapeso de CONTENIDO a los indices de estructura. El consenso del
+# ensemble premia que los items de una dimension se parezcan entre si, y la via
+# mas corta para lograrlo es que todos midan la misma faceta. Sin esto, perder
+# una faceta declarada del constructo no dejaba ningun rastro.
+export(auditar_cobertura_facetas)
+export(comparar_cobertura_facetas)
+S3method(print, semilla_cobertura)
 export(blindar_escala)
 export(coherencia_dimensional)
 export(homogeneidad_semantica)

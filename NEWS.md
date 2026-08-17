@@ -1,3 +1,166 @@
+# SeMiLLa 2.9.30 (2026-08-17)
+## El juez de gemelos devolvia un numero sin banda
+
+El eje 1 de la compuerta reportaba "N gemelo(s) confirmado(s) por juez LLM" como
+si fuera una medicion. No lo es: el juez de parafrasis no es determinista, y el
+voto por mayoria reduce la varianza pero no la elimina.
+
+Medido sobre una escala de 36 items. Tres corridas del juez VOTADO (3 pasadas
+cada una) sobre los MISMOS items:
+
+    corrida 1 -> 14 gemelos | por pasada 16, 8, 17  | acuerdo 0.51
+    corrida 2 -> 15 gemelos | por pasada 11, 17, 17 | acuerdo 0.58
+    corrida 3 ->  7 gemelos | por pasada 17, 12,  0 | acuerdo 0.11
+
+Y con UNA sola pasada, cuatro corridas de la misma escala dieron 1, 17, 19 y 24.
+
+Con esa varianza, `calidad_redaccion` salta entre "con solapamientos leves" y
+"con redundancia alta" en corridas identicas, y quien compara dos versiones de su
+escala lee una mejora donde solo hubo suerte. Paso en este mismo proyecto: dos
+versiones que en realidad tenian ~15 gemelos cada una se leyeron como "17 -> 0".
+
+* **`.juzgar_parafrasis_votado()`** adjunta ahora al resultado tres atributos:
+  `banda` (min y max de gemelos entre pasadas), `estabilidad` (Jaccard medio de
+  los conjuntos de pares entre pasadas) y `n_por_pasada`. Tambien cuando el
+  resultado es vacio: "el juez no vio nada" y "el juez no pudo correr" siguen
+  distinguiendose, y ahora tambien "una pasada vio 17 y otra 0".
+* El **detalle del semaforo** del eje 1 los incluye:
+
+      12 gemelo(s) confirmado(s) por juez LLM
+      [el juez vio entre 9 y 19 segun la pasada; acuerdo entre pasadas 0.50],
+      0 cluster(s) FUERTE(s), 0 debil(es) y 12 par(es)
+
+* La banda viaja tambien en el objeto: `$redaccion$gemelos_banda`,
+  `$gemelos_estabilidad` y `$gemelos_por_pasada`, para que la app y los scripts
+  la puedan pintar.
+
+Es la misma solucion que el eje 2 (deseabilidad) ya usaba con su `estabilidad`
+entre pasadas y la `n_banda` del eje 3: **reportar el rango, no el punto.**
+
+# SeMiLLa 2.9.29 (2026-08-16)
+## El refinamiento subia la precision borrando facetas del constructo
+
+Una corrida de `estructura_por_consenso(auto_refinar = TRUE)` sobre una escala de
+regulacion emocional (24 items, 4 dimensiones, adolescentes) subio la precision
+de clasificacion de **66.7% a 95.8%** y el ARI de **0.493 a 0.884**. Impecable por
+el lado de la estructura. Al leer los items reescritos aparecio el precio:
+
+* pares redundantes **7 -> 14**, clusters de faceta repetida **3 -> 4**
+* items que empiezan por "Cuando..." **4 -> 15 de 24** ("cuando me" en 7,
+  "cuando estoy" en 6), TTR global 0.543 -> 0.515
+* y **dos facetas declaradas del constructo se quedaron en CERO items**:
+  "Aceptacion sin juicio" (3 -> 0) y "Cuidado de la salud fisica" (1 -> 0). La
+  primera es literalmente lo que la definicion de esa dimension dice medir
+  ("sin emitir juicios de valor"). Otras dos bajaron sin llegar a cero.
+
+Atencion Plena acabo con cinco items que eran el mismo item: dirigir la atencion
+a algo. **Clasificaba mejor porque sus items se habian vuelto casi identicos.**
+
+No es un fallo del optimizador: es lo que se le pidio maximizar. El consenso del
+ensemble mide la proporcion de particiones en que un item cae en el cluster
+mayoritario DE SU PROPIA DIMENSION, asi que la via mas barata de subirlo es que
+el item se parezca mas a sus vecinos. La funcion objetivo premiaba exactamente
+lo que `auditar_redundancia()` castiga, y solo la funcion objetivo estaba dentro
+del bucle.
+
+### Contenido: una compuerta nueva que bloquea
+
+* **`auditar_cobertura_facetas()`** (nueva, exportada): comprueba que cada
+  caracteristica declarada en `$concepto$caracteristicas` siga cubierta por al
+  menos un item. Devuelve `$tabla`, `$huerfanas` y `$sin_declarar` (etiquetas que
+  el LLM se invento al reemplazar).
+* **`comparar_cobertura_facetas(antes, despues)`** (nueva, exportada): que faceta
+  se perdio, cual bajo y cual subio entre dos momentos.
+* `.compuerta_estructura()` gana una **sexta fila BLOQUEANTE**, "Facetas del
+  constructo cubiertas": ninguna faceta declarada puede quedarse sin items. Con
+  la escala del caso, la compuerta pasa de dar por buenas precision y ARI a
+  marcar `12/14` y bloquear.
+* El cruce entre la etiqueta del item y la faceta declarada NO puede ser por
+  igualdad exacta: el LLM acorta y reformula ("Grado de bloqueo cognitivo
+  durante la resolucion de problemas" por la declarada "...en un examen,
+  evaluado por..."). Con cruce exacto, una escala real de ansiedad estadistica
+  daba **0 de 9 facetas cubiertas** y la compuerta la habria bloqueado entera.
+  `.casar_faceta()` cruza en tres niveles -exacto, contencion, solape de
+  palabras >= 60%- y, si NO casa ninguna, la auditoria se declara **no
+  disponible** con el motivo, en vez de reportar el 100% de facetas perdidas.
+  Ese caso no bloquea: el problema son las etiquetas, no el contenido.
+
+### El prompt de reemplazo dejaba de medir la faceta
+
+* **El item original ya no viaja en `items_evitar`.** Antes se metia bajo la
+  cabecera "EVITA generar items similares a estos": al modelo se le pedia
+  ALEJARSE del contenido que el item cubria. La faceta no se perdia por
+  accidente, se expulsaba por diseno.
+* **`faceta_objetivo`** (nuevo, en `.generar_items_dimension()`): se le dice al
+  modelo QUE faceta debe seguir midiendo. Lo que tiene que cambiar es la conducta
+  y la redaccion, no el constructo.
+* **`items_contexto`** (nuevo): el resto de la dimension entra al prompt desde el
+  PRIMER intento. Antes solo se usaba despues, en el filtro de coseno: el modelo
+  escribia a ciegas y se le rechazaba, gastando los intentos disponibles.
+
+### El molde sintactico estaba pedido en el prompt
+
+* La regla 7 de redaccion decia "Coloca la CONDICION o SITUACION al inicio del
+  enunciado", a secas. En espanol eso se realiza como "Cuando me...", y al pedir
+  items DE UNO EN UNO todas las llamadas convergen al mismo arranque. Ahora la
+  condicion es opcional y se pide **variar la estructura**.
+* **`moldes_prohibidos`** (nuevo): `.prefijos_frecuentes()` calcula, en cada
+  reemplazo y sobre la escala VIVA, los arranques ya saturados y los prohibe. No
+  se congelan al entrar: los moldes que hay que vetar son los que el propio
+  refinamiento va fabricando.
+
+### El bucle se quedaba con la ultima vuelta, no con la mejor
+
+* **`devolver_mejor = TRUE`** (nuevo, por defecto): se entrega la mejor iteracion
+  vista. El bucle es un paseo aleatorio -cada reemplazo mueve los embeddings y
+  reordena la particion-: en la corrida del caso paso por 75.0% y termino en
+  62.5%, y esa caida no la miraba nadie. El score penaliza la redundancia, para
+  que subir la precision homogeneizando no salga gratis.
+* **`max_reescrituras_item = 2L`** (nuevo): tope por item. Sin el, el bucle
+  persigue su propia cola: 54 reescrituras sobre 16 items, dos de ellos
+  reescritos OCHO veces. Un item que no converge en dos intentos no tiene un
+  problema de redaccion.
+* `$iteracion_elegida`, `$rechazos_redundancia`, `$rechazos_detalle`,
+  `$veces_reescrito` y `$cobertura` se devuelven en el resultado.
+
+### El guardarrail de redundancia
+
+Funcionaba bien -al agotar los intentos descarta el reemplazo y **conserva el
+item original**-, pero:
+
+* el candidato rechazado **no se recordaba**: solo se anadian a la lista de
+  exclusion los items EXISTENTES con los que choco, asi que el modelo podia
+  volver a proponer casi lo mismo. Ahora se registra el texto rechazado.
+* al agotar intentos, el item volvia a salir marcado en la iteracion siguiente y
+  se reintentaba sin fin. Ahora se marca como no convergente y se cuenta.
+* **fallo cerrado**: si el embedding fallaba, `.verificar_redundancia_item()`
+  devolvia `redundante = FALSE` y el item entraba SIN control, con un `warning()`
+  que dentro de `callr::r_bg` no ve nadie. Ahora devuelve `NA` y el refinamiento
+  lo trata como "no aceptar".
+
+### El blindaje de cierre metia lo que el refinamiento rechazaba
+
+* Su detector de gemelos usaba **coseno 0.80 fijo**, muy por encima del 0.62-0.70
+  con que `auditar_redundancia()` cuenta un par. Quedaba una franja por la que
+  entraban libremente pares que el refinamiento habria rechazado. Ahora usa el
+  mismo umbral adaptativo.
+* `incluir_inversos` estaba **fijo en FALSE**, ignorando el metadata: un item
+  inverso reescrito por el blindaje volvia en polaridad directa.
+
+### Embeddings
+
+* `refinar_escala()` y `.verificar_redundancia_item()` tenian
+  `"text-embedding-3-small"` **hardcodeado**. Una escala construida con otro
+  modelo se re-embebia en otro espacio sin avisar, y el filtro de redundancia
+  podia comparar en un espacio distinto al de `$similitud`. Ahora se propaga
+  `$metadata$modelo_embedding`.
+
+### Parametros expuestos
+
+`estructura_por_consenso()` reenvia ya a `refinar_escala()` los parametros
+`umbral_redundancia`, `max_intentos_redundancia`, `max_reescrituras_item` y
+`devolver_mejor`, que antes no se podian tocar desde el paso fusionado.
+
 # SeMiLLa 2.9.28 (2026-08-14)
 ## El paso de criterio ya tiene grafico
 

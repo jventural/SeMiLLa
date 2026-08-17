@@ -48,7 +48,8 @@
 # -----------------------------------------------------------------------------
 #  La compuerta de estructura: una regla por indice, en una tabla
 # -----------------------------------------------------------------------------
-.compuerta_estructura <- function(ens, umbral_consenso, min_precision, min_ari) {
+.compuerta_estructura <- function(ens, umbral_consenso, min_precision, min_ari,
+                                  escala = NULL) {
   cons <- ens$consenso$Consenso
   n_bajo <- sum(cons < umbral_consenso, na.rm = TRUE)
 
@@ -79,6 +80,38 @@
     stringsAsFactors = FALSE
   ) -> tb
   tb$cumple <- ifelse(!tb$bloquea, NA, tb$valor >= tb$umbral)
+
+  # v2.9.29: CONTENIDO -----------------------------------------------------
+  #  Las cinco filas de arriba miden estructura y solo estructura. El consenso
+  #  del ensemble premia que los items de una dimension se parezcan entre si, y
+  #  la via mas corta para lograrlo es que todos midan la misma faceta. Una
+  #  corrida real subio la precision de 66.7% a 95.8% dejando DOS facetas
+  #  declaradas del constructo en cero items, y la compuerta lo dio por bueno
+  #  porque no miraba el contenido. Esta fila bloquea: una escala a la que le
+  #  falta una faceta de su propia definicion no puede darse por buena por muy
+  #  bien que clasifique.
+  #  Si $disponible es FALSE la fila NO se anade: puede ser que la escala no
+  #  declare facetas, o que las etiquetas de los items ya no casen con las
+  #  declaradas (el refinamiento reescribe items$caracteristica sin tocar
+  #  concepto$caracteristicas). En ese caso no se sabe que esta cubierto, y
+  #  bloquear seria un falso positivo: medido sobre una escala real, el cruce
+  #  por igualdad exacta daba 0 de 9 facetas cubiertas en una escala correcta.
+  cob <- tryCatch(auditar_cobertura_facetas(escala, verbose = FALSE),
+                  error = function(e) NULL)
+  if (!is.null(cob) && isTRUE(cob$disponible) && cob$n_declaradas > 0) {
+    n_huer <- nrow(cob$huerfanas)
+    tb <- rbind(tb, data.frame(
+      indice  = "Facetas del constructo cubiertas",
+      clave   = "cobertura_facetas",
+      valor   = cob$prop_cubierta,
+      crudo   = sprintf("%d/%d", cob$n_cubiertas, cob$n_declaradas),
+      umbral  = 1,
+      regla   = "ninguna faceta declarada puede quedarse sin items",
+      bloquea = TRUE,
+      cumple  = n_huer == 0,
+      stringsAsFactors = FALSE))
+    attr(tb, "cobertura") <- cob
+  }
   tb
 }
 
@@ -119,6 +152,12 @@ estructura_por_consenso <- function(escala,
                                     blindaje_cierre = TRUE,
                                     escala_refinada = NULL,
                                     items_cambiados = integer(0),
+                                    # v2.9.29: parametros del refinamiento que antes
+                                    # no se podian tocar desde aqui. Ver refinar_escala().
+                                    umbral_redundancia       = "compuerta",
+                                    max_intentos_redundancia = 3,
+                                    max_reescrituras_item    = 2L,
+                                    devolver_mejor           = TRUE,
                                     seed            = 2026,
                                     verbose         = TRUE) {
 
@@ -132,7 +171,8 @@ estructura_por_consenso <- function(escala,
   t0 <- Sys.time()
   .hito(1, "MEDIR - ensemble sobre la escala que entra")
   ens0 <- .medir_estructura(escala, algoritmos, n_replicas, seed)
-  gate0 <- .compuerta_estructura(ens0, umbral_consenso, min_precision, min_ari)
+  gate0 <- .compuerta_estructura(ens0, umbral_consenso, min_precision, min_ari,
+                                escala = escala)
 
   falla <- any(gate0$cumple %in% FALSE)
   if (verbose) {
@@ -161,7 +201,8 @@ estructura_por_consenso <- function(escala,
   if (!is.null(escala_refinada)) {
     .hito(3, "MEDIR OTRA VEZ - sobre la escala refinada que se entrego")
     ens1  <- .medir_estructura(escala_refinada, algoritmos, n_replicas, seed)
-    gate1 <- .compuerta_estructura(ens1, umbral_consenso, min_precision, min_ari)
+    gate1 <- .compuerta_estructura(ens1, umbral_consenso, min_precision, min_ari,
+                                   escala = escala_refinada)
     escala_refinada$efa <- ens1
     cons1 <- data.frame(numero    = escala_refinada$items$numero,
                         dimension = escala_refinada$items$dimension,
@@ -235,11 +276,21 @@ estructura_por_consenso <- function(escala,
   for (ciclo in seq_len(max_ciclos)) {
     .hito(2, sprintf("CORREGIR - ciclo %d/%d: reescribiendo con el MISMO umbral",
                      ciclo, max_ciclos))
+    # v2.9.29: se le pasan los parametros de redundancia y los del ensemble.
+    #  Antes el bucle optimizaba contra un ensemble de 10 replicas fijas
+    #  mientras la compuerta lo juzgaba con las que pidio el usuario (20 en la
+    #  corrida que motivo esto): perseguia un objetivo que no era el del
+    #  examinador. Y no habia forma de tocar el umbral de redundancia ni el
+    #  tope de reescrituras desde aqui.
     ref_c <- refinar_escala(
       escala_f, api_key = api_key,
       criterio        = "ensemble",
       umbral_consenso = umbral_consenso,
       max_iteraciones = max_iteraciones,
+      umbral_redundancia       = umbral_redundancia,
+      max_intentos_redundancia = max_intentos_redundancia,
+      max_reescrituras_item    = max_reescrituras_item,
+      devolver_mejor           = devolver_mejor,
       modelo          = modelo,
       exportar_excel  = FALSE,
       verbose         = verbose)
@@ -283,7 +334,8 @@ estructura_por_consenso <- function(escala,
     .hito(3, sprintf("MEDIR OTRA VEZ - ciclo %d: sobre la escala que se entrega",
                      ciclo))
     ens1  <- .medir_estructura(escala_f, algoritmos, n_replicas, seed)
-    gate1 <- .compuerta_estructura(ens1, umbral_consenso, min_precision, min_ari)
+    gate1 <- .compuerta_estructura(ens1, umbral_consenso, min_precision, min_ari,
+                                   escala = escala_f)
     escala_f$efa <- ens1
     ciclos <- rbind(ciclos, data.frame(
       ciclo = ciclo,
