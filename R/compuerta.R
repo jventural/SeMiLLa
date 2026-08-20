@@ -79,6 +79,13 @@
 #'   en 9 de 9 pasadas y los dudosos en 1 a 5, asi que la mayoria separa unos de
 #'   otros. Use 1 para volver al comportamiento de una sola consulta.
 #' @param modelo Modelo LLM para calificar deseabilidad.
+#' @param n_nucleos Nucleos para el eje 3 (la simulacion). Por defecto
+#'   (\code{NULL}) todos menos uno, igual que \code{\link{estres_escala}}.
+#'   Hasta 2.9.30 la compuerta no exponia este parametro y
+#'   \code{\link{simular_estructura}} corria en 1 solo nucleo: medido el
+#'   2026-08-20 en la misma maquina, la compuerta tardaba 12.0 min (432 CFAs,
+#'   1 nucleo) mientras \code{estres_escala()} despachaba 1500 CFAs en 2.7 min
+#'   con 22. Use 1 para volver al comportamiento secuencial.
 #' @param seed Semilla. Alimenta \code{set.seed()} de la simulacion y, desde
 #'   2.9.15, tambien la opcion \code{SeMiLLa.seed} que \code{.llamar_openai()}
 #'   envia a la API. Ojo: el seed de OpenAI es best-effort y no garantiza
@@ -129,6 +136,7 @@ compuerta_pre_aplicacion <- function(x,
                                      n_pasadas_gemelos = 3,
                                      n_banda       = 4,
                                      modelo        = "gpt-4.1-mini",
+                                     n_nucleos     = NULL,
                                      seed          = 2026,
                                      verbose       = TRUE,
                                      ...) {
@@ -408,7 +416,7 @@ compuerta_pre_aplicacion <- function(x,
     simular_estructura(x,
                        deseabilidad = if (!is.null(deseab)) deseab$deseabilidad else NULL,
                        similitud = x$similitud,
-                       n = n, n_rep = n_rep,
+                       n = n, n_rep = n_rep, n_nucleos = n_nucleos,
                        api_key = api_key, seed = seed, verbose = verbose, ...),
     error = function(e) e
   )
@@ -442,6 +450,7 @@ compuerta_pre_aplicacion <- function(x,
         s <- tryCatch(simular_estructura(x, deseabilidad = v,
                                          similitud = x$similitud,
                                          n = n, n_rep = n_rep_b,
+                                         n_nucleos = n_nucleos,
                                          api_key = api_key, seed = seed,
                                          verbose = FALSE, ...),
                       error = function(e) NULL)

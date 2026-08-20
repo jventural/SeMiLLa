@@ -13,8 +13,10 @@ compuerta_pre_aplicacion(
   n = 300,
   n_rep = 100,
   n_pasadas = 4,
+  n_pasadas_gemelos = 3,
   n_banda = 4,
   modelo = "gpt-4.1-mini",
+  n_nucleos = NULL,
   seed = 2026,
   verbose = TRUE,
   ...
@@ -42,24 +44,37 @@ Default \code{"auto"} (adaptativo).}
 
 \item{n_rep}{Replicas por escenario de la simulacion (default 100).}
 
-\item{n_pasadas}{Pasadas independientes del juez LLM que se promedian para
-estimar la deseabilidad (default 4 desde 2.9.12; antes 2). El motivo no es
-tanto la precision del promedio como las IMPUTACIONES: con 2 pasadas se
-observaron hasta 5 items de 20 imputados a 0.5 en una sola corrida, y ese
-relleno entra despues en la simulacion de estructura como si fuera dato.}
+\item{n_pasadas_gemelos}{Numero de consultas al juez de parafrasis-gemelas
+(eje 1); un par se acepta si sale en la mayoria de ellas. Una sola llamada
+no es reproducible: en 6 corridas de la misma escala se obtuvieron 5
+resultados distintos, y con \code{seed} 3 de 6. Los pares legitimos salen
+en 9 de 9 pasadas y los dudosos en 1 a 5, asi que la mayoria separa unos de
+otros. Use 1 para volver al comportamiento de una sola consulta.}
 
 \item{n_banda}{Numero de vectores de deseabilidad con los que se re-simula
 para estimar la BANDA de incertidumbre del eje 3 (default 4; 0 desactiva).
-No cuesta llamadas al LLM: los vectores se remuestrean de las pasadas que el
-juez ya hizo. Existe porque el eje 3 amplifica diferencias minimas del juez:
-con vectores correlacionados a r = .90 la probabilidad de estructura limpia
-paso de .87 a .20, y en 6 corridas de la misma escala oscilo entre .13 y .97.
-Cuando la banda cruza el umbral de decision el eje 3 no afirma que la
-estructura sea limpia: lo marca como INDETERMINADO.}
+No cuesta llamadas al LLM: los vectores se remuestrean de las pasadas que
+el juez ya hizo. Existe porque el eje 3 amplifica diferencias minimas del
+juez: con vectores correlacionados a r = .90 la probabilidad de estructura
+limpia paso de .87 a .20 (Experimento 1), y en 6 corridas de la misma
+escala oscilo entre .13 y .97. Reportar un punto sin banda transmite una
+precision que el dato no tiene.}
 
 \item{modelo}{Modelo LLM para calificar deseabilidad.}
 
-\item{seed}{Semilla de la simulacion.}
+\item{n_nucleos}{Nucleos para el eje 3 (la simulacion). Por defecto
+(\code{NULL}) todos menos uno, igual que \code{\link{estres_escala}}.
+Hasta 2.9.30 la compuerta no exponia este parametro y
+\code{\link{simular_estructura}} corria en 1 solo nucleo: medido el
+2026-08-20 en la misma maquina, la compuerta tardaba 12.0 min (432 CFAs,
+1 nucleo) mientras \code{estres_escala()} despachaba 1500 CFAs en 2.7 min
+con 22. Use 1 para volver al comportamiento secuencial.}
+
+\item{seed}{Semilla. Alimenta \code{set.seed()} de la simulacion y, desde
+2.9.15, tambien la opcion \code{SeMiLLa.seed} que \code{.llamar_openai()}
+envia a la API. Ojo: el seed de OpenAI es best-effort y no garantiza
+reproducibilidad; quien la aporta es la votacion del eje 1 y las
+\code{n_pasadas} del eje 2.}
 
 \item{verbose}{Mostrar el detalle de cada paso.}
 

@@ -332,9 +332,25 @@ analizar_redundancia <- function(embeddings, umbral = "auto") {
   redundantes <- data.frame()
 
   # Umbral adaptativo a la linea base de similitud de la escala
+  #
+  # v2.9.31: MISMA calibracion que auditar_redundancia(). Hasta 2.9.30 esta
+  # funcion usaba min(0.85, max(0.70, q95)) y auditar_redundancia() usaba
+  # min(0.70, max(0.62, q95)): dos "auto" con rangos practicamente disjuntos
+  # sobre la MISMA matriz. Medido el 2026-08-20 sobre una escala real de 24
+  # items (q95 = .632): esta funcion reportaba 2 pares redundantes y
+  # auditar_redundancia() reportaba 14. El Paso 6 de la App llama a las dos y
+  # las muestra en la misma pantalla, asi que el usuario leia las dos cifras
+  # juntas sin forma de saber cual valia.
+  #
+  # Se conserva la de auditar_redundancia() porque es la calibrada contra datos
+  # reales: en la bateria policial (n=280) los pares con r policorica >= .70
+  # -dependencia local de verdad- viven en coseno .43-.78, de modo que un
+  # umbral de .80-.85 no detecta NINGUNO. El techo .70 es la linea de
+  # deteccion; por debajo, quien detecta de forma fiable es el juez LLM de
+  # parafrasis (blindar_escala()).
   if (identical(umbral, "auto")) {
     ut <- upper.tri(emb$similitud)
-    umbral <- min(0.85, max(0.70,
+    umbral <- min(0.70, max(0.62,
       as.numeric(stats::quantile(emb$similitud[ut], 0.95, na.rm = TRUE))))
   }
 
@@ -364,7 +380,12 @@ analizar_redundancia <- function(embeddings, umbral = "auto") {
     rownames(redundantes) <- NULL
   }
 
-  cat("\n", .color_verde("ANALISIS DE REDUNDANCIA"), " (umbral: ", umbral * 100, "%)\n", sep = "")
+  # v2.9.31: redondeado. Con el umbral fijo salia "70%"; con el adaptativo
+  # imprimia "63.20027%".
+  cat("
+", .color_verde("ANALISIS DE REDUNDANCIA"),
+      sprintf(" (umbral: %.0f%%)
+", umbral * 100), sep = "")
   cat(.linea("-"), "\n")
 
   if (nrow(redundantes) == 0) {

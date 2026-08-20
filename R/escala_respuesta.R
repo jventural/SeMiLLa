@@ -739,14 +739,33 @@ sugerir_escala_respuesta <- function(x,
                 "4" = "A veces", "5" = "A menudo",
                 "6" = "Con mucha frecuencia", "7" = "Casi siempre")
       ),
+      # v2.9.31: 4, 6 y 7 puntos existen tambien aqui. Antes solo estaba "5"
+      # y el fallback silencioso de abajo devolvia 5 anclas para cualquier N.
       intensidad = list(
+        "4" = c("1" = "Muy poco", "2" = "Poco",
+                "3" = "Bastante", "4" = "Mucho"),
         "5" = c("1" = "Muy poco", "2" = "Poco", "3" = "Algo",
-                "4" = "Bastante", "5" = "Mucho")
+                "4" = "Bastante", "5" = "Mucho"),
+        "6" = c("1" = "Muy poco", "2" = "Poco", "3" = "Algo",
+                "4" = "Bastante", "5" = "Mucho", "6" = "Muchisimo"),
+        "7" = c("1" = "Muy poco", "2" = "Poco", "3" = "Algo",
+                "4" = "Moderadamente", "5" = "Bastante", "6" = "Mucho",
+                "7" = "Muchisimo")
       ),
       acuerdo = list(
+        "4" = c("1" = "Muy en desacuerdo", "2" = "En desacuerdo",
+                "3" = "De acuerdo", "4" = "Muy de acuerdo"),
         "5" = c("1" = "Muy en desacuerdo", "2" = "En desacuerdo",
                 "3" = "Ni de acuerdo ni en desacuerdo",
-                "4" = "De acuerdo", "5" = "Muy de acuerdo")
+                "4" = "De acuerdo", "5" = "Muy de acuerdo"),
+        "6" = c("1" = "Muy en desacuerdo", "2" = "En desacuerdo",
+                "3" = "Algo en desacuerdo", "4" = "Algo de acuerdo",
+                "5" = "De acuerdo", "6" = "Muy de acuerdo"),
+        "7" = c("1" = "Muy en desacuerdo", "2" = "En desacuerdo",
+                "3" = "Algo en desacuerdo",
+                "4" = "Ni de acuerdo ni en desacuerdo",
+                "5" = "Algo de acuerdo", "6" = "De acuerdo",
+                "7" = "Muy de acuerdo")
       )
     )
   )
@@ -769,6 +788,8 @@ sugerir_escala_respuesta <- function(x,
         "4" = c("1" = "Nada", "2" = "Poco", "3" = "Bastante", "4" = "Mucho"),
         "5" = c("1" = "Nada", "2" = "Poco", "3" = "Algo",
                 "4" = "Bastante", "5" = "Mucho"),
+        "6" = c("1" = "Nada", "2" = "Casi nada", "3" = "Poco",
+                "4" = "Algo", "5" = "Bastante", "6" = "Mucho"),
         "7" = c("1" = "Nada", "2" = "Casi nada", "3" = "Poco",
                 "4" = "Algo", "5" = "Bastante", "6" = "Mucho",
                 "7" = "Muchisimo")
@@ -779,6 +800,9 @@ sugerir_escala_respuesta <- function(x,
         "5" = c("1" = "Totalmente en desacuerdo", "2" = "En desacuerdo",
                 "3" = "Ni de acuerdo ni en desacuerdo",
                 "4" = "De acuerdo", "5" = "Totalmente de acuerdo"),
+        "6" = c("1" = "Totalmente en desacuerdo", "2" = "En desacuerdo",
+                "3" = "Algo en desacuerdo", "4" = "Algo de acuerdo",
+                "5" = "De acuerdo", "6" = "Totalmente de acuerdo"),
         "7" = c("1" = "Totalmente en desacuerdo", "2" = "En desacuerdo",
                 "3" = "Algo en desacuerdo", "4" = "Ni de acuerdo ni en desacuerdo",
                 "5" = "Algo de acuerdo", "6" = "De acuerdo",
@@ -798,9 +822,32 @@ sugerir_escala_respuesta <- function(x,
   escala_tipo <- idioma_sel[[tipo]] %||% idioma_sel$acuerdo %||%
                  list("5" = c("1" = "1", "2" = "2", "3" = "3", "4" = "4", "5" = "5"))
   anc <- escala_tipo[[as.character(n_puntos)]]
-  if (is.null(anc)) anc <- escala_tipo[["5"]]
-  if (is.null(anc)) anc <- c("1" = "1", "2" = "2", "3" = "3",
-                             "4" = "4", "5" = "5")
+
+  # v2.9.31: el fallback ya no miente sobre cuantos puntos devuelve.
+  # Antes, si no habia plantilla para ese N se devolvia la de 5 puntos SIN
+  # avisar, y quien llamaba seguia creyendo que tenia N. Asi salia impreso
+  # "ACUERDO - 4 puntos" seguido de cinco anclas (medido el 2026-08-20).
+  # Ahora se construye un vector del largo pedido a partir de la plantilla
+  # disponible mas cercana, y si aun asi no cuadra se numeran los puntos:
+  # lo que se devuelve tiene SIEMPRE length() == n_puntos.
+  if (is.null(anc)) {
+    disponibles <- suppressWarnings(as.integer(names(escala_tipo)))
+    disponibles <- disponibles[!is.na(disponibles)]
+    if (length(disponibles) > 0) {
+      base <- escala_tipo[[as.character(
+        disponibles[which.min(abs(disponibles - n_puntos))])]]
+      # Reetiquetado por interpolacion sobre los polos de la plantilla base:
+      # conserva el orden y los extremos, que es lo que define la escala.
+      idx <- round(seq(1, length(base), length.out = n_puntos))
+      anc <- stats::setNames(unname(base[idx]), as.character(seq_len(n_puntos)))
+      anc <- anc[!duplicated(anc) | seq_along(anc) == 1]
+      if (length(anc) != n_puntos) anc <- NULL
+    }
+  }
+  if (is.null(anc) || length(anc) != n_puntos) {
+    anc <- stats::setNames(as.character(seq_len(n_puntos)),
+                           as.character(seq_len(n_puntos)))
+  }
   anc
 }
 
@@ -841,6 +888,9 @@ sugerir_escala_respuesta <- function(x,
   lapply(candidatos, function(c) {
     anc <- .anclajes_estandar(c$tipo, c$n, idioma, contexto,
                               evitar_absolutos)
+    # v2.9.31: cinturon y tirantes. El n_puntos que se reporta es el de las
+    # anclas que de verdad se devuelven, nunca el que se pidio.
+    c$n <- length(anc)
     discriminabilidad <- .evaluar_discriminabilidad(anc)
 
     mismo_tipo <- identical(c$tipo, tipo_principal)

@@ -285,7 +285,8 @@ calificar_deseabilidad <- function(x, api_key = Sys.getenv("OPENAI_API_KEY"),
 #' @param n,n_rep,k_cat Tamano muestral simulado, replicas por escenario y
 #'   categorias ordinales. \code{n_rep} por defecto 100 (con 40 el semaforo
 #'   cambia de color por ruido Monte Carlo de +-8 puntos).
-#' @param n_nucleos Nucleos para paralelizar las replicas (v2.8.0). Default 1
+#' @param n_nucleos Nucleos para paralelizar las replicas (v2.8.0). Default
+#'   \code{NULL} = todos menos uno (v2.9.31; antes era 1)
 #'   (apto para servidores compartidos como Connect Cloud). Con el mismo
 #'   \code{seed}, el resultado es IDENTICO con 1 o con N nucleos (streams
 #'   L'Ecuyer por replica); en una PC local use
@@ -344,7 +345,7 @@ simular_estructura <- function(x, deseabilidad = NULL, similitud = NULL,
                                n = 300, n_rep = 100, k_cat = 5,
                                umbral_rmsea = 0.06, umbral_phi = 0.70,
                                umbral_fusion = 0.65,
-                               n_nucleos = 1,
+                               n_nucleos = NULL,
                                api_key = Sys.getenv("OPENAI_API_KEY"),
                                seed = 2026, verbose = TRUE) {
   if (!requireNamespace("lavaan", quietly = TRUE)) stop("Necesitas el paquete 'lavaan'.")
@@ -388,7 +389,10 @@ simular_estructura <- function(x, deseabilidad = NULL, similitud = NULL,
 
   # Cluster opcional (n_nucleos > 1): mismo resultado que secuencial gracias
   # a los streams por replica; default 1 para servidores compartidos.
-  n_nucleos <- max(1L, as.integer(n_nucleos %||% 1L))
+  # v2.9.31: NULL = todos menos uno, igual que estres_escala(). El default 1
+  # dejaba 23 de 24 nucleos parados en cada llamada, incluidas las que hace
+  # compuerta_pre_aplicacion() por dentro.
+  n_nucleos <- max(1L, as.integer(n_nucleos %||% (parallel::detectCores() - 1L)))
   cl <- .cluster_estres(n_nucleos)
   if (!is.null(cl)) on.exit(parallel::stopCluster(cl), add = TRUE)
 
@@ -520,6 +524,8 @@ simular_estructura <- function(x, deseabilidad = NULL, similitud = NULL,
   # parafrasis, estilos); NO detecta covariacion sustantiva entre rasgos
   # (p. ej. comorbilidad Depresion-Ansiedad-Estres en DASS-21), que no vive
   # en el fraseo y puede fundir factores aunque este pronostico sea ALTA.
+  # OJO: este veredicto PRELIMINAR mira solo la probabilidad. Se corrige mas
+  # abajo, en cuanto existe el mapa de fusion (v2.9.31).
   veredicto <- if (prob >= .80) "ALTA (sin riesgo estructural inducido por el fraseo)"
                else if (prob >= .40) "MEDIA (revisar antes de aplicar)"
                else "BAJA (las dimensiones colapsaran; redisenar items/formato)"
@@ -545,6 +551,36 @@ simular_estructura <- function(x, deseabilidad = NULL, similitud = NULL,
     des_dim <- tapply(deseabilidad, dim_por_item, mean)[dims]
     mapa_fusion <- .mapa_fusion(phi_pares, umbral = umbral_fusion,
                                 des_por_dim = des_dim)
+  }
+
+  # ---------------------------------------------------------------------------
+  # v2.9.31: el veredicto tenia que mirar el mapa de fusion, y no lo miraba
+  # ---------------------------------------------------------------------------
+  # El veredicto se calculaba SOLO con prob_limpia, veinte lineas antes de que
+  # existiera mapa_fusion, y ya no se volvia a tocar. Resultado: la funcion
+  # imprimia dos lineas seguidas que se contradicen -medido el 2026-08-20 sobre
+  # una escala de 24 items y 3 dimensiones-
+  #
+  #   >> MAPA DE FUSION: se esperan 2 factor(es) empirico(s), no 3:
+  #      [SE FUNDEN por phi+halo] Afirmar lo propio + Actuar para cambiarlo
+  #   >> ESCENARIO PREVISTO: ALTA (sin riesgo estructural inducido por el fraseo)
+  #
+  # ...y devolvia $veredicto = "ALTA" en el objeto, que es lo que lee quien no
+  # mira la consola. compuerta_pre_aplicacion() ya resolvia esto bien por su
+  # cuenta (ver R/compuerta.R:710); el defecto golpeaba a quien llama
+  # simular_estructura() directamente o muestra su salida sin la compuerta.
+  # La probabilidad y la fusion responden preguntas distintas: "saldra un
+  # modelo con ajuste aceptable" no es "saldran las dimensiones que diseniaste".
+  prob_veredicto <- veredicto
+  if (!is.null(mapa_fusion) && isTRUE(mapa_fusion$hay_fusion) &&
+      !is.null(mapa_fusion$k_esperado) && mapa_fusion$k_esperado < K) {
+    grupos_f <- Filter(function(g) length(g) > 1, mapa_fusion$grupos)
+    veredicto <- sprintf(
+      "SE ESPERAN %d FACTOR(ES), NO %d: no se separan %s [prob. de ajuste limpio: %s]",
+      mapa_fusion$k_esperado, K,
+      paste(vapply(grupos_f, function(g) paste(g, collapse = " + "),
+                   character(1)), collapse = " · "),
+      strsplit(prob_veredicto, " (", fixed = TRUE)[[1]][1])
   }
 
   if (verbose) {
@@ -585,7 +621,11 @@ simular_estructura <- function(x, deseabilidad = NULL, similitud = NULL,
   invisible(list(prob_limpia = prob, prob_ic = ic,
                  prob_min = min(sensibilidad$prob_limpia),
                  prob_max = max(sensibilidad$prob_limpia),
-                 veredicto = veredicto, fuerza_central = fuerzas[i_c],
+                 veredicto = veredicto,
+                 # El veredicto que sale SOLO de prob_limpia, por si alguien lo
+                 # necesita aparte del que ya integra la fusion.
+                 veredicto_probabilidad = prob_veredicto,
+                 fuerza_central = fuerzas[i_c],
                  rmsea_med = esc[[i_c]]$rmsea_med, phi_med = esc[[i_c]]$phi_med,
                  phi_pares = phi_pares, mapa_fusion = mapa_fusion,
                  # Los umbrales VIAJAN con el resultado. Sin esto, quien lo lea

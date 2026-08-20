@@ -8,8 +8,8 @@ simular_estructura(
   x,
   deseabilidad = NULL,
   similitud = NULL,
-  carga_propia = 0.6,
-  phi_teorico = 0.3,
+  carga_propia = 0.695,
+  phi_teorico = 0.5,
   fuerza_deseabilidad = c(0.3, 0.6, 0.9),
   sd_aquiescencia = 0.35,
   umbral_ld = 0.8,
@@ -19,7 +19,8 @@ simular_estructura(
   k_cat = 5,
   umbral_rmsea = 0.06,
   umbral_phi = 0.7,
-  n_nucleos = 1,
+  umbral_fusion = 0.65,
+  n_nucleos = NULL,
   api_key = Sys.getenv("OPENAI_API_KEY"),
   seed = 2026,
   verbose = TRUE
@@ -62,7 +63,32 @@ ACO funciono en campo con Phi = .64-.84 y Phi simulado = .58, que el
 criterio 0.50 marcaba como colapso); |Phi| >= .70 es la heuristica
 conservadora de discriminabilidad.}
 
-\item{n_nucleos}{Nucleos para paralelizar las replicas (v2.8.0). Default 1
+\item{umbral_fusion}{Phi simulado a partir del cual dos dimensiones se
+declaran fundidas en el mapa de fusion (default 0.65 desde 2.9.14; antes
+compartia el 0.70 de \code{umbral_phi}, que es OTRA decision: aquella
+define cuando una replica cuenta como "limpia").
+
+El 0.65 sale de comparar dos poblaciones de pares cuyo desenlace se conoce:
+72 pares de escalas publicadas que MANTUVIERON sus factores (AFC empirico,
+n = 1500) y 3 pares de la bateria EESTP que se FUNDIERON de verdad en campo.
+Las distribuciones apenas se solapan -los que se separaron llegan como
+maximo a .660 y los que se fundieron estan en .699, .712 y .729- asi que la
+frontera sale de los datos y no del criterio de nadie:
+
+\tabular{lll}{
+umbral \tab detecta fusiones \tab falsas alarmas \cr
+0.60   \tab 3 de 3           \tab 3 de 72 \cr
+\strong{0.65} \tab \strong{3 de 3} \tab \strong{1 de 72} \cr
+0.70   \tab 2 de 3           \tab 0 de 72
+}
+
+Con 0.70 se perdia el par Conductual ~ Afectivo de la escala de actitud
+hacia la corrupcion (phi .6987) por TRECE MILESIMAS: se fundio en campo y
+no se aviso. Bajar a 0.60 tampoco vale: ahi el NPI pasaria de 7 factores a
+2, un aviso catastrofico y falso.}
+
+\item{n_nucleos}{Nucleos para paralelizar las replicas (v2.8.0). Default
+\code{NULL} = todos menos uno (v2.9.31; antes era 1)
 (apto para servidores compartidos como Connect Cloud). Con el mismo
 \code{seed}, el resultado es IDENTICO con 1 o con N nucleos (streams
 L'Ecuyer por replica); en una PC local use
@@ -82,7 +108,10 @@ separada), ademas de \code{prob_limpia} (escenario central), \code{prob_ic}
 \code{veredicto}, \code{fuerza_central}, medianas de RMSEA/|Phi|,
 \code{sensibilidad} (data.frame por escenario, con tasas de no-convergencia
 e inadmisibilidad), \code{carga_estandarizada_media} y la matriz
-\code{resumen} por replica del escenario central.
+\code{resumen} por replica del escenario central. Devuelve tambien los
+umbrales con los que se juzgo la corrida (\code{umbral_phi},
+\code{umbral_fusion}, \code{umbral_rmsea}), para que quien lea el resultado
+despues no tenga que repetirlos a mano y desincronizarlos.
 }
 \description{
 Monte Carlo del PROCESO DE RESPUESTA (no de los embeddings). Cada respondiente
@@ -105,3 +134,44 @@ de respuesta se estandariza analiticamente para que los umbrales ordinales
 operen en la metrica prevista; \code{$carga_estandarizada_media} reporta la
 carga efectiva del rasgo tras sumar los componentes de metodo.
 }
+\section{Calibracion 2.9.13}{
+
+\code{carga_propia} y \code{phi_teorico} dejaron de ser los valores de
+conveniencia 0.60 y 0.30 y pasaron a los observados en 8 escalas clasicas con
+AFC empirico sobre n = 1500 (DASS-21, RSES, BigFive, ECR, NPI, SD3, DD, CFCS,
+RIASEC): carga estandarizada media \strong{.695} (p05-p95 = .48-.85) y
+correlacion entre factores media \strong{.47} (mediana .504, rango .054-.889).
+
+El 0.30 anterior quedaba por debajo del percentil 25 de lo observado, y el
+0.60 de carga muy por debajo de la media real. Los dos errores se
+potenciaban: con cargas bajas los factores se vuelven indistinguibles en
+cuanto el phi sube, asi que la simulacion "rompia" estructuras que en campo
+aguantan (DASS-21 correlaciona .805 entre factores y ajusta con CFI .995).
+
+El valor final de \code{phi_teorico} (0.50) NO es la media empirica (.47)
+sino el resultado de un \emph{grid search} sobre los tres parametros del
+generador (carga x phi x aquiescencia, 27 combinaciones en 5 escalas), con
+validacion dejando una escala fuera. Los cinco pliegues coincidieron en
+\strong{phi = .50 y aquiescencia = .35}; solo variaba la carga, que resulto
+ser el parametro menos influyente (error 0.388 a 0.400 entre sus extremos,
+frente a 0.439 a 0.340 en el phi). Error medio del phi: 0.369 con la
+configuracion anterior, \strong{0.308} con esta (-17\\%).
+
+Contraintuitivo pero medido: \strong{quitar la aquiescencia EMPEORA} el
+pronostico (error 0.411 con 0 frente a 0.368 con .35). La varianza de metodo
+comun no es solo ruido a eliminar: forma parte de como se comportan las
+respuestas reales.
+
+\strong{Techo del enfoque:} ninguna constante puede acertar a la vez en ECR
+(factores que correlacionan .054) y CFCS (.856). Para esos casos la salida no
+es afinar la constante sino declarar el rango esperado via
+\code{phi_teorico = c(min, max)}.
+
+Se probo tambien derivar ambos de la similitud semantica (afinidad relativa
+entre dimensiones y afinidad del item con la suya). Dentro de muestra parecia
+funcionar (r = .54 y .37), pero con validacion dejando una escala fuera se
+desplomaba (r = .18 y .24) y \strong{no superaba a una constante bien puesta}.
+Por eso NO se implemento: la senal semantica existe entre escalas, pero no
+generaliza a una escala nueva.
+}
+
