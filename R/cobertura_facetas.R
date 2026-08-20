@@ -165,25 +165,41 @@ auditar_cobertura_facetas <- function(escala, min_items = 1L, verbose = TRUE) {
   et <- et[nzchar(et)]
   if (!length(et) || !nzchar(fa)) return(list(n = 0L, metodo = NA_character_))
 
-  hit <- et == fa
-  if (any(hit)) return(list(n = sum(hit), metodo = "exacto"))
+  # v2.9.31: los tres niveles se evaluan SOBRE TODAS las etiquetas y se suman
+  # los items distintos que casan por cualquiera de ellos.
+  #
+  # Antes esto era una cascada con return anticipado: en cuanto el nivel
+  # "exacto" encontraba UNA coincidencia devolvia n = 1 y no llegaba a mirar
+  # contencion ni solape, donde casaban las demas. Medido el 2026-08-20 sobre
+  # una escala real de 24 items: la faceta "Comparte y explica tradiciones o
+  # practicas culturales propias..." la cubrian 6 items -uno con la etiqueta
+  # literal y cinco con la misma etiqueta truncada por el LLM- y la funcion
+  # reportaba 1. La columna n_items sumaba 13 de 24 y hacia parecer que unas
+  # dimensiones tenian mas items que otras cuando las tres tenian 8.
+  #
+  # El veredicto de faceta huerfana NO cambia (una faceta sin items daba 0 por
+  # los tres niveles antes y despues); lo que se corrige es CUANTOS la cubren.
+  ex <- et == fa
 
-  hit <- vapply(et, function(e)
+  cont <- vapply(et, function(e)
     startsWith(e, fa) || startsWith(fa, e) ||
     grepl(e, fa, fixed = TRUE) || grepl(fa, e, fixed = TRUE),
     logical(1), USE.NAMES = FALSE)
-  if (any(hit)) return(list(n = sum(hit), metodo = "contencion"))
 
   pf <- setdiff(strsplit(fa, " ")[[1]], .VACIAS_FACETA)
-  if (!length(pf)) return(list(n = 0L, metodo = NA_character_))
-  hit <- vapply(et, function(e) {
+  sol <- if (!length(pf)) rep(FALSE, length(et)) else vapply(et, function(e) {
     pe <- setdiff(strsplit(e, " ")[[1]], .VACIAS_FACETA)
     if (!length(pe)) return(FALSE)
     length(intersect(pe, pf)) / min(length(pe), length(pf)) >= umbral_solape
   }, logical(1), USE.NAMES = FALSE)
-  if (any(hit)) return(list(n = sum(hit), metodo = "solape"))
 
-  list(n = 0L, metodo = NA_character_)
+  casan <- ex | cont | sol
+  if (!any(casan)) return(list(n = 0L, metodo = NA_character_))
+
+  # El metodo declarado es el mas fuerte con el que casa alguna etiqueta: sirve
+  # para saber si el cruce fue limpio (exacto) o hubo que aflojar (solape).
+  metodo <- if (any(ex)) "exacto" else if (any(cont)) "contencion" else "solape"
+  list(n = sum(casan), metodo = metodo)
 }
 
 .VACIAS_FACETA <- c("de","del","la","el","los","las","en","y","o","a","al",

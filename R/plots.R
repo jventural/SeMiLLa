@@ -347,7 +347,9 @@ plot_red_items <- function(x,
                        size = 2.5, color = "white", fontface = "bold") +
     ggplot2::labs(
       title = "Red de Similitud Semantica",
-      subtitle = paste0("Umbral: ", umbral, " | Conexiones: ", nrow(edges)),
+      # v2.9.31: redondeado. Con el umbral adaptativo salia "0.632002733009634".
+      subtitle = paste0("Umbral: ", sprintf("%.2f", umbral),
+                        " | Conexiones: ", nrow(edges)),
       color = "Dimension"
     )
 
@@ -1554,7 +1556,8 @@ plot_redundancia <- function(x, tipo = "barras", titulo = NULL) {
     if (is.null(umbral)) umbral <- min(x$similitud, na.rm = TRUE)
     if (is.null(titulo)) {
       titulo <- paste0("Analisis de Redundancia\n",
-                       "Umbral: ", umbral, " | Pares encontrados: ", nrow(x))
+                       "Umbral: ", sprintf("%.2f", umbral),
+                       " | Pares encontrados: ", nrow(x))
     }
 
     tiene_dim <- all(c("dim1", "dim2") %in% names(x)) &&
@@ -1623,7 +1626,8 @@ plot_redundancia <- function(x, tipo = "barras", titulo = NULL) {
 
   if (is.null(titulo)) {
     titulo <- paste0("Analisis de Redundancia\n",
-                     "Umbral: ", x$umbral, " | Pares encontrados: ", x$n_redundancias)
+                     "Umbral: ", sprintf("%.2f", x$umbral),
+                     " | Pares encontrados: ", x$n_redundancias)
   }
 
   if (tipo == "barras") {

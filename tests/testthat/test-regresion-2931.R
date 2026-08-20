@@ -87,3 +87,39 @@ test_that("la simulacion y la compuerta pueden paralelizar", {
   expect_true("n_nucleos" %in% names(formals(compuerta_pre_aplicacion)))
   expect_null(formals(compuerta_pre_aplicacion)$n_nucleos)
 })
+
+test_that(".casar_faceta suma los items de los tres niveles, no del primero", {
+  # Antes era una cascada con return anticipado: si el nivel "exacto" encontraba
+  # UNA coincidencia devolvia n = 1 y no miraba contencion ni solape, donde
+  # casaban las demas. Medido el 2026-08-20 sobre una escala real: una faceta
+  # cubierta por 6 items -uno con la etiqueta literal y cinco con la misma
+  # truncada por el LLM- se reportaba con 1, y la columna n_items sumaba 13 de
+  # 24 haciendo parecer que unas dimensiones tenian mas items que otras.
+  f <- SeMiLLa:::.casar_faceta
+  faceta <- "Comparte y explica tradiciones propias en contextos intergrupales (por ejemplo, platos)"
+  truncada <- "Comparte y explica tradiciones propias en contextos intergrupales"
+
+  # 1 exacto + 3 truncados (contencion) = 4, no 1
+  et <- c(faceta, truncada, truncada, truncada)
+  m <- f(et, faceta)
+  expect_equal(m$n, 4L)
+  expect_equal(m$metodo, "exacto")   # el mas fuerte con el que casa alguna
+
+  # sin ninguno exacto, sigue contando los que casan por contencion
+  m2 <- f(rep(truncada, 3), faceta)
+  expect_equal(m2$n, 3L)
+  expect_equal(m2$metodo, "contencion")
+
+  # una faceta que nadie cubre sigue dando 0 (el veredicto no cambia)
+  m3 <- f(c("Otra cosa completamente distinta", "Y otra mas"), faceta)
+  expect_equal(m3$n, 0L)
+  expect_true(is.na(m3$metodo))
+})
+
+test_that("el umbral se imprime redondeado en los graficos de redundancia", {
+  # El parche del umbral adaptativo dejo al descubierto tres subtitulos que
+  # pegaban el valor crudo: "Umbral: 0.632002733009634".
+  src <- paste(deparse(body(plot_redundancia)), collapse = " ")
+  expect_true(grepl("sprintf", src, fixed = TRUE))
+  expect_false(grepl('"Umbral: ", umbral,', src, fixed = TRUE))
+})
