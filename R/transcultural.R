@@ -151,9 +151,19 @@ adaptar_transcultural <- function(x,
 
   if (verificar_equivalencia && !is.null(x$embeddings)) {
     if (verbose) cat("  Calculando embeddings de la version adaptada...\n")
-    escala_destino <- obtener_embeddings(escala_destino,
-                                         api_key = api_key,
-                                         verbose = FALSE)
+    # Se ANADEN los embeddings al objeto adaptado; no se sustituye el objeto por
+    # lo que devuelve obtener_embeddings(), que es una lista de clase
+    # "semilla_embeddings" con solo embeddings/items/similitud/metadata. Al
+    # sustituirlo, $escala_destino salia sin $concepto y sin la clase "semilla",
+    # y las funciones que la reciben despues -estructura_por_consenso(),
+    # validez_contenido(), analizar_coherencia()- la rechazaban con "x debe ser
+    # un objeto de clase 'semilla'". Detectado el 21-ago-2026 al encadenar la
+    # adaptacion con el resto del pipeline sobre la escala de Rosenberg.
+    emb_dest <- obtener_embeddings(escala_destino,
+                                   api_key = api_key,
+                                   verbose = FALSE)
+    escala_destino$embeddings <- emb_dest$embeddings
+    escala_destino$similitud  <- emb_dest$similitud
     dif_res <- detectar_dif_semantico(x, escala_destino,
                                       emparejamiento = "orden",
                                       umbral_z = 2.0,

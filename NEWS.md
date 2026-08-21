@@ -1,3 +1,38 @@
+# SeMiLLa 2.9.34 (2026-08-21)
+## La escala adaptada salia sin clase, y el pipeline la rechazaba
+
+`adaptar_transcultural(verificar_equivalencia = TRUE)` devolvia en
+`$escala_destino` un objeto que ya no era una `semilla`. La causa es una linea:
+
+    escala_destino <- obtener_embeddings(escala_destino, ...)
+
+`obtener_embeddings()` no anade campos al objeto que recibe: construye uno nuevo,
+con `embeddings`, `items`, `similitud` y `metadata`, y le pone clase
+`semilla_embeddings`. Al asignarlo encima, la version adaptada perdia `$concepto`
+y la clase `semilla`.
+
+Nada fallaba en la adaptacion, asi que el problema no se veia: los items estaban
+traducidos y la tabla de equivalencia era correcta. Fallaba lo siguiente, en
+cuanto se intentaba seguir el analisis con la version adaptada:
+
+    estructura_por_consenso(ad$escala_destino)
+    #> Error: x debe ser un objeto de clase 'semilla' con embeddings calculados
+    validez_contenido(ad$escala_destino, api_key)
+    #> Error: Objeto no valido. Usa un objeto semilla...
+    analizar_coherencia(ad$escala_destino)
+    #> Error: x debe ser un objeto de clase 'semilla' con similitud calculada
+
+Detectado el 21-ago-2026 encadenando el flujo completo sobre la escala de
+Rosenberg (10 items, ingles -> espanol): de once pasos, tres se caian, y solo los
+que aceptan matrices sueltas -fiabilidad y discriminacion- seguian adelante.
+
+Ahora los embeddings se ANADEN al objeto adaptado, que conserva su clase y su
+`$concepto`. Los once pasos completan.
+
+Sin cambios en la firma ni en la salida documentada. `banco_cat()` usa el mismo
+patron pero extrae `$items` y `$embeddings` acto seguido y no propaga el objeto,
+asi que no estaba afectada.
+
 # SeMiLLa 2.9.30 (2026-08-17)
 ## El juez de gemelos devolvia un numero sin banda
 
