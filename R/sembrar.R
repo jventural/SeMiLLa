@@ -1226,7 +1226,30 @@ refinar_escala <- function(escala,
   #  La mejor escala vista hasta ahora, para no entregar la ULTIMA vuelta si
   #  fue peor que una anterior. En una corrida real el ciclo paso por 75.0% y
   #  termino en 62.5%, y esa caida no la miraba nadie.
-  mejor <- list(escala = escala, score = -Inf, iteracion = 0L)
+  # ---------------------------------------------------------------------------
+  # v2.9.33: "no tocar nada" tambien compite
+  # ---------------------------------------------------------------------------
+  # Hasta 2.9.32 la escala de partida entraba con score -Inf y la entrega exigia
+  # mejor$iteracion > 0, asi que CUALQUIER iteracion con score finito la ganaba
+  # por definicion: dejar la escala como estaba no podia salir elegido nunca.
+  #
+  # Medido el 2026-08-20 sobre una escala real de 24 items (precision 83.3% al
+  # entrar): con el tope de reescrituras en Inf el ciclo hizo 59 reescrituras
+  # sobre 21 items para terminar en 83.3%, exactamente donde habia empezado, y
+  # se entregaban igualmente los 21 items reescritos. Para quien lo usa, eso es
+  # media escala cambiada a cambio de nada.
+  #
+  # Se puntua la escala inicial con LA MISMA formula que las iteraciones y se
+  # mete en la competencia. Si ninguna vuelta la supera, se devuelve intacta.
+  score_inicial <- tryCatch({
+    ef0  <- precision_clasificacion(escala, verbose = FALSE)
+    red0 <- auditar_redundancia(escala)
+    n0   <- nrow(escala$items)
+    (ef0$precision_global / 100) -
+      0.5 * (nrow(red0$pares_redundantes) / max(1, n0 * (n0 - 1) / 2)) -
+      0.1 * nrow(red0$facetas_repetidas)
+  }, error = function(e) -Inf)
+  mejor <- list(escala = escala, score = score_inicial, iteracion = 0L)
 
   # Calcular precision inicial
   prec_inicial <- precision_clasificacion(escala, verbose = FALSE)
@@ -1782,8 +1805,16 @@ refinar_escala <- function(escala,
 
   # v2.9.29: entregar la mejor vuelta, no la ultima
   iteracion_elegida <- iteracion
-  if (isTRUE(devolver_mejor) && is.finite(mejor$score) && mejor$iteracion > 0 &&
+  sin_mejora <- FALSE
+  if (isTRUE(devolver_mejor) && is.finite(mejor$score) &&
       !identical(mejor$escala$items$item, escala_actual$items$item)) {
+    if (mejor$iteracion == 0L) {
+      sin_mejora <- TRUE
+      if (verbose)
+        cat("  Ninguna reescritura mejoro la escala de partida (score ",
+            sprintf("%.3f", mejor$score),
+            "): se entrega SIN CAMBIOS.\n", sep = "")
+    } else
     if (verbose) {
       cat("  Se entrega la iteracion ", mejor$iteracion,
           " (la mejor vista), no la ultima (", iteracion, ").\n", sep = "")
@@ -1950,6 +1981,13 @@ refinar_escala <- function(escala,
     #  veces_reescrito : cuantas veces se toco cada item
     #  cobertura : facetas declaradas que siguen cubiertas al final
     iteracion_elegida = iteracion_elegida,
+    #  sin_mejora : TRUE cuando ninguna iteracion supero a la escala de partida
+    #    y por eso se devuelve intacta (v2.9.33). Quien lo lea -la App, un
+    #    informe- puede decirlo en vez de presentar reescrituras que no
+    #    mejoraron nada.
+    sin_mejora = sin_mejora,
+    score_inicial = score_inicial,
+    score_entregado = mejor$score,
     rechazos_redundancia = rechazos_redundancia,
     rechazos_detalle = if (length(rechazos_detalle))
       do.call(rbind, rechazos_detalle) else NULL,
