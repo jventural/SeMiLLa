@@ -1213,7 +1213,10 @@ refinar_escala <- function(escala,
   rechazos_detalle <- list()
 
   #  Cuantas veces se ha reescrito cada item (tope por item, ver max_reescrituras_item)
-  veces_reescrito <- integer()
+  # v2.9.32: list(), no integer(). Con un vector atomico, v[["clave_nueva"]]
+  # lanza "subscript out of bounds" ANTES de que %||% pueda actuar, y eso
+  # tumbaba refinar_escala() en la primera reescritura (ver abajo).
+  veces_reescrito <- list()
 
   #  Modelo de embedding de la escala. Estaba hardcodeado en el filtro de
   #  redundancia, asi que con una escala construida con otro modelo el filtro
@@ -1392,7 +1395,7 @@ refinar_escala <- function(escala,
       if (!is.na(num_original) && !is.null(max_reescrituras_item) &&
           is.finite(max_reescrituras_item)) {
         k <- as.character(num_original)
-        ya <- veces_reescrito[[k]] %||% 0L
+        ya <- veces_reescrito[[k]] %||% 0L   # ahora si devuelve NULL -> 0L
         if (ya >= max_reescrituras_item) {
           if (verbose) cat(" tope de reescrituras alcanzado (", ya, "), se mantiene\n", sep = "")
           items_no_convergentes <- unique(c(items_no_convergentes, num_original))
@@ -1619,8 +1622,38 @@ refinar_escala <- function(escala,
 
           # Reemplazar item
           items_actuales$item[idx] <- nuevo_item$item[1]
-          if (!is.null(nuevo_item$caracteristica) && "caracteristica" %in% names(items_actuales)) {
-            items_actuales$caracteristica[idx] <- nuevo_item$caracteristica[1]
+
+          # ---------------------------------------------------------------
+          # v2.9.32: la FACETA del item reemplazado NO cambia
+          # ---------------------------------------------------------------
+          # Hasta 2.9.31 aqui se guardaba nuevo_item$caracteristica, es decir
+          # la etiqueta que devolvia el LLM. El prompt ya le exige "El item
+          # reescrito DEBE seguir midiendo exactamente esta dimension/
+          # caracteristica" (ver .reescribir_item_llm en R/utils.R), asi que
+          # aceptar despues una etiqueta distinta tiraba esa garantia.
+          #
+          # Lo que provocaba, medido el 2026-08-20 sobre una escala real de 24
+          # items a la que el refinamiento reemplazo 8: seis items copiaron
+          # literalmente la faceta que iba en el prompt y se apilaron todos en
+          # la misma (reparto 2/6/0 dentro de una dimension de 8 items, con una
+          # faceta declarada en CERO), y un septimo se invento una etiqueta que
+          # el constructo no declaraba. La escala seguia con 8 items por
+          # dimension, asi que por arriba nada parecia mal.
+          #
+          # Conservando la etiqueta original, el refinamiento no puede
+          # desbalancear el reparto por faceta ni generar etiquetas huerfanas:
+          # cambia el TEXTO del item, no lo que ese item dice medir. La fila
+          # bloqueante de cobertura (2.9.29) pasa a ser red de seguridad en vez
+          # de ser el unico aviso.
+          #
+          # Solo se toma la del LLM cuando el item original no traia ninguna.
+          if ("caracteristica" %in% names(items_actuales)) {
+            fac_original <- items_actuales$caracteristica[idx]
+            if (is.na(fac_original) || !nzchar(trimws(as.character(fac_original)))) {
+              if (!is.null(nuevo_item$caracteristica))
+                items_actuales$caracteristica[idx] <- nuevo_item$caracteristica[1]
+            }
+            # si ya tenia faceta, se queda tal cual
           }
 
           # Registrar texto en el historial persistente (anti-bucle)
@@ -1920,7 +1953,7 @@ refinar_escala <- function(escala,
     rechazos_redundancia = rechazos_redundancia,
     rechazos_detalle = if (length(rechazos_detalle))
       do.call(rbind, rechazos_detalle) else NULL,
-    veces_reescrito = veces_reescrito,
+    veces_reescrito = unlist(veces_reescrito),
     cobertura = tryCatch(auditar_cobertura_facetas(escala_actual, verbose = FALSE),
                          error = function(e) NULL)
   )

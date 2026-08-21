@@ -260,6 +260,20 @@ ensamblar_test <- function(escala,
     tipo_esc <- escala_respuesta$tipo_escala
     n_puntos <- escala_respuesta$n_puntos
   } else {
+    # v2.9.32: el fallback ya no es mudo.
+    #  Si llega algo en escala_respuesta que no es el objeto de
+    #  sugerir_escala_respuesta(), hasta 2.9.31 se descartaba en silencio y el
+    #  .docx salia con estas anclas genericas. Quien paso una lista con
+    #  $anclajes -estructura razonable- imprimia el cuestionario con anclas que
+    #  no eligio y no habia forma de notarlo salvo abriendo el documento.
+    if (!is.null(escala_respuesta)) {
+      warning("ensamblar_test(): 'escala_respuesta' no es un objeto ",
+              "'semilla_escala_respuesta' (llego un '",
+              paste(class(escala_respuesta), collapse = "/"),
+              "'), asi que se IGNORA y el test se arma con la escala de ",
+              "acuerdo generica de 5 puntos. Pase el objeto que devuelve ",
+              "sugerir_escala_respuesta() tal cual.", call. = FALSE)
+    }
     anclajes <- c("1" = "Totalmente en desacuerdo", "2" = "En desacuerdo",
                   "3" = "Ni de acuerdo ni en desacuerdo",
                   "4" = "De acuerdo", "5" = "Totalmente de acuerdo")

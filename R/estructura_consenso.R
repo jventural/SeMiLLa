@@ -110,6 +110,24 @@
       bloquea = TRUE,
       cumple  = n_huer == 0,
       stringsAsFactors = FALSE))
+    # v2.9.32: el reparto dentro de la dimension, INFORMATIVO (no bloquea).
+    #  cubierta = n >= 1 deja pasar un 6/1/1 en una dimension de 8 items. No
+    #  bloquea porque hay constructos donde una faceta legitimamente pesa mas,
+    #  pero se muestra: es la senal temprana del 6/2/0 que si bloquea.
+    if (!is.null(cob$equilibrio) && nrow(cob$equilibrio) > 0) {
+      conc <- cob$equilibrio$concentrada
+      tb <- rbind(tb, data.frame(
+        indice  = "Reparto de items entre facetas",
+        clave   = "equilibrio_facetas",
+        valor   = 1 - max(cob$equilibrio$max_prop, na.rm = TRUE),
+        crudo   = paste(cob$equilibrio$reparto, collapse = " | "),
+        umbral  = NA_real_,
+        regla   = "informativo (avisa si una faceta pasa del 50%)",
+        bloquea = FALSE,
+        cumple  = NA,
+        stringsAsFactors = FALSE))
+      attr(tb, "equilibrio") <- cob$equilibrio
+    }
     attr(tb, "cobertura") <- cob
   }
   tb

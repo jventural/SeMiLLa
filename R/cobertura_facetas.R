@@ -136,10 +136,30 @@ auditar_cobertura_facetas <- function(escala, min_items = 1L, verbose = TRUE) {
                logical(1), USE.NAMES = FALSE)),
     logical(1), USE.NAMES = FALSE)]
 
+  # --- v2.9.32: no basta con que la faceta tenga items, importa CUANTOS ------
+  #  cubierta = n >= 1 deja pasar un reparto 6/1/1 dentro de una dimension de
+  #  8 items: las tres facetas "cubiertas" y una acaparando el 75% del
+  #  contenido. Es el paso previo al 6/2/0 que si bloquea, y viene del mismo
+  #  sitio (el refinamiento apilando reemplazos en una faceta).
+  #  Se mide como la proporcion de items de la dimension que se lleva su
+  #  faceta mas cargada: con 3 facetas el reparto uniforme da .33-.375, y se
+  #  avisa por encima de .50 (mas de la mitad en una sola).
+  equilibrio <- do.call(rbind, lapply(split(tabla, tabla$dimension), function(z) {
+    n_dim <- sum(z$n_items)
+    data.frame(dimension = z$dimension[1], n_facetas = nrow(z), n_items = n_dim,
+               reparto = paste(z$n_items, collapse = "/"),
+               max_prop = if (n_dim > 0) max(z$n_items) / n_dim else NA_real_,
+               stringsAsFactors = FALSE)
+  }))
+  rownames(equilibrio) <- NULL
+  equilibrio$concentrada <- !is.na(equilibrio$max_prop) & equilibrio$max_prop > 0.50
+
   res <- structure(list(
     tabla         = tabla,
     huerfanas     = tabla[!tabla$cubierta, , drop = FALSE],
     sin_declarar  = sin_declarar,
+    equilibrio    = equilibrio,
+    n_concentradas = sum(equilibrio$concentrada),
     n_declaradas  = nrow(tabla),
     n_cubiertas   = sum(tabla$cubierta),
     prop_cubierta = mean(tabla$cubierta),
@@ -238,6 +258,21 @@ print.semilla_cobertura <- function(x, ...) {
     cat("  la escala ya no mide lo que su propia definicion promete.\n")
   } else {
     cat("\n  Todas las facetas declaradas siguen cubiertas.\n")
+  }
+  # v2.9.32: el reparto DENTRO de cada dimension, no solo si hay o no items
+  if (!is.null(x$equilibrio) && any(x$equilibrio$concentrada)) {
+    cat("
+  [!] REPARTO CONCENTRADO (una faceta se lleva mas de la mitad):
+")
+    z <- x$equilibrio[x$equilibrio$concentrada, , drop = FALSE]
+    for (i in seq_len(nrow(z)))
+      cat(sprintf("      - %s: %s  (%.0f%% en una sola faceta de %d)
+",
+                  z$dimension[i], z$reparto[i], 100 * z$max_prop[i], z$n_facetas[i]))
+    cat("      Las facetas estan cubiertas, pero el contenido no esta repartido:
+")
+    cat("      la dimension mide sobre todo una de las conductas que declara.
+")
   }
   if (length(x$sin_declarar)) {
     cat("\n  [i] Etiquetas presentes en los items que nadie declaro:\n")
