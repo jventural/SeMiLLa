@@ -49,7 +49,7 @@
 #  La compuerta de estructura: una regla por indice, en una tabla
 # -----------------------------------------------------------------------------
 .compuerta_estructura <- function(ens, umbral_consenso, min_precision, min_ari,
-                                  escala = NULL) {
+                                  escala = NULL, min_prop_items = 0.90) {
   cons <- ens$consenso$Consenso
   n_bajo <- sum(cons < umbral_consenso, na.rm = TRUE)
 
@@ -70,8 +70,12 @@
                sprintf("%.1f%%", ens$precision_global),
                sprintf("%.3f", ens$ari),
                sprintf("%.3f", ens$silhouette)),
-    umbral = c(1, NA, min_precision / 100, min_ari, NA),
-    regla  = c(sprintf("todos >= %.3f", umbral_consenso),
+    #  v2.9.35: era 1 (TODOS los items). En 8 corridas del laboratorio no se
+    #  cumplio ni una vez, asi que el paso nunca cerraba por exito y gastaba
+    #  ciclos persiguiendo dos o tres items. Pasa al 90 %.
+    umbral = c(min_prop_items, NA, min_precision / 100, min_ari, NA),
+    regla  = c(sprintf("%.0f%% de los items >= %.3f", 100 * min_prop_items,
+                       umbral_consenso),
                "informativo",
                sprintf(">= %.0f%%", min_precision),
                sprintf(">= %.2f", min_ari),
@@ -161,13 +165,28 @@ estructura_por_consenso <- function(escala,
                                     algoritmos      = c("kmeans", "ward", "gmm"),
                                     n_replicas      = 10,
                                     umbral_consenso = 0.667,
+                                    #  v2.9.35: la regla de items ya no exige
+                                    #  todos (ver .compuerta_estructura).
+                                    min_prop_items  = 0.90,
                                     min_precision   = 90,
                                     min_ari         = 0.65,
                                     auto_refinar    = TRUE,
                                     max_iteraciones = 8,
-                                    max_ciclos      = 2,
+                                    #  v2.9.35: sube a 3. Con 2, la parada por
+                                    #  convergencia no llegaba a ahorrar nada
+                                    #  (el ciclo 2 ya habia corrido cuando se
+                                    #  detecta que no mejoro).
+                                    max_ciclos      = 3,
                                     modelo          = "gpt-4.1-mini",
-                                    blindaje_cierre = TRUE,
+                                    #  v2.9.35: APAGADO por defecto. Medido en
+                                    #  D:/16_Shinys/SeMiLLa_lab_compuerta_consenso:
+                                    #  hubo que revertirlo en 6 de 6 ciclos, o sea
+                                    #  que se pagaba una llamada al LLM para
+                                    #  deshacerla siempre. blindar_escala() sigue
+                                    #  corriendo DENTRO de generar_escala(), que es
+                                    #  donde limpia sin pisar nada, y sigue
+                                    #  disponible suelta.
+                                    blindaje_cierre = FALSE,
                                     escala_refinada = NULL,
                                     items_cambiados = integer(0),
                                     # v2.9.29: parametros del refinamiento que antes
@@ -176,6 +195,15 @@ estructura_por_consenso <- function(escala,
                                     max_intentos_redundancia = 3,
                                     max_reescrituras_item    = 2L,
                                     devolver_mejor           = TRUE,
+                                    # --- v2.9.35: cierre del ciclo y topes ---
+                                    #  Medido en D:/16_Shinys/SeMiLLa_lab_compuerta_consenso
+                                    #  (DASS-21 es, 21 items). Ver su INFORME.md.
+                                    cerrar_ciclo         = TRUE,
+                                    revertir_blindaje    = TRUE,
+                                    parar_si_no_mejora   = TRUE,
+                                    max_ciclos_secos     = 1L,
+                                    max_minutos          = 25,
+                                    aviso_prop_reescrita = 0.5,
                                     seed            = 2026,
                                     verbose         = TRUE) {
 
@@ -190,7 +218,7 @@ estructura_por_consenso <- function(escala,
   .hito(1, "MEDIR - ensemble sobre la escala que entra")
   ens0 <- .medir_estructura(escala, algoritmos, n_replicas, seed)
   gate0 <- .compuerta_estructura(ens0, umbral_consenso, min_precision, min_ari,
-                                escala = escala)
+                                escala = escala, min_prop_items = min_prop_items)
 
   falla <- any(gate0$cumple %in% FALSE)
   if (verbose) {
@@ -220,7 +248,7 @@ estructura_por_consenso <- function(escala,
     .hito(3, "MEDIR OTRA VEZ - sobre la escala refinada que se entrego")
     ens1  <- .medir_estructura(escala_refinada, algoritmos, n_replicas, seed)
     gate1 <- .compuerta_estructura(ens1, umbral_consenso, min_precision, min_ari,
-                                   escala = escala_refinada)
+                                   escala = escala_refinada, min_prop_items = min_prop_items)
     escala_refinada$efa <- ens1
     cons1 <- data.frame(numero    = escala_refinada$items$numero,
                         dimension = escala_refinada$items$dimension,
@@ -269,6 +297,67 @@ estructura_por_consenso <- function(escala,
   #  estructura paso de 20/20 y ARI 1.000 a 18/20 y ARI 0.756. El refinamiento
   #  cerraba anunciando "precision final 100%" sobre una escala que ya no era la
   #  que se entregaba: nadie volvia a medir despues del blindaje.
+  #  EL EJE 3 DE LA COMPUERTA, sobre una escala cualquiera. Es lo que la
+  #  simulacion anticipa que pasara en campo: cuantos factores se separaran de
+  #  verdad (mapa de fusion) y con que probabilidad el ajuste sale limpio.
+  #  Cuesta una recalificacion de deseabilidad (~0,1 min) y una simulacion
+  #  (~0,4 min); ninguna llamada mas al LLM que esa.
+  .medir_eje3 <- function(esc, texto_cambio) {
+    if (!isTRUE(cerrar_ciclo) || is.null(escala$compuerta)) return(NULL)
+    par_prev <- escala$compuerta$parametros
+    des <- escala$compuerta$deseabilidad$deseabilidad
+    if (texto_cambio) {
+      dn <- tryCatch(calificar_deseabilidad(esc, api_key = api_key,
+                                            modelo = modelo, verbose = FALSE),
+                     error = function(e) NULL)
+      des <- if (!is.null(dn)) dn$deseabilidad else NULL
+    }
+    #  Un tercio de las replicas de la compuerta (minimo 30): aqui se compara
+    #  un ciclo con otro, no se informa. Con 50 items y 5 factores, las 100 de
+    #  la compuerta se van a horas.
+    n_rep_ciclo <- max(30L, round((par_prev$n_rep %||% 100) / 3))
+    sim <- tryCatch(simular_estructura(esc, deseabilidad = des,
+                                       similitud = esc$similitud,
+                                       n = par_prev$n %||% 300,
+                                       n_rep = n_rep_ciclo,
+                                       seed = seed, verbose = FALSE),
+                    error = function(e) NULL)
+    if (is.null(sim)) return(NULL)
+    k_teo <- length(unique(esc$items$dimension))
+    list(prob = sim$prob_limpia %||% NA_real_,
+         n_rep = n_rep_ciclo,
+         k_esperado = sim$mapa_fusion$k_esperado %||% k_teo,
+         k_teorico = k_teo,
+         phi_med = sim$phi_med %||% NA_real_,
+         con_deseabilidad = !is.null(des),
+         sim = sim)
+  }
+
+  #  Como se compara un estado con otro. Orden lexicografico compactado, en el
+  #  mismo orden en que manda la regla: reglas bloqueantes cumplidas -> items
+  #  por encima del umbral -> precision -> ARI. Sin esto no se puede decir cual
+  #  de dos ciclos dejo mejor la escala, y el bucle entregaba SIEMPRE el ultimo.
+  #  Orden de importancia, de mas a menos:
+  #    1. reglas bloqueantes cumplidas
+  #    2. FACTORES QUE SE ESPERA RECUPERAR (eje 3): si las dimensiones se
+  #       funden, la escala no mide lo que dice aunque sus items agrupen bien.
+  #       Este es el criterio que pidio el autor y el que la compuerta fue
+  #       disenada para estimar.
+  #    3. items por encima del umbral de consenso
+  #    4. ARI y precision
+  #    5. probabilidad de ajuste limpio, como desempate fino: se le da poco
+  #       peso a proposito porque tiene ruido de simulacion y perseguirla
+  #       llevaria a elegir por decimas que no significan nada.
+  .puntuar <- function(ens, gate, eje3 = NULL) {
+    n_ok  <- sum(gate$bloquea & gate$cumple %in% TRUE, na.rm = TRUE)
+    sobre <- sum(ens$consenso$Consenso >= umbral_consenso, na.rm = TRUE)
+    s <- n_ok * 10000 + sobre * 10 +
+      (ens$ari %||% 0) + (ens$precision_global %||% 0) / 100
+    if (!is.null(eje3) && is.finite(eje3$k_esperado))
+      s <- s + 1000 * eje3$k_esperado + 0.1 * (eje3$prob %||% 0)
+    s
+  }
+
   escala_f  <- escala
   escala_f$efa <- ens0
   cambiados <- integer(0)
@@ -291,7 +380,29 @@ estructura_por_consenso <- function(escala,
                                              na.rm = TRUE),
                      tipo = "medicion", stringsAsFactors = FALSE)
 
+  #  El estado inicial ES un candidato: medido en el laboratorio, un ciclo
+  #  completo puede dejar la escala PEOR que como entro (61,9 % -> 76,2 % ->
+  #  61,9 % tras el blindaje, con un item mas por debajo del umbral). Si ningun
+  #  ciclo mejora, se entrega la escala de entrada y se dice.
+  eje3_0 <- .medir_eje3(escala, FALSE)
+  if (verbose && !is.null(eje3_0))
+    cat(sprintf("  [eje 3] de entrada: %d de %d factores se separan, prob %.2f\n",
+                eje3_0$k_esperado, eje3_0$k_teorico, eje3_0$prob))
+  mejor <- list(escala = escala_f, ens = ens0, gate = gate0, ciclo = 0L,
+                eje3 = eje3_0, score = .puntuar(ens0, gate0, eje3_0))
+  secos  <- 0L
+  motivo <- NA_character_
+
   for (ciclo in seq_len(max_ciclos)) {
+    #  TOPE DE TIEMPO. La parada por convergencia puede pedir varios ciclos y
+    #  cada uno son minutos y llamadas al LLM: el reloj corta por encima de
+    #  cualquier otro criterio.
+    if (is.finite(max_minutos) &&
+        as.numeric(difftime(Sys.time(), t0, units = "mins")) >= max_minutos) {
+      motivo <- sprintf("tope de tiempo (%g min)", max_minutos)
+      if (verbose) cat("  ", motivo, ": no se abre otro ciclo.\n", sep = "")
+      break
+    }
     .hito(2, sprintf("CORREGIR - ciclo %d/%d: reescribiendo con el MISMO umbral",
                      ciclo, max_ciclos))
     # v2.9.29: se le pasan los parametros de redundancia y los del ensemble.
@@ -317,10 +428,21 @@ estructura_por_consenso <- function(escala,
     cambiados <- unique(c(cambiados, ref_c$historial$item_original_num %||% integer(0)))
     hist_all  <- rbind(hist_all, ref_c$historial)
 
+    #  Medicion PREVIA al blindaje: es la referencia para decidir si el cierre
+    #  ayudo o estropeo. Cuesta un ensemble (sin LLM) y evita entregar una
+    #  escala que el propio blindaje empeoro.
+    escala_pre <- escala_f
+    ens_pre <- gate_pre <- NULL
+    i_cam <- integer(0)
+    if (isTRUE(blindaje_cierre) && isTRUE(revertir_blindaje)) {
+      ens_pre  <- .medir_estructura(escala_f, algoritmos, n_replicas, seed)
+      gate_pre <- .compuerta_estructura(ens_pre, umbral_consenso, min_precision,
+                                        min_ari, escala = escala_f, min_prop_items = min_prop_items)
+    }
+
     # Blindaje de cierre (espejo de lo que hace la app tras el paso 7)
     if (isTRUE(blindaje_cierre)) {
       antes_txt <- escala_f$items$item
-      i_cam <- integer(0)
       eb <- tryCatch(blindar_escala(escala_f, api_key = api_key,
                                              modelo = modelo, verbose = FALSE),
                      error = function(e) e)
@@ -353,14 +475,31 @@ estructura_por_consenso <- function(escala,
                      ciclo))
     ens1  <- .medir_estructura(escala_f, algoritmos, n_replicas, seed)
     gate1 <- .compuerta_estructura(ens1, umbral_consenso, min_precision, min_ari,
-                                   escala = escala_f)
+                                   escala = escala_f, min_prop_items = min_prop_items)
+    #  ¿El blindaje ayudo? Si no, se vuelve a la escala de antes de blindar.
+    #  Hasta ahora esto se MEDIA pero no se ACTUABA: el cierre podia deshacer lo
+    #  que el refinamiento acababa de conseguir y se entregaba igual.
+    revertido <- FALSE
+    if (!is.null(ens_pre) && .puntuar(ens1, gate1) < .puntuar(ens_pre, gate_pre)) {
+      if (verbose)
+        cat("  El blindaje empeoro la estructura: se vuelve a la version",
+            "previa al blindaje.\n")
+      escala_f <- escala_pre; ens1 <- ens_pre; gate1 <- gate_pre
+      revertido <- TRUE
+      n_blind <- max(0L, n_blind - length(i_cam))
+      if (!is.null(hist_all) && nrow(hist_all) > 0) {
+        fuera <- hist_all$iteracion == paste0("blindaje c", ciclo)
+        hist_all <- hist_all[!fuera, , drop = FALSE]
+      }
+    }
     escala_f$efa <- ens1
     ciclos <- rbind(ciclos, data.frame(
       ciclo = ciclo,
       items_bajo_umbral = sum(ens1$consenso$Consenso < umbral_consenso, na.rm = TRUE),
       consenso_medio = mean(ens1$consenso$Consenso, na.rm = TRUE),
       precision = ens1$precision_global, ari = ens1$ari,
-      cumple = !any(gate1$cumple %in% FALSE), stringsAsFactors = FALSE))
+      cumple = !any(gate1$cumple %in% FALSE),
+      blindaje_revertido = revertido, stringsAsFactors = FALSE))
 
     # Las vueltas de ESTE ciclo, tal como las midio refinar_escala (su punto 0
     # es el estado con el que entro, que ya esta en la curva: se descarta).
@@ -382,9 +521,89 @@ estructura_por_consenso <- function(escala,
       items_bajo_umbral = sum(ens1$consenso$Consenso < umbral_consenso, na.rm = TRUE),
       tipo = "tras_blindaje", stringsAsFactors = FALSE))
 
-    if (!any(gate1$cumple %in% FALSE)) break
+    #  El eje 3 de ESTE ciclo, para que la decision mire las dos cosas.
+    eje3_c <- .medir_eje3(escala_f, !identical(escala$items$item,
+                                               escala_f$items$item))
+    if (verbose && !is.null(eje3_c))
+      cat(sprintf("  [eje 3] ciclo %d: %d de %d factores se separan, prob %.2f\n",
+                  ciclo, eje3_c$k_esperado, eje3_c$k_teorico, eje3_c$prob))
+
+    #  ¿Este ciclo mejoro? Se guarda el mejor estado MEDIDO, no el ultimo.
+    score_c <- .puntuar(ens1, gate1, eje3_c)
+    if (score_c > mejor$score) {
+      mejor <- list(escala = escala_f, ens = ens1, gate = gate1,
+                    ciclo = ciclo, eje3 = eje3_c, score = score_c)
+      secos <- 0L
+    } else {
+      secos <- secos + 1L
+      if (verbose) cat("  El ciclo ", ciclo, " no mejoro lo ya conseguido",
+                       " (ciclos secos: ", secos, ").\n", sep = "")
+    }
+
+    if (!any(gate1$cumple %in% FALSE)) { motivo <- "cumple la regla"; break }
+
+    #  PARADA POR CONVERGENCIA, con sus topes: si el bucle deja de ganar
+    #  terreno no tiene sentido gastar otro ciclo. max_ciclos y max_minutos
+    #  siguen mandando por encima de esto.
+    if (isTRUE(parar_si_no_mejora) && secos >= max_ciclos_secos) {
+      motivo <- sprintf("%d ciclo(s) sin mejorar", secos)
+      if (verbose) cat("  ", motivo, ": se cierra el paso.\n", sep = "")
+      break
+    }
     if (verbose && ciclo < max_ciclos)
       cat("  La compuerta sigue sin cumplirse tras el blindaje: otro ciclo.\n")
+  }
+  if (is.na(motivo)) motivo <- sprintf("tope de ciclos (%d)", max_ciclos)
+
+  #  Se entrega el MEJOR estado medido, que puede ser el de entrada.
+  ultimo_ciclo <- if (nrow(ciclos)) max(ciclos$ciclo) else 0L
+  if (verbose && mejor$ciclo != ultimo_ciclo)
+    cat("\n  Se entrega la mejor version medida (",
+        if (mejor$ciclo == 0L) "la de entrada" else paste("ciclo", mejor$ciclo),
+        "), no la ultima.\n", sep = "")
+  escala_f <- mejor$escala; ens1 <- mejor$ens; gate1 <- mejor$gate
+  escala_f$efa <- ens1
+
+  #  CERRAR EL CICLO. La compuerta alimenta a este paso (umbral, vetos,
+  #  deseabilidad) pero nadie volvia a mirarla despues: el eje 3 -lo que la
+  #  simulacion anticipa que pasara en campo- quedaba obsoleto en cuanto se
+  #  reescribia un item. Se recalcula aqui sobre la escala que SE ENTREGA.
+  #  No cuesta ninguna llamada al LLM: es simulacion sobre los embeddings ya
+  #  recalculados. La deseabilidad solo se reutiliza si el texto no cambio;
+  #  si cambio, seria de otros items.
+  #  CERRAR EL CICLO. Ya no hace falta recalcular nada: el eje 3 se midio en
+  #  cada ciclo y el de la version entregada viaja con ella.
+  eje3 <- NULL
+  if (!is.null(mejor$eje3)) {
+    e_ini <- eje3_0
+    eje3 <- list(
+      antes = e_ini$sim, despues = mejor$eje3$sim,
+      con_deseabilidad = isTRUE(mejor$eje3$con_deseabilidad),
+      k_teorico = mejor$eje3$k_teorico,
+      cambio = c(prob_antes = e_ini$prob %||% NA_real_,
+                 prob_despues = mejor$eje3$prob %||% NA_real_,
+                 k_antes = e_ini$k_esperado %||% NA_real_,
+                 k_despues = mejor$eje3$k_esperado %||% NA_real_))
+    if (verbose) {
+      cat("\n[CIERRE] Eje 3 sobre la escala que se entrega:\n")
+      cat(sprintf("  factores que se separan: %s -> %s (de %d declarados)\n",
+                  eje3$cambio[["k_antes"]], eje3$cambio[["k_despues"]],
+                  eje3$k_teorico))
+      cat(sprintf("  prob. de estructura limpia: %.2f -> %.2f\n",
+                  eje3$cambio[["prob_antes"]], eje3$cambio[["prob_despues"]]))
+    }
+  }
+
+  #  Aviso: si se reescribio media escala o mas, ya no es el mismo instrumento.
+  aviso_reescritura <- NULL
+  prop_cambiada <- length(cambiados) / max(1L, nrow(escala$items))
+  if (prop_cambiada >= aviso_prop_reescrita) {
+    aviso_reescritura <- sprintf(
+      paste0("Se reescribio el %.0f%% de los items (%d de %d). La escala que ",
+             "sale ya no es la que entro: documentalo como version nueva, no ",
+             "como la original corregida."),
+      100 * prop_cambiada, length(cambiados), nrow(escala$items))
+    if (verbose) cat("\n[AVISO] ", aviso_reescritura, "\n", sep = "")
   }
 
   cons1 <- data.frame(numero    = escala_f$items$numero,
@@ -400,16 +619,25 @@ estructura_por_consenso <- function(escala,
     consenso_antes = cons0, consenso_despues = cons1,
     refinamiento = ref, historial = hist_all, cambiados = cambiados,
     n_blindaje = n_blind, ciclos = ciclos,
+    # v2.9.35
+    eje3 = eje3, aviso_reescritura = aviso_reescritura,
+    motivo_parada = motivo, mejor_ciclo = mejor$ciclo,
     # La completa (todos los ciclos + el punto tras blindar). La de un solo
     # ciclo sigue disponible en $refinamiento$evolucion por si se compara.
     evolucion = evol,
     refinado = TRUE,
-    veredicto = if (any(gate1$cumple %in% FALSE)) "refinado_incompleto" else "refinado_ok",
+    veredicto = if (!any(gate1$cumple %in% FALSE)) "refinado_ok"
+                else if (mejor$ciclo == 0L) "refinado_sin_mejora"
+                else "refinado_incompleto",
     parametros = list(algoritmos = algoritmos, n_replicas = n_replicas,
                       umbral_consenso = umbral_consenso,
                       min_precision = min_precision, min_ari = min_ari,
                       max_iteraciones = max_iteraciones,
-                      max_ciclos = max_ciclos, seed = seed),
+                      max_ciclos = max_ciclos,
+                      max_ciclos_secos = max_ciclos_secos,
+                      max_minutos = max_minutos,
+                      revertir_blindaje = revertir_blindaje,
+                      cerrar_ciclo = cerrar_ciclo, seed = seed),
     minutos = as.numeric(difftime(Sys.time(), t0, units = "mins"))
   ), class = "semilla_estructura")
 }
@@ -423,7 +651,10 @@ print.semilla_estructura <- function(x, ...) {
       cumple              = "la escala YA cumplia (no se refino)",
       falla_sin_refinar   = "no cumple (refinamiento desactivado)",
       refinado_ok         = "no cumplia -> se refino -> ahora cumple",
-      refinado_incompleto = "no cumplia -> se refino -> sigue sin cumplir"), "\n\n")
+      refinado_incompleto = "no cumplia -> se refino -> sigue sin cumplir",
+      refinado_sin_mejora = "no cumplia -> se refino -> NINGUN ciclo mejoro: se entrega la escala de entrada"), "\n\n")
+  if (!is.null(x$motivo_parada))
+    cat("  El paso termino por: ", x$motivo_parada, "\n", sep = "")
   g <- x$gate_antes
   if (!is.null(x$gate_despues)) {
     tb <- data.frame(Indice = g$indice, Antes = g$crudo,
@@ -441,6 +672,12 @@ print.semilla_estructura <- function(x, ...) {
       print(x$ciclos, row.names = FALSE)
     }
   }
+  if (!is.null(x$eje3))
+    cat("  Eje 3 (recalculado): prob. de estructura limpia ",
+        sprintf("%.2f -> %.2f", x$eje3$cambio[["prob_antes"]],
+                x$eje3$cambio[["prob_despues"]]), "\n", sep = "")
+  if (!is.null(x$aviso_reescritura))
+    cat("  AVISO: ", x$aviso_reescritura, "\n", sep = "")
   cat("  Tiempo: ", sprintf("%.1f", x$minutos), " min\n\n", sep = "")
   invisible(x)
 }

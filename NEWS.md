@@ -1,3 +1,64 @@
+# SeMiLLa 2.9.35 (2026-08-21)
+## El Paso 6 se cierra sobre la escala que de verdad se entrega
+
+Todo lo de esta version sale de un laboratorio medido sobre tres escalas reales
+(DASS-21 espanol, RIASEC y Big Five), 10 corridas en total. El informe esta en
+`D:/16_Shinys/SeMiLLa_lab_compuerta_consenso/INFORME.md`.
+
+### Se entrega la mejor version medida, no la ultima
+
+`estructura_por_consenso()` devolvia `escala_f`, el estado en el que acabara el
+bucle. Medido: un ciclo completo puede dejar la escala PEOR que como entro
+(61,9 % -> 76,2 % -> 61,9 % tras el blindaje, con un item mas por debajo del
+umbral). Ahora cada estado se puntua y se entrega el mejor, **incluido el de
+entrada**; para ese caso hay un veredicto nuevo, `refinado_sin_mejora`.
+
+En RIASEC y en Big Five el ciclo reescribio 9 items, midio, vio que no ganaba
+nada y devolvio la escala original intacta. Sin este cambio se habrian entregado
+ambas con nueve items reescritos a cambio de cero mejora.
+
+### El eje 3 de la compuerta decide junto al consenso
+
+El bucle optimizaba el agrupamiento de items y nadie miraba lo que la simulacion
+anticipa para el campo. Ahora el eje 3 se mide en cada ciclo y entra en la
+decision, con los **factores que se espera recuperar** por delante de la
+precision: si las dimensiones se funden, la escala no mide lo que dice aunque
+sus items agrupen bien. El objeto trae `$eje3` (antes/despues, con el numero de
+factores) y `$motivo_parada`.
+
+Cuando el texto cambia se **recalifica la deseabilidad**: la de la compuerta era
+de otros items. Medido sobre la misma escala final: prob ,94 sin deseabilidad,
+,95 con la vieja y ,97 con la nueva, y recalcularla costo 0,1 min.
+
+### El blindaje de cierre queda APAGADO por defecto
+
+`blindaje_cierre = FALSE`. Hubo que revertirlo en 6 de 6 ciclos: se pagaba una
+llamada al LLM para deshacerla siempre. `blindar_escala()` no cambia y sigue
+corriendo dentro de `generar_escala()`, que es donde limpia sin pisar nada.
+Si se activa, ahora existe `revertir_blindaje = TRUE`, que vuelve a la version
+previa cuando el cierre empeora la medicion.
+
+### Parada por convergencia, con topes duros
+
+`parar_si_no_mejora` con `max_ciclos_secos = 1`, `max_ciclos = 3` (era 2) y un
+**tope de tiempo** `max_minutos = 25` que se comprueba antes de abrir cada ciclo
+y manda sobre todo lo demas. Con el tope en 2 la convergencia no llegaba a
+ahorrar nada.
+
+### La regla de items pasa de "todos" al 90 %
+
+`min_prop_items = 0.90`. Exigir que TODOS los items superaran el umbral no se
+cumplio ni una vez en 8 corridas, asi que el paso nunca cerraba por exito y
+gastaba ciclos persiguiendo dos o tres items.
+
+### Rendimiento en escalas grandes
+
+Con 48-50 items y 5-6 factores, cada replica de la simulacion ajusta un CFA: la
+compuerta a plena resolucion tardo mas de 2,5 h. El eje 3 de los ciclos usa
+**un tercio de las replicas** de la compuerta (minimo 30), la misma proporcion
+que ya usaba su banda del juez. Sin esto, una escala de 50 items dejaba el paso
+colgado horas.
+
 # SeMiLLa 2.9.34 (2026-08-21)
 ## La escala adaptada salia sin clase, y el pipeline la rechazaba
 
