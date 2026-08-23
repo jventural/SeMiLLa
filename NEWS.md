@@ -1,3 +1,25 @@
+# SeMiLLa 2.9.37 (2026-08-23)
+## El DIF semantico comparaba dos espacios distintos al cambiar de modelo
+
+`adaptar_transcultural()` calculaba los embeddings de la version adaptada con
+el default de `obtener_embeddings()` (text-embedding-3-small, 1536 dimensiones)
+sin mirar con que modelo se habian calculado los del origen. Quien usaba el
+backend libre -MiniLM por la API de HuggingFace, 384 dimensiones- acababa
+comparando dos espacios distintos y `detectar_dif_semantico()` moria con
+"non-conformable arrays", un error de algebra que no decia cual era la causa.
+
+* `adaptar_transcultural()` gana `modelo_embedding` y `api_key_embedding`. El
+  modelo se hereda de `x$metadata$modelo_embedding` si no se pasa, y queda
+  anotado en la escala adaptada. Sin argumentos nuevos, el comportamiento es
+  el de antes.
+* `api_key_embedding` hace falta porque los modelos `hf:` se autentican con el
+  token de HuggingFace y no con la clave del LLM.
+* `detectar_dif_semantico()` valida que las dos matrices tengan el mismo numero
+  de columnas y explica la causa probable, en vez de dejar caer el error de
+  algebra.
+
+Verificado contra la API con la escala de Rosenberg (10 items, EN->ES).
+
 # SeMiLLa 2.9.35 (2026-08-21)
 ## El Paso 6 se cierra sobre la escala que de verdad se entrega
 
