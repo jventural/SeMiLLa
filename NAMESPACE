@@ -47,6 +47,7 @@ export(obtener_embeddings)
 export(items_similares)
 export(analizar_redundancia)
 export(auditar_redundancia)
+export(auditar_asignacion)
 # v2.9.29: contrapeso de CONTENIDO a los indices de estructura. El consenso del
 # ensemble premia que los items de una dimension se parezcan entre si, y la via
 # mas corta para lograrlo es que todos midan la misma faceta. Sin esto, perder
@@ -68,6 +69,7 @@ export(efa_regularizado)
 # y, si falla, refina con EL MISMO umbral, blinda y VUELVE A MEDIR (en ciclos).
 export(estructura_por_consenso)
 S3method(print, semilla_estructura)
+S3method(print, semilla_asignacion)
 
 # -----------------------------------------------------------------------------
 # Pasos 10-15 (Fase V). Evaluacion psicometrica sin datos

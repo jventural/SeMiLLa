@@ -171,8 +171,10 @@ compuerta_pre_aplicacion <- function(x,
     x$embeddings <- emb$embeddings
   }
 
-  estados  <- character(3)
-  detalles <- character(3)
+  # 2.9.36: cuatro ejes. El cuarto (asignacion) se anade al FINAL para no mover
+  # los indices 1-3, sobre los que ramifica el resto de la funcion.
+  estados  <- character(4)
+  detalles <- character(4)
   acciones <- character(0)
 
   # ---------------------------------------------------------------------------
@@ -217,6 +219,45 @@ compuerta_pre_aplicacion <- function(x,
   if (verbose && length(avisos_diseno)) {
     cat("\n", .color_amarillo("[AVISOS DE DISENO]"), "\n", sep = "")
     for (a in avisos_diseno) cat("  - ", a, "\n", sep = "")
+  }
+
+  # ---------------------------------------------------------------------------
+  # PASO 0: ASIGNACION ITEM -> DIMENSION (2.9.36)
+  # ---------------------------------------------------------------------------
+  # No simula ni llama al LLM: lee la matriz de similitud. Existe porque los
+  # otros tres ejes NO ven que un item este en la dimension equivocada -el eje 3
+  # arma el modelo generador desde las etiquetas y se las cree- y ese defecto SI
+  # degrada el ajuste real (CFI .899 -> .790 con 4 items movidos, n = 3.178).
+  # Medido: 90 de 90 detectados, 0 falsos positivos en 39 condiciones limpias.
+  # Ver el encabezado de asignacion.R.
+  if (verbose) cat("\n", .color_azul("[COMPUERTA 0] ASIGNACION"), "\n", sep = "")
+  asig <- tryCatch(auditar_asignacion(x, verbose = FALSE), error = function(e) NULL)
+  if (is.null(asig) || is.null(asig$items)) {
+    estados[4]  <- "ok"
+    detalles[4] <- if (is.null(asig)) "no evaluada" else "una sola dimension"
+  } else if (asig$n_mal_asignados > 0) {
+    estados[4]  <- "riesgo"
+    detalles[4] <- sprintf(
+      "%d item(s) se parecen mas a otra dimension que a la suya",
+      asig$n_mal_asignados)
+    acciones <- c(acciones, sprintf(
+      paste0("Revisar la asignacion de %d item(s): se parecen mas a otra ",
+             "dimension que a la suya. Reasignarlos, reescribirlos o retirarlos ",
+             "(ver $asignacion$mal_asignados)."), asig$n_mal_asignados))
+    if (verbose) {
+      cat("  ", .color_amarillo(detalles[4]), "\n", sep = "")
+      for (i in seq_len(min(5L, nrow(asig$mal_asignados)))) {
+        r <- asig$mal_asignados[i, ]
+        cat(sprintf("    - [%s -> %s] margen %+.3f | %s\n", r$dimension,
+                    r$dim_mas_cercana, r$margen, substr(r$item, 1, 60)))
+      }
+      if (nrow(asig$mal_asignados) > 5)
+        cat("    ... y ", nrow(asig$mal_asignados) - 5, " mas\n", sep = "")
+    }
+  } else {
+    estados[4]  <- "ok"
+    detalles[4] <- "cada item se parece mas a su propia dimension"
+    if (verbose) cat("  ", detalles[4], "\n", sep = "")
   }
 
   # ---------------------------------------------------------------------------
@@ -574,8 +615,9 @@ compuerta_pre_aplicacion <- function(x,
     # Seguridad + Conformidad + Tradicion + Benevolencia + Universalismo).
     # Para escalas NUEVAS el mapa es la senal util; la probabilidad, no.
     detalles[3] <- sprintf(
-      paste0("SE ESPERAN %d FACTOR(ES), NO %d: la simulacion anticipa que ",
-             "algunas dimensiones no se separaran. [%s]"),
+      paste0("BAJO EL PHI SUPUESTO se esperarian %d factor(es) y no %d: la ",
+             "simulacion sugiere que algunas dimensiones no se separarian. Es ",
+             "una hipotesis a contrastar, no un pronostico. [%s]"),
       mapa$k_esperado, length(unique(x$items$dimension)), detalles[3])
     acciones <- c(acciones, sprintf(
       paste0("PRE-REGISTRAR la hipotesis alternativa antes de aplicar: ",
@@ -688,8 +730,12 @@ compuerta_pre_aplicacion <- function(x,
     if (!length(v)) return("ok")
     if (any(v == "riesgo")) "riesgo" else if (any(v == "advertencia")) "advertencia" else "ok"
   }
-  # solo deseabilidad y estructura deciden la condicion de la escala
-  nucleo <- peor(estados[2:3])
+  # Deseabilidad, estructura y ASIGNACION deciden la condicion de la escala. La
+  # redaccion sigue fuera (ver arriba: por que se informa aparte).
+  # La asignacion entra porque su especificidad medida es perfecta -0 falsos
+  # positivos en 39 condiciones sin defecto-, asi que no puede reintroducir el
+  # problema de los falsos "no aplicar" que motivo sacar la redaccion.
+  nucleo <- peor(c(estados[2:3], estados[4]))
   escenario <- if (caso_global) "SOLO PUNTAJE TOTAL" else
     switch(nucleo,
            "riesgo"      = "FRAGIL",
@@ -723,10 +769,20 @@ compuerta_pre_aplicacion <- function(x,
     escenario <- sprintf("SE ESPERAN %d FACTOR(ES), NO %d", mapa$k_esperado, K_teor)
     escenario_fusion <- paste(vapply(grupos_f, function(g)
       paste(g, collapse = " + "), character(1)), collapse = " · ")
+    # 2.9.36: se declara de que depende. La fusion se decide con el phi, y el
+    # phi es el SUPUESTO de entrada devuelto con ruido, no una lectura de la
+    # escala. Medido el 22-ago-2026 sobre 99 configuraciones: el phi simulado
+    # tuvo rango 0.000 (siempre ~.61) mientras el phi empirico de las mismas
+    # escalas iba de .226 a .857. Y en las 3 escalas limpias sobreestimo el
+    # empirico entre 1.6 y 4.2 veces, siempre por encima: de ahi que el motor
+    # vea riesgo de fusion casi siempre. Decirlo no cuesta nada y evita leer
+    # como pronostico lo que es una consecuencia del supuesto.
     det_fusion <- sprintf(
-      paste0("la simulacion anticipa que estas dimensiones NO se separaran: %s. ",
-             "No es un matiz del ajuste: si se funden, la escala mide algo ",
-             "distinto de lo que se diseno%s"),
+      paste0("BAJO EL PHI SUPUESTO, la simulacion anticipa que estas dimensiones ",
+             "no se separarian: %s. Es una posibilidad a comprobar, no un ",
+             "pronostico: la fusion se decide con el phi, que es el supuesto de ",
+             "entrada y no se lee de la escala. Si se funden, la escala mediria ",
+             "algo distinto de lo que se diseno%s"),
       escenario_fusion,
       if (nucleo == "riesgo") " (y ademas la estructura sale fragil)" else "")
   } else {
@@ -749,6 +805,37 @@ compuerta_pre_aplicacion <- function(x,
                           "subescalas no se separaran"),
     NA_character_)
 
+  # 2.9.36: el aviso de asignacion no puede perderse cuando la fusion se lleva
+  # el titular. Medido el 22-ago-2026 sobre eammi: las CUATRO condiciones -la
+  # limpia incluida- salieron con el mismo escenario "SE ESPERAN 1 FACTOR(ES),
+  # NO 2", porque el bloque de fusion sobrescribe 'escenario' DESPUES de
+  # calcular el nucleo; en CL4_r1 el eje de asignacion marcaba riesgo y no se
+  # veia por ningun lado en la linea que el usuario mira.
+  # La cadena de 'escenario' NO se toca: la app v2 la parsea con un regex
+  # anclado (app.R L3215) y la traduce a "PODRIAN SALIR N FACTORES". El aviso
+  # se antepone aqui, que es la linea inmediatamente debajo del titular tanto
+  # en el print del paquete como en la app.
+  if (!is.null(asig) && !is.null(asig$items) && asig$n_mal_asignados > 0) {
+    ma <- asig$mal_asignados
+    # Se AGRUPA por par de dimensiones: con dos dimensiones el par es siempre el
+    # mismo y listarlo una vez por item daba "[D1 -> D2], [D1 -> D2], [D1 -> D2],
+    # [D1 -> D2] y 1 mas", que no dice nada. Agrupado: "5 de D1 a D2".
+    tb <- table(sprintf("%s a %s", ma$dimension, ma$dim_mas_cercana))
+    tb <- sort(tb, decreasing = TRUE)
+    pares <- sprintf("%d de %s", as.integer(tb), names(tb))
+    muestra <- paste(utils::head(pares, 4), collapse = ", ")
+    if (length(pares) > 4)
+      muestra <- sprintf("%s y %d par(es) mas", muestra, length(pares) - 4)
+    aviso_asig <- sprintf(
+      paste0("%d item(s) estan en la dimension equivocada: se parecen mas a ",
+             "otra dimension que a la suya %s. Eso se corrige ANTES de mirar ",
+             "nada mas: mientras esten ahi, la estructura que se simula no es ",
+             "la que se diseno"),
+      asig$n_mal_asignados, muestra)
+    escenario_detalle <- if (is.na(escenario_detalle)) aviso_asig
+      else paste0(aviso_asig, ". Ademas, ", escenario_detalle)
+  }
+
   out <- list(
     # veredicto: se conserva el vocabulario antiguo porque converger_escala(),
     # optimizar_para_campo() y el asistente ramifican sobre estas cadenas.
@@ -761,7 +848,8 @@ compuerta_pre_aplicacion <- function(x,
     escenario_detalle = escenario_detalle,
     calidad_redaccion = calidad_redaccion,
     semaforo = data.frame(
-      paso    = c("redaccion", "deseabilidad", "estructura_simulada"),
+      paso    = c("redaccion", "deseabilidad", "estructura_simulada",
+                  "asignacion"),
       estado  = estados,
       detalle = detalles,
       stringsAsFactors = FALSE
@@ -769,6 +857,7 @@ compuerta_pre_aplicacion <- function(x,
     veredicto    = veredicto,
     acciones     = unique(acciones),
     redaccion    = redaccion,
+    asignacion   = asig,
     deseabilidad = deseab,
     estructura   = estructura,
     mapa_fusion  = mapa,
@@ -825,7 +914,7 @@ print.semilla_compuerta <- function(x, ...) {
   cat("  ESCENARIO PREVISTO: ", col_ver(esc), "\n", sep = "")
   # la fusion, si la hay, con los grupos concretos y en su propia linea
   if (!is.null(x$escenario_fusion))
-    cat("    NO se separaran: ", .color_amarillo(x$escenario_fusion), "\n", sep = "")
+    cat("    Podrian no separarse: ", .color_amarillo(x$escenario_fusion), "\n", sep = "")
   # Los pares ORDENADOS. El sí/no del umbral se queda con una decision binaria y
   # tira el matiz: en "Valores positivos" un par estaba en .73 y los otros cinco
   # entre .59 y .62 -- ver ese salto dice mas que el veredicto.

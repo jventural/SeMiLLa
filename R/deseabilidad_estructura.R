@@ -576,7 +576,8 @@ simular_estructura <- function(x, deseabilidad = NULL, similitud = NULL,
       !is.null(mapa_fusion$k_esperado) && mapa_fusion$k_esperado < K) {
     grupos_f <- Filter(function(g) length(g) > 1, mapa_fusion$grupos)
     veredicto <- sprintf(
-      "SE ESPERAN %d FACTOR(ES), NO %d: no se separan %s [prob. de ajuste limpio: %s]",
+      paste0("SE ESPERAN %d FACTOR(ES), NO %d: bajo el phi supuesto podrian no ",
+             "separarse %s [prob. de ajuste limpio: %s]"),
       mapa_fusion$k_esperado, K,
       paste(vapply(grupos_f, function(g) paste(g, collapse = " + "),
                    character(1)), collapse = " · "),

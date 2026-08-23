@@ -6,7 +6,7 @@
 #  necesita compararlos, y para eso hace falta que cada corrida quede en un
 #  archivo aparte. De ahi el nombre con fecha y hora: nunca pisa al anterior.
 #
-#  Se vuelca TODO lo que hay en la seccion, no un resumen: los tres controles
+#  Se vuelca TODO lo que hay en la seccion, no un resumen: los cuatro controles
 #  con sus numeros, la estructura completa, la prueba de resistencia y los
 #  items con su deseabilidad. Al final va una linea con separadores para pegar
 #  en una hoja de calculo y ver la evolucion entre intentos.
@@ -133,8 +133,40 @@
     for (a in g$avisos_diseno) add(.inf_parrafo(paste("-", a), "    "))
   }
 
+  # ---- Control 0: asignacion (2.9.36) ------------------------------------
+  # Va PRIMERO porque su defecto invalida lo que miden los demas: si hay items
+  # en la dimension equivocada, la estructura que el control 3 simula no es la
+  # que se diseno.
+  asg <- g$asignacion
+  add("", .inf_regla("CONTROL 1 . SI CADA ITEM ESTA EN SU DIMENSION"))
+  if (is.null(asg) || is.null(asg$items)) {
+    add(.inf_parrafo("No evaluado en esta corrida.", "  "))
+  } else if (asg$n_mal_asignados == 0) {
+    add(.inf_parrafo(paste0("Cada item se parece mas a los de su propia ",
+      "dimension que a los de cualquier otra. No hay nada que reasignar."), "  "))
+  } else {
+    add(.inf_parrafo(sprintf(paste0("%d item(s) estan en la dimension ",
+      "equivocada: por su contenido se parecen mas a otra dimension que a la ",
+      "suya. Corregir esto ANTES que lo demas."), asg$n_mal_asignados), "  "))
+    add("")
+    for (i in seq_len(nrow(asg$mal_asignados))) {
+      r <- asg$mal_asignados[i, ]
+      add(sprintf("   %-22s -> %-22s  margen %+.3f", substr(r$dimension, 1, 22),
+                  substr(r$dim_mas_cercana, 1, 22), r$margen))
+      if (!is.na(r$item)) add(sprintf("     %s", substr(r$item, 1, 90)))
+    }
+  }
+  if (!is.null(asg) && !is.null(asg$frontera) && nrow(asg$frontera) > 0) {
+    add("")
+    add(.inf_campo("En la frontera", sprintf("%d item(s) con margen negativo pero pequeno (mirar, no corregir en automatico)", nrow(asg$frontera))))
+  }
+  add("")
+  add(.inf_parrafo(paste0("Medido sobre 355 situaciones de 13 estudios con el ",
+    "defecto introducido a proposito: sensibilidad .902, especificidad .844. ",
+    "No detecta bien un item ajeno a todo el instrumento (.28)."), "  "))
+
   # ---- Control 1: redaccion ----------------------------------------------
-  add("", .inf_regla("CONTROL 1 · COMO ESTAN ESCRITOS LOS ITEMS"))
+  add("", .inf_regla("CONTROL 2 · COMO ESTAN ESCRITOS LOS ITEMS"))
   rd <- g$redaccion
   # Casi todos estos campos son LISTAS con varios componentes (global/media/
   # por_item), no escalares: hay que nombrar el componente o el informe escupe
@@ -173,7 +205,7 @@
   }
 
   # ---- Control 2: deseabilidad -------------------------------------------
-  add("", .inf_regla("CONTROL 2 · QUE TAN COMPROMETEDOR ES RESPONDER"))
+  add("", .inf_regla("CONTROL 3 · QUE TAN COMPROMETEDOR ES RESPONDER"))
   if (is.null(d)) {
     add("  NO SE PUDO EVALUAR en esta corrida.",
         "  Los numeros de estructura se calcularon con deseabilidad imputada",
@@ -206,7 +238,7 @@
   }
 
   # ---- Control 3: estructura ---------------------------------------------
-  add("", .inf_regla("CONTROL 3 · COMO SE COMPORTARA LA ESTRUCTURA"))
+  add("", .inf_regla("CONTROL 4 · COMO SE COMPORTARA LA ESTRUCTURA"))
   s <- local$sim %|N|% e3
   if (is.null(s)) add("  (sin resultados de simulacion)") else {
     add(.inf_campo("Veredicto", s$veredicto %|N|% "-"))

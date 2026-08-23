@@ -288,7 +288,11 @@ auditar_redundancia <- function(x, umbral_sem = "auto", n_gram = 2,
   cc <- if (is.list(x)) x$concepto else NULL
   d  <- if (is.list(cc)) cc$dimensiones else NULL
   partes <- c(
-    if (!is.null(cc) && is.character(cc$concepto)) cc$concepto else
+    # La guarda evaluaba cc$concepto ANTES de comprobar que cc fuese lista: si
+    # alguien construye el objeto con concepto = "texto" (una cadena), esto
+    # moria con "$ operator is invalid for atomic vectors" y la rama de abajo
+    # -que SI contempla la cadena- resultaba inalcanzable. Detectado 22-ago-2026.
+    if (is.list(cc) && is.character(cc$concepto)) cc$concepto else
       if (is.character(cc)) cc else character(0),
     if (!is.null(names(d))) names(d) else
       if (is.character(d)) d else character(0),
