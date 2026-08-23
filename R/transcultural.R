@@ -24,6 +24,16 @@
 #' @param modelo Modelo de OpenAI (default: \code{"gpt-4.1-mini"}).
 #' @param verificar_equivalencia Calcular distancia semantica entre
 #'   versiones (default TRUE; requiere embeddings en \code{x}).
+#' @param modelo_embedding Modelo de embeddings para la version adaptada.
+#'   Por defecto \code{NULL}: se hereda el que quedo anotado en
+#'   \code{x$metadata$modelo_embedding} y, si no hay ninguno,
+#'   \code{"text-embedding-3-small"}. Tiene que ser el MISMO con el que se
+#'   calcularon los embeddings de \code{x}: la comparacion solo vale dentro
+#'   de un mismo espacio semantico.
+#' @param api_key_embedding Credencial para el backend de embeddings cuando
+#'   no es el mismo que el del LLM (por ejemplo un token \code{hf_} si
+#'   \code{modelo_embedding} empieza por \code{"hf:"}). Por defecto
+#'   \code{NULL}: se reutiliza \code{api_key}.
 #' @param verbose Mostrar progreso.
 #'
 #' @return Lista de clase \code{semilla_transcultural} con:
@@ -70,6 +80,8 @@ adaptar_transcultural <- function(x,
                                   cultura = NULL,
                                   modelo = "gpt-4.1-mini",
                                   verificar_equivalencia = TRUE,
+                                  modelo_embedding = NULL,
+                                  api_key_embedding = NULL,
                                   verbose = TRUE) {
 
   if (!inherits(x, "semilla")) stop("x debe ser un objeto 'semilla'.")
@@ -79,6 +91,18 @@ adaptar_transcultural <- function(x,
   items_df <- x$items
   concepto <- x$concepto
   idioma_origen <- x$metadata$idioma %||% "es"
+
+  #  Los embeddings del destino se calculaban SIEMPRE con el default de
+  #  obtener_embeddings() (text-embedding-3-small, 1536 dimensiones), sin
+  #  mirar con que modelo se habian calculado los del origen. Quien usaba el
+  #  backend libre -MiniLM por la API de HuggingFace, 384 dimensiones- acababa
+  #  comparando dos espacios distintos y detectar_dif_semantico() moria con
+  #  "non-conformable arrays". Ahora el modelo se hereda, se puede fijar a
+  #  mano, y queda anotado en la escala adaptada para que no se pierda el
+  #  rastro en el siguiente paso. Corregido el 23-ago-2026.
+  modelo_embedding <- modelo_embedding %||%
+    x$metadata$modelo_embedding %||% "text-embedding-3-small"
+  api_key_embedding <- api_key_embedding %||% api_key
 
   if (verbose) {
     cat("\n", .linea("-"), "\n", sep = "")
@@ -160,10 +184,14 @@ adaptar_transcultural <- function(x,
     # un objeto de clase 'semilla'". Detectado el 21-ago-2026 al encadenar la
     # adaptacion con el resto del pipeline sobre la escala de Rosenberg.
     emb_dest <- obtener_embeddings(escala_destino,
-                                   api_key = api_key,
+                                   api_key = api_key_embedding,
+                                   modelo_embedding = modelo_embedding,
                                    verbose = FALSE)
     escala_destino$embeddings <- emb_dest$embeddings
     escala_destino$similitud  <- emb_dest$similitud
+    #  Se deja anotado con QUE modelo se calcularon, para que el siguiente
+    #  paso que reciba esta escala pueda heredarlo en vez de volver al default.
+    escala_destino$metadata$modelo_embedding <- modelo_embedding
     dif_res <- detectar_dif_semantico(x, escala_destino,
                                       emparejamiento = "orden",
                                       umbral_z = 2.0,
@@ -185,7 +213,9 @@ adaptar_transcultural <- function(x,
     items_problematicos = items_problematicos,
     idioma_destino = idioma_destino,
     cultura = cultura,
-    modelo = modelo
+    modelo = modelo,
+    modelo_embedding = if (verificar_equivalencia && !is.null(x$embeddings))
+                         modelo_embedding else NULL
   )
   class(resultado) <- c("semilla_transcultural", "list")
   resultado

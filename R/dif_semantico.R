@@ -100,6 +100,25 @@ detectar_dif_semantico <- function(x, y,
     }
   }
 
+  # Las dos versiones tienen que venir del MISMO modelo de embeddings. Si no,
+  # sus vectores viven en espacios distintos y el coseno entre ellos no
+  # significa nada; con dimensiones distintas, ademas, `emb_x * emb_y` moria
+  # con "non-conformable arrays", un error de algebra que no le decia a nadie
+  # cual era la causa. Caso real: origen calculado con MiniLM por la API de
+  # HuggingFace (384) y destino con text-embedding-3-small (1536), porque
+  # adaptar_transcultural() no propagaba el modelo. Detectado el 23-ago-2026.
+  if (ncol(emb_x) != ncol(emb_y)) {
+    stop(sprintf(paste0(
+      "Las dos versiones tienen embeddings de distinto tamano: %d y %d dimensiones.
+",
+      "  Eso pasa cuando se calcularon con modelos distintos (por ejemplo ",
+      "text-embedding-3-small da 1536 y paraphrase-multilingual-MiniLM-L12-v2 da 384).
+",
+      "  Vuelve a calcular ambas con el MISMO modelo: la comparacion solo tiene ",
+      "sentido dentro de un mismo espacio semantico."),
+      ncol(emb_x), ncol(emb_y)), call. = FALSE)
+  }
+
   # Distancia coseno por item
   norm_x <- sqrt(rowSums(emb_x^2))
   norm_y <- sqrt(rowSums(emb_y^2))

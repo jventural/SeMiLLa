@@ -11,6 +11,8 @@ adaptar_transcultural(
   cultura = NULL,
   modelo = "gpt-4.1-mini",
   verificar_equivalencia = TRUE,
+  modelo_embedding = NULL,
+  api_key_embedding = NULL,
   verbose = TRUE
 )
 }
@@ -29,6 +31,18 @@ adaptar_transcultural(
 
 \item{verificar_equivalencia}{Calcular distancia semantica entre
 versiones (default TRUE; requiere embeddings en \code{x}).}
+
+\item{modelo_embedding}{Modelo de embeddings para la version adaptada.
+Por defecto \code{NULL}: se hereda el que quedo anotado en
+\code{x$metadata$modelo_embedding} y, si no hay ninguno,
+\code{"text-embedding-3-small"}. Tiene que ser el MISMO con el que se
+calcularon los embeddings de \code{x}: la comparacion solo vale dentro
+de un mismo espacio semantico.}
+
+\item{api_key_embedding}{Credencial para el backend de embeddings cuando
+no es el mismo que el del LLM (por ejemplo un token \code{hf_} si
+\code{modelo_embedding} empieza por \code{"hf:"}). Por defecto
+\code{NULL}: se reutiliza \code{api_key}.}
 
 \item{verbose}{Mostrar progreso.}
 }
