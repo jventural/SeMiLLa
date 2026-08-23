@@ -71,8 +71,11 @@ El objeto \code{semilla} corregido, con:
 \item \code{compuerta}: la compuerta de la version final.
 \item \code{optimizacion}: lista con \code{iteraciones},
 \code{historial} (data.frame iteracion x veredicto x
-n_reemplazos) y \code{reemplazos} (data.frame con item viejo,
-item nuevo, dimension y motivo).
+n_reemplazos x score), \code{reemplazos} (data.frame con item
+viejo, item nuevo, dimension y motivo), \code{balance}
+(data.frame antes/despues por indicador, con el sentido del
+cambio) y \code{revertido} (TRUE si la ultima iteracion degrado
+la escala y se devolvio una version anterior).
 }
 }
 \description{
@@ -112,6 +115,17 @@ Desde v2.7.0, \code{\link{semilla}} invoca esta funcion automaticamente
 cuando la compuerta devuelve "NO APLICAR TODAVIA" (parametro
 \code{optimizar = TRUE}).
 }
+\section{No regresion}{
+
+El bucle puede \emph{empeorar} la escala mientras corrige: al romper un
+cluster de faceta puede introducir parafrasis gemelas, o desbalancear la
+deseabilidad DENTRO de una dimension. Por eso cada version se puntua con
+\code{.score_compuerta()} (veredicto primero; luego gemelos, facetas,
+pares, alertas de deseabilidad y probabilidad de estructura limpia) y se
+devuelve la MEJOR version vista, no la ultima. \code{$optimizacion$balance}
+muestra que indicador mejoro y cual empeoro respecto del punto de partida.
+}
+
 \examples{
 \dontrun{
 esc <- semilla("personalidad moral", api_key = key)  # compuerta + optimiza

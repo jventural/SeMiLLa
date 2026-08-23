@@ -47,6 +47,7 @@ crit <- validez_criterio_predicha(esc, criterio = puntajes,
 plot_criterio(crit)
 plot_criterio(crit, top_n = 15)
 }
+
 }
 \seealso{
 \code{\link{validez_criterio_predicha}}

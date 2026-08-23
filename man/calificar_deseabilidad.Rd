@@ -34,11 +34,11 @@ con DE = .059-.077 (Phi = .64-.84); el antiguo 0.10 marcaba como
 "uniforme" tambien a ACO (falsa alarma).}
 
 \item{n_pasadas}{Numero de pasadas independientes del LLM que se promedian.
-Por defecto 4 (desde 2.9.12; antes 2). El motivo no es tanto la precision del
-promedio como las IMPUTACIONES: con 2 pasadas se observaron hasta 5 items de
-20 imputados a 0.5 en una sola corrida, y ese relleno entra despues en la
-simulacion de estructura como si fuera dato. Con 4 pasadas las imputaciones
-desaparecieron en las replicas medidas.}
+Por defecto 4 (desde 2.9.12; antes 2). El motivo no es tanto la precision
+del promedio como las IMPUTACIONES: con 2 pasadas se observaron hasta 5
+items de 20 imputados a 0.5 en una sola corrida, y ese relleno entra
+despues en la simulacion de estructura como si fuera dato. Con 4 pasadas
+las imputaciones desaparecieron en las replicas medidas.}
 
 \item{max_imputados}{Proporcion maxima de items sin calificar tolerada; por
 encima se aborta con error (evita diagnosticos optimistas tras un fallo de

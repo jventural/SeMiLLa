@@ -11,11 +11,14 @@ refinar_escala(
   umbral_precision = 100,
   criterio = c("kmeans", "ensemble"),
   umbral_consenso = 0.667,
-  umbral_redundancia = 0.7,
+  umbral_redundancia = "compuerta",
   max_intentos_redundancia = 3,
+  heredar_compuerta = TRUE,
   modelo = "gpt-4.1-mini",
   exportar_excel = TRUE,
   carpeta_salida = NULL,
+  max_reescrituras_item = 2L,
+  devolver_mejor = TRUE,
   verbose = TRUE
 )
 }
@@ -46,7 +49,12 @@ un item bien clasificado (default: 0.667 = al menos 2/3 algoritmos).
 Solo se usa cuando \code{criterio = "ensemble"}. Valores tipicos:
 0.667 (mayoria simple), 0.999 (unanimidad).}
 
-\item{umbral_redundancia}{Similitud maxima permitida entre items 0-1 (default: 0.70).
+\item{umbral_redundancia}{Similitud maxima permitida entre items 0-1.
+Default \code{"compuerta"}: toma el umbral efectivo de la compuerta
+(adaptativo, tipicamente 0.62-0.70) menos 0.03 de margen; si no hay
+compuerta, usa 0.70. Antes era 0.70 FIJO, y quedaba una franja en la
+que este paso aceptaba items que la compuerta si marcaba.
+Valor historico (0.70 fijo):
 Items nuevos mas similares que este umbral seran regenerados. El default
 bajo de 0.85 a 0.70 en v2.7.0: la calibracion con datos reales (escala
 PM policial, n=280) mostro que las parafrasis que luego correlacionan
@@ -55,6 +63,13 @@ detecta clones casi literales (capturo 0 de 8 pares gemelos).
 La comparacion incluye items de TODAS las dimensiones.}
 
 \item{max_intentos_redundancia}{Intentos maximos para generar item no redundante (default: 3)}
+
+\item{heredar_compuerta}{Si \code{TRUE} (default) y la escala trae
+\code{$compuerta}, el refinamiento hereda su umbral de deteccion y
+prohibe los nucleos lexicos que la compuerta mando a eliminar. Ademas
+devuelve \code{$concordancia} con la re-verificacion del eje 1. Es lo
+que impide que este paso reconstruya lo que la compuerta acababa de
+podar: el consenso empirico PREMIA a los items parecidos entre si.}
 
 \item{modelo}{Modelo de OpenAI para generar nuevos items}
 
