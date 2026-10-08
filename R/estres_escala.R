@@ -440,7 +440,11 @@ estres_escala <- function(x, deseabilidad = NULL, similitud = NULL,
                           sesgos = c("aquiescencia", "deseabilidad", "extremos",
                                      "punto_medio", "descuido", "lineas_rectas"),
                           dosis = NULL,
-                          carga_propia = 0.60, phi_teorico = 0.30,
+                          # 2.9.38: los mismos valores que simular_estructura()
+                          # (calibracion 2.9.13). Quedaban los de conveniencia
+                          # 0.60 / 0.30 y la compuerta y la prueba de estres
+                          # simulaban con dos modelos distintos en la misma corrida.
+                          carga_propia = 0.695, phi_teorico = 0.50,
                           umbral_ld = 0.80, fuerza_ld = 1.4,
                           dl_juez = c("escenario", "off", "on"),
                           dl_adyacencia = c("off", "escenario", "on"),

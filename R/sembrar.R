@@ -334,7 +334,9 @@ generar_escala <- function(concepto,
       modelo = modelo,
       verbose = verbose
     )
-    info_concepto$fuente <- "cientifico"
+    # Si no hubo literatura suficiente, la funcion devuelve 'llm_respaldo':
+    # no se reescribe como "cientifico".
+    info_concepto$fuente <- info_concepto$fuente %||% "cientifico"
   }
 
   # Mostrar resultados de la conceptualizacion

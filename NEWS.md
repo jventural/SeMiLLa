@@ -1,3 +1,77 @@
+# SeMiLLa 2.9.38 (2026-10-08)
+## Seis salidas que cambiaban resultados sin avisar
+
+Todo sale de una revision del paquete completo. Cada arreglo tiene su test en
+`tests/testthat/test-regresion-2938.R`, y ninguno de esos tests llama a la API.
+
+### Los jueces ya no inventan valoraciones
+
+* `validez_contenido()`: si la respuesta del LLM no se podia leer, los n jueces
+  recibian un 2 (V = .667); si faltaba un criterio o venian menos jueces de los
+  pedidos, tambien. Ahora se reintenta una vez y, si sigue ilegible, el item
+  queda en NA con un aviso. La V y su IC (Penfield y Giacobbi) se calculan con
+  los jueces que si respondieron: con menos jueces, el intervalo es mas ancho.
+  Las valoraciones se pasan a numero y lo que cae fuera de 0-3 queda en NA.
+* `v_aiken` gana la columna `n_jueces_validos`, y `metadata` gana
+  `items_sin_evaluar`, `items_jueces_incompletos` y `modelos_usados`.
+* La auditoria de calidad rellenaba con 3 de 5 cuando la API fallaba. Ahora
+  deja NA y la recomendacion dice "Sin evaluacion"; `resumen$n_sin_evaluar`
+  los cuenta.
+* Los jueces llamaban al SDK directo, sin cache ni seed. Ahora pasan por
+  `.llamar_openai()`, asi que la validez de contenido respeta el seed de la
+  corrida (temperatura 0), la cache y el proveedor configurado.
+
+### Llamada al chat
+
+* Una respuesta vacia o cortada por `max_tokens` ya no se guarda en la cache:
+  antes cada corrida siguiente releia el mismo fallo. La cortada avisa.
+* La clave de cache incluye `base_url` cuando hay uno: el mismo nombre de
+  modelo en OpenAI y en Groq ya no comparte entradas. Las caches de OpenAI
+  conservan su clave.
+* Se registra la version real que respondio la API (`respuesta$model`,
+  `system_fingerprint`), no solo el alias pedido.
+
+### Modo cientifico
+
+* Las referencias se arman en R con los metadatos de PubMed y Semantic
+  Scholar (autores, ano, revista, DOI). Antes se le pedian al LLM, que solo
+  veia titulos y resumenes y por tanto inventaba autores y anos.
+* PubMed se lee articulo por articulo. Antes titulos y resumenes se extraian
+  por separado y se emparejaban por posicion: un resumen estructurado
+  (varios `AbstractText`) desplazaba todos los siguientes. Se decodifican las
+  entidades (`&#xf6;` -> o con dieresis).
+* Si no hay literatura suficiente o la respuesta no se lee, la fuente queda
+  como `"llm_respaldo"` con aviso, sin referencias. Antes se etiquetaba
+  `"cientifico"` aunque fuera conocimiento del LLM.
+
+### Los inversos siguen siendo inversos
+
+* `converger_escala()` y `optimizar_para_campo()` pedian todo reemplazo con
+  `incluir_inversos = FALSE`: un item inverso reescrito volvia en sentido
+  directo y la clave de puntuacion dejaba de corresponder. Ahora se determina
+  la direccion del item (columna `invertido`/`inverso` si existe; si la escala
+  se genero explicitamente sin inversos, directo sin gastar llamadas; si no
+  -incluidas las escalas del usuario, que no lo declaran-, un juez LLM) y
+  el reemplazo de un inverso se pide inverso y se rechaza si vuelve directo.
+
+### Simulacion de estructura
+
+* `simular_estructura(phi_teorico = c(.3, .7))` construia la Phi principal con
+  `matrix(vector, K, K)`, que recicla los valores (asimetrica con K = 2), y con
+  ella simulaba los escenarios principales. Ahora usa el valor central y el
+  vector solo para la sensibilidad.
+* `estres_escala()` seguia con `carga_propia = 0.60, phi_teorico = 0.30`, los
+  valores de conveniencia que `simular_estructura()` abandono en la 2.9.13, y
+  `analizar_tolerancia()` los forzaba en las dos. Ahora las dos usan .695 y
+  .50. **Cambia los resultados de la prueba de estres** respecto de la 2.9.37.
+
+### `semilla()` ya no devuelve un diagnostico de otra escala
+
+* La prueba de estres y el blindaje final reemplazan items sin tocar `$efa`
+  ni `$compuerta`. Ahora la estructura se recalcula sobre la escala final (no
+  llama a la API) y la compuerta se marca `obsoleta = TRUE`, con
+  `items_cambiados` y un aviso. El resumen final informa la escala entregada.
+
 # SeMiLLa 2.9.37 (2026-08-23)
 ## El DIF semantico comparaba dos espacios distintos al cambiar de modelo
 

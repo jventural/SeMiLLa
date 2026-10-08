@@ -927,6 +927,18 @@ balance_optimizacion <- function(g0, g1) .balance_optimizacion(g0, g1)
     } else ""
   )
 
+  # DIRECCION DEL ITEM. Antes el reemplazo se pedia siempre con
+  # incluir_inversos = FALSE: todo item inverso reescrito por converger_escala()
+  # u optimizar_para_campo() volvia en sentido directo y la clave de
+  # puntuacion dejaba de corresponder al diseno sin ningun aviso.
+  es_inverso <- .direccion_item(x, idx_item, openai, modelo, def_dim)
+  if (isTRUE(es_inverso))
+    extra <- paste0(extra,
+      "DIRECCION OBLIGATORIA: el item que reemplazas es INVERSO (describe el ",
+      "polo opuesto de la dimension '", dim_nombre, "'; se puntua invertido). ",
+      "El nuevo item DEBE ser tambien INVERSO: una persona con MUCHO del rasgo ",
+      "responderia que NO o NUNCA. No lo redactes en sentido directo.\n")
+
   items_evitar <- unique(x$items$item)
   intentos <- 0L
   while (intentos < 3L) {
@@ -947,7 +959,7 @@ balance_optimizacion <- function(g0, g1) .balance_optimizacion(g0, g1)
         tipo_escala_respuesta = x$metadata$tipo_escala_respuesta %||% "frecuencia",
         evitar_cuantificadores = TRUE,
         max_palabras = rango_palabras[2],
-        incluir_inversos = FALSE,
+        incluir_inversos = isTRUE(es_inverso),
         instruccion_extra = extra
       ),
       error = function(e) NULL
@@ -978,6 +990,13 @@ balance_optimizacion <- function(g0, g1) .balance_optimizacion(g0, g1)
       items_evitar <- unique(c(items_evitar, candidato))
       next
     }
+    # Un reemplazo de un inverso que vuelve directo se rechaza.
+    if (isTRUE(es_inverso) &&
+        isFALSE(.clasificar_direccion_llm(openai, modelo, candidato,
+                                          dim_nombre, def_dim))) {
+      items_evitar <- unique(c(items_evitar, candidato))
+      next
+    }
     # Aceptacion con el MISMO umbral con el que la compuerta va a detectar
     # (adaptativo, no el 0.70 fijo de antes) y contra los embeddings VIVOS de
     # la escala, que ya incluyen los reemplazos de esta misma tanda. Es lo que
@@ -997,4 +1016,49 @@ balance_optimizacion <- function(g0, g1) .balance_optimizacion(g0, g1)
     items_evitar <- unique(c(items_evitar, candidato, check$items_similares))
   }
   NULL
+}
+
+
+# Direccion del item idx: TRUE si es inverso. Orden de prioridad:
+# (1) la columna explicita del data.frame (invertido / inverso /
+#     direccion_inversa), (2) si la escala se genero EXPLICITAMENTE sin
+#     inversos, FALSE sin gastar llamadas, (3) un juez LLM, (4) la heuristica
+#     de evaluar.R. Una escala del usuario no trae incluir_inversos en el
+#     metadata y puede tener inversos: va al juez, no se asume directa.
+
+#' @keywords internal
+.direccion_item <- function(x, idx, openai, modelo, def_dim = "") {
+  col <- intersect(c("invertido", "inverso", "direccion_inversa"), names(x$items))
+  if (length(col)) {
+    v <- x$items[[col[1]]][idx]
+    if (is.character(v)) v <- tolower(v) %in% c("true", "si", "inverso", "1")
+    return(isTRUE(as.logical(v)))
+  }
+  if (isFALSE(x$metadata$incluir_inversos)) return(FALSE)
+  d <- .clasificar_direccion_llm(openai, modelo, x$items$item[idx],
+                                 x$items$dimension[idx], def_dim)
+  if (!is.na(d)) return(d)
+  caract <- if ("caracteristica" %in% names(x$items)) x$items$caracteristica[idx] else ""
+  .detectar_item_inverso(x$items$item[idx], x$items$dimension[idx], caract %||% "")
+}
+
+
+#' @keywords internal
+.clasificar_direccion_llm <- function(openai, modelo, item, dimension, def_dim = "") {
+  prompt <- paste0(
+    "Dimension: ", dimension, "\n",
+    if (nzchar(def_dim %||% "")) paste0("Definicion: ", def_dim, "\n") else "",
+    "Item: \"", item, "\"\n\n",
+    "Un item es DIRECTO si responder 'mucho / siempre / de acuerdo' indica MAS ",
+    "de la dimension, e INVERSO si indica MENOS (describe el polo opuesto o la ",
+    "ausencia del rasgo). Responde solo con un JSON: {\"direccion\": \"directo\"} ",
+    "o {\"direccion\": \"inverso\"}.")
+  r <- tryCatch(.llamar_openai(openai, list(list(role = "user", content = prompt)),
+                               modelo = modelo, temperature = 0, max_tokens = 300L,
+                               razonamiento = "low"),
+                error = function(e) NULL)
+  if (is.null(r)) return(NA)
+  d <- tryCatch(tolower(jsonlite::fromJSON(.extraer_json_llm(r))$direccion),
+                error = function(e) tolower(r))
+  if (grepl("inverso", d)) TRUE else if (grepl("directo", d)) FALSE else NA
 }

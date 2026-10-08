@@ -364,6 +364,15 @@ simular_estructura <- function(x, deseabilidad = NULL, similitud = NULL,
   dir_j  <- 2 * deseabilidad - 1
   int_j  <- 0.5 * dir_j
   taus   <- stats::qnorm(seq(1, k_cat - 1) / k_cat)
+  # phi_teorico puede ser un vector (rango o valores para la sensibilidad).
+  # El modelo principal usa SIEMPRE el valor central; antes se hacia
+  # matrix(vector, K, K), que recicla los valores y daba una Phi heterogenea
+  # (asimetrica con K = 2) con la que se simulaban los escenarios principales.
+  phis_sens <- if (length(phi_teorico) == 2) {
+    r_phi <- sort(phi_teorico); c(r_phi[1], mean(r_phi), r_phi[2])
+  } else phi_teorico
+  hay_sens_phi <- length(phis_sens) > 1
+  phi_teorico <- phis_sens[ceiling(length(phis_sens) / 2)]
   Phi    <- matrix(phi_teorico, K, K); diag(Phi) <- 1
   its    <- sprintf("i%02d", seq_len(p))
   syn    <- paste(sapply(seq_len(K), function(kk)
@@ -487,15 +496,13 @@ simular_estructura <- function(x, deseabilidad = NULL, similitud = NULL,
   # semantica no generaliza-, pero responde "bajo que supuesto aguanta tu
   # escala", que es la pregunta que el investigador si puede juzgar.
   sensibilidad_phi <- NULL
-  if (length(phi_teorico) > 1) {
+  if (hay_sens_phi) {
     # DOS valores = RANGO de expectativa ("espero entre .32 y .50"): se simula
     # en los extremos y en el centro. TRES o mas = valores discretos elegidos
     # por el usuario, se respetan tal cual. El rango es la forma natural de
     # declarar el supuesto: nadie sabe si sus factores correlacionaran .32 o
     # .50, pero si puede acotar entre que valores los espera.
-    phis <- if (length(phi_teorico) == 2) {
-      r <- sort(phi_teorico); c(r[1], mean(r), r[2])
-    } else phi_teorico
+    phis <- phis_sens
     if (verbose) cat(" Sensibilidad al phi supuesto: ",
                      paste(sprintf("%.2f", phis), collapse = ", "), "\n", sep = "")
     f_c <- fuerzas[ceiling(length(fuerzas) / 2)]
@@ -509,7 +516,6 @@ simular_estructura <- function(x, deseabilidad = NULL, similitud = NULL,
     })
     sensibilidad_phi <- do.call(rbind, filas)
     # se deja el modelo en el valor central, que es el que manda en el resto
-    phi_teorico <- phis[ceiling(length(phis) / 2)]
     Phi <- matrix(phi_teorico, K, K); diag(Phi) <- 1
     var_theta <- diag(LAMBDA %*% Phi %*% t(LAMBDA))
   }

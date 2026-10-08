@@ -155,6 +155,7 @@ validez_contenido <- function(x,
 
   # Evaluar cada item con multiples "jueces"
   todas_evaluaciones <- list()
+  marca_modelos <- .marca_registro()
 
   for (i in 1:nrow(items_df)) {
     item <- items_df$item[i]
@@ -209,10 +210,14 @@ validez_contenido <- function(x,
 
   # Identificar items problematicos (V < 0.70 o IC_inf < 0.70)
   umbral_v <- 0.70
-  items_revision <- resultados_v$v_aiken[
-    resultados_v$v_aiken$V_promedio < umbral_v |
-    resultados_v$v_aiken$IC_inf < umbral_v,
-  ]
+  va <- resultados_v$v_aiken
+  items_revision <- va[which(va$V_promedio < umbral_v | va$IC_inf < umbral_v), ,
+                       drop = FALSE]
+  sin_evaluar <- va$numero[is.na(va$V_promedio)]
+  incompletos <- va$numero[!is.na(va$V_promedio) & va$n_jueces_validos < n_jueces]
+  if (length(sin_evaluar))
+    warning(length(sin_evaluar), " item(s) sin evaluacion legible quedaron en NA: ",
+            paste(sin_evaluar, collapse = ", "), call. = FALSE)
 
   # Construir resultado
   resultado <- list(
@@ -226,6 +231,9 @@ validez_contenido <- function(x,
       criterios = criterios,
       confianza = confianza,
       modelo = modelo,
+      modelos_usados = .modelos_usados(marca_modelos),
+      items_sin_evaluar = sin_evaluar,
+      items_jueces_incompletos = incompletos,
       fecha = Sys.time()
     )
   )
@@ -708,28 +716,72 @@ fiabilidad_semantica <- function(x,
     "- Solo responde con el JSON, sin explicaciones adicionales."
   )
 
-  respuesta <- do.call(openai$chat$completions$create,
-    .args_chat_modelo(modelo,
-      list(list(role = "user", content = prompt)),
-      temperature = 0.7, razonamiento = "low"))
+  # Pasa por .llamar_openai(): asi respeta la cache, el seed de la corrida y
+  # el proveedor configurado. Antes llamaba al SDK directo y la validez de
+  # contenido no era reproducible ni con seed ni con cache.
+  pedir <- function(extra = "") {
+    tryCatch(
+      .llamar_openai(openai, list(list(role = "user", content = paste0(prompt, extra))),
+                     modelo = modelo, razonamiento = "low"),
+      error = function(e) {
+        warning("La API fallo al evaluar el item '", substr(item, 1, 30),
+                "...': ", conditionMessage(e), call. = FALSE)
+        NULL
+      })
+  }
+  parsear <- function(texto) {
+    if (is.null(texto) || !nzchar(texto)) return(NULL)
+    tryCatch(.normalizar_evaluaciones(jsonlite::fromJSON(.extraer_json_llm(texto)),
+                                      criterios),
+             error = function(e) NULL)
+  }
 
-  texto <- respuesta$choices[[1]]$message$content
+  ev <- parsear(pedir())
+  if (is.null(ev))
+    ev <- parsear(pedir(paste0("\n\nTu respuesta anterior no se pudo leer. ",
+                               "Devuelve UNICAMENTE el JSON array, sin texto alrededor.")))
+  if (!is.null(ev)) return(ev)
 
-  # Parsear JSON
-  tryCatch({
-    texto_limpio <- gsub("```json|```", "", texto)
-    texto_limpio <- trimws(texto_limpio)
-    evaluaciones <- jsonlite::fromJSON(texto_limpio)
-    return(evaluaciones)
-  }, error = function(e) {
-    warning("Error parseando evaluaciones para item: ", substr(item, 1, 30))
-    # Retornar evaluaciones neutrales si falla
-    df <- data.frame(juez = 1:n_jueces)
-    for (crit in criterios) {
-      df[[crit]] <- rep(2, n_jueces)  # Valor neutral
-    }
-    return(df)
-  })
+  # Sin evaluacion legible el item queda en NA. Antes se rellenaba con 2
+  # (V = .667) y la tabla mostraba una V que ningun juez habia dado.
+  warning("Sin evaluacion legible para el item '", substr(item, 1, 30),
+          "...': queda en NA.", call. = FALSE)
+  df <- data.frame(juez = seq_len(n_jueces))
+  for (crit in criterios) df[[crit]] <- rep(NA_real_, n_jueces)
+  attr(df, "fallida") <- TRUE
+  df
+}
+
+
+# Extrae el bloque JSON de una respuesta del LLM aunque venga con ```json o
+# con una frase antes o despues.
+
+#' @keywords internal
+.extraer_json_llm <- function(texto) {
+  t <- trimws(gsub("```json|```", "", texto))
+  ini <- regexpr("[\\[{]", t)
+  if (ini < 0) return(t)
+  fin <- max(gregexpr("[]}]", t)[[1]])
+  if (fin < ini) return(t)
+  substr(t, ini, fin)
+}
+
+
+# Deja las valoraciones como numeros en [0, 3]. Un "3" en texto o un 4 fuera
+# de escala no deben llegar al promedio.
+
+#' @keywords internal
+.normalizar_evaluaciones <- function(ev, criterios) {
+  if (is.list(ev) && !is.data.frame(ev))
+    ev <- do.call(rbind, lapply(ev, as.data.frame))
+  if (!is.data.frame(ev) || !nrow(ev)) stop("evaluacion vacia")
+  if (!any(criterios %in% names(ev))) stop("sin criterios")
+  for (crit in intersect(criterios, names(ev))) {
+    v <- suppressWarnings(as.numeric(as.character(ev[[crit]])))
+    v[!is.na(v) & (v < 0 | v > 3)] <- NA
+    ev[[crit]] <- v
+  }
+  ev
 }
 
 
@@ -752,16 +804,11 @@ fiabilidad_semantica <- function(x,
     mat <- matrix(NA, nrow = n_items, ncol = n_jueces)
     for (i in 1:n_items) {
       if (crit %in% names(evaluaciones[[i]])) {
-        vals <- evaluaciones[[i]][[crit]]
-        # Asegurar que tenemos n_jueces valores
-        if (length(vals) >= n_jueces) {
-          mat[i, ] <- vals[1:n_jueces]
-        } else {
-          mat[i, 1:length(vals)] <- vals
-          mat[i, (length(vals)+1):n_jueces] <- 2  # Completar con neutral
-        }
-      } else {
-        mat[i, ] <- rep(2, n_jueces)
+        vals <- suppressWarnings(as.numeric(evaluaciones[[i]][[crit]]))
+        # Si el modelo devolvio menos jueces de los pedidos, los que faltan
+        # quedan en NA (antes se completaban con 2).
+        n_v <- min(length(vals), n_jueces)
+        if (n_v > 0) mat[i, seq_len(n_v)] <- vals[seq_len(n_v)]
       }
     }
     matrices_criterios[[crit]] <- mat
@@ -775,20 +822,25 @@ fiabilidad_semantica <- function(x,
   for (crit in criterios) {
     mat <- matrices_criterios[[crit]]
 
-    # V = (X_bar - l) / k
-    x_bar <- rowMeans(mat)
+    # V = (X_bar - l) / k, con los jueces que si respondieron. El IC usa ese
+    # mismo n por item: con menos jueces el intervalo es mas ancho.
+    x_bar <- rowMeans(mat, na.rm = TRUE)
+    x_bar[is.nan(x_bar)] <- NA
     v <- (x_bar - l) / k
+    n_val <- rowSums(!is.na(mat))
 
     # Intervalos de confianza (Penfield & Giacobbi, 2004)
     # L = (2nkV + z^2 - z*sqrt(4nkV(1-V) + z^2)) / (2(nk + z^2))
     # U = (2nkV + z^2 + z*sqrt(4nkV(1-V) + z^2)) / (2(nk + z^2))
 
-    ic1 <- 2 * n_jueces * k * v + z^2
-    ic2 <- z * sqrt(4 * n_jueces * k * v * (1 - v) + z^2)
-    ic3 <- 2 * (n_jueces * k + z^2)
+    ic1 <- 2 * n_val * k * v + z^2
+    ic2 <- z * sqrt(4 * n_val * k * v * (1 - v) + z^2)
+    ic3 <- 2 * (n_val * k + z^2)
 
     ic_inf <- (ic1 - ic2) / ic3
     ic_sup <- (ic1 + ic2) / ic3
+    ic_inf[n_val == 0] <- NA
+    ic_sup[n_val == 0] <- NA
 
     # Asegurar rango [0, 1]
     v <- pmax(0, pmin(1, v))
@@ -801,9 +853,12 @@ fiabilidad_semantica <- function(x,
   }
 
   # V promedio entre criterios
+  # Si falta un criterio, el promedio no lo rellena: queda NA.
   v_promedio <- rowMeans(do.call(cbind, v_por_criterio))
   ic_inf_promedio <- rowMeans(do.call(cbind, ic_inf_por_criterio))
   ic_sup_promedio <- rowMeans(do.call(cbind, ic_sup_por_criterio))
+  n_validos <- apply(do.call(cbind, lapply(matrices_criterios, function(m)
+    rowSums(!is.na(m)))), 1, min)
 
   # Construir dataframe de resultados
   v_aiken <- data.frame(
@@ -813,6 +868,7 @@ fiabilidad_semantica <- function(x,
     V_promedio = round(v_promedio, 3),
     IC_inf = round(ic_inf_promedio, 3),
     IC_sup = round(ic_sup_promedio, 3),
+    n_jueces_validos = n_validos,
     stringsAsFactors = FALSE
   )
 
@@ -823,10 +879,10 @@ fiabilidad_semantica <- function(x,
 
   # V de Aiken a nivel de escala
   v_aiken_escala <- list(
-    V_total = round(mean(v_promedio), 3)
+    V_total = round(mean(v_promedio, na.rm = TRUE), 3)
   )
   for (crit in criterios) {
-    v_aiken_escala[[crit]] <- round(mean(v_por_criterio[[crit]]), 3)
+    v_aiken_escala[[crit]] <- round(mean(v_por_criterio[[crit]], na.rm = TRUE), 3)
   }
 
   list(
@@ -1800,12 +1856,13 @@ auditar_redaccion_items <- function(x,
   cols_criterios <- criterios[criterios %in% names(eval_df)]
   if (length(cols_criterios) > 0) {
     eval_df$promedio <- rowMeans(eval_df[, cols_criterios, drop = FALSE], na.rm = TRUE)
+    eval_df$promedio[is.nan(eval_df$promedio)] <- NA
   } else {
     eval_df$promedio <- NA
   }
 
   # Identificar items problematicos (promedio < 3 o reglas violadas)
-  problematicos <- eval_df$promedio < 3 |
+  problematicos <- (!is.na(eval_df$promedio) & eval_df$promedio < 3) |
                    !eval_df$longitud_ok |
                    eval_df$doble_negacion |
                    eval_df$palabras_absolutas
@@ -1826,6 +1883,7 @@ auditar_redaccion_items <- function(x,
     recomendaciones = rec_df,
     resumen = list(
       promedio_general = mean(eval_df$promedio, na.rm = TRUE),
+      n_sin_evaluar = sum(is.na(eval_df$promedio)),
       n_problematicos = sum(problematicos),
       pct_problematicos = round(sum(problematicos) / n_items * 100, 1)
     )
@@ -2304,41 +2362,34 @@ print.semilla_comparacion <- function(x, ...) {
     "}"
   )
 
-  respuesta <- tryCatch({
-    do.call(openai$chat$completions$create,
-      .args_chat_modelo(modelo,
-        list(list(role = "user", content = prompt)),
-        temperature = 0.3, razonamiento = "low"))
-  }, error = function(e) NULL)
+  # Si la API falla o la respuesta no se lee, los criterios quedan en NA y la
+  # recomendacion lo dice. Antes se rellenaban con 3 de 5: una calificacion
+  # "neutral" que ningun evaluador habia dado.
+  sin_eval <- function(motivo) list(
+    puntuaciones = setNames(rep(NA_real_, length(criterios)), criterios),
+    recomendacion = motivo)
 
-  if (is.null(respuesta)) {
-    puntuaciones <- setNames(rep(3, length(criterios)), criterios)
-    return(list(puntuaciones = puntuaciones, recomendacion = "Error en evaluacion"))
-  }
-
-  texto <- respuesta$choices[[1]]$message$content
+  texto <- tryCatch(
+    .llamar_openai(openai, list(list(role = "user", content = prompt)),
+                   modelo = modelo, temperature = 0.3, razonamiento = "low"),
+    error = function(e) NULL)
+  if (is.null(texto) || !nzchar(texto))
+    return(sin_eval("Sin evaluacion: la API no respondio"))
 
   tryCatch({
-    texto_limpio <- gsub("```json|```", "", texto)
-    texto_limpio <- trimws(texto_limpio)
-    resultado <- jsonlite::fromJSON(texto_limpio)
-
+    resultado <- jsonlite::fromJSON(.extraer_json_llm(texto))
     puntuaciones <- setNames(
-      sapply(criterios, function(c) as.numeric(resultado[[c]])),
+      sapply(criterios, function(c)
+        suppressWarnings(as.numeric(resultado[[c]] %||% NA))[1]),
       criterios
     )
-    puntuaciones[is.na(puntuaciones)] <- 3
+    puntuaciones[!is.na(puntuaciones) & (puntuaciones < 1 | puntuaciones > 5)] <- NA
 
     list(
       puntuaciones = puntuaciones,
-      recomendacion = resultado$recomendacion
+      recomendacion = resultado$recomendacion %||% NA_character_
     )
-  }, error = function(e) {
-    list(
-      puntuaciones = setNames(rep(3, length(criterios)), criterios),
-      recomendacion = "Error parseando respuesta"
-    )
-  })
+  }, error = function(e) sin_eval("Sin evaluacion: respuesta ilegible"))
 }
 
 

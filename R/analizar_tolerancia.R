@@ -188,7 +188,7 @@ analizar_tolerancia <- function(x, concepto = NULL, poblacion = NULL,
   say("  Se generan respuestas sinteticas bajo 3 escenarios de deseabilidad\n")
   say("  (debil/media/fuerte) y se ajusta el AFC en cada replica.\n")
   pron <- simular_estructura(xx, deseabilidad = deseabilidad, similitud = similitud,
-                             carga_propia = 0.60, k_cat = k_cat, n = n,
+                             k_cat = k_cat, n = n,
                              n_nucleos = nuc, seed = seed, verbose = FALSE)
   say(sprintf("  -> probabilidad de estructura limpia (escenario central) = %.2f\n",
               pron$prob_limpia))
@@ -204,7 +204,7 @@ analizar_tolerancia <- function(x, concepto = NULL, poblacion = NULL,
     say("  estilo extremo, punto medio, descuido, lineas rectas) hasta el quiebre.\n")
     say("  (esta es la parte mas lenta; usa solo_pronostico = TRUE para saltarla)\n")
     estres <- estres_escala(xx, deseabilidad = deseabilidad, similitud = similitud,
-                            carga_propia = 0.60, k_cat = k_cat, n = n, n_rep = n_rep,
+                            k_cat = k_cat, n = n, n_rep = n_rep,
                             dl_juez = dl_juez, dl_adyacencia = dl_adyacencia,
                             pares_juez = pares_juez, modelo_jueces = modelo_jueces,
                             g_juez = g_juez, g_ady = g_ady,

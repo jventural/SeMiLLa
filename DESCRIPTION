@@ -1,8 +1,8 @@
 Package: SeMiLLa
 Type: Package
 Title: SEmantic Measurement of Items via LLM Assistance
-Version: 2.9.37
-Date: 2026-08-22
+Version: 2.9.38
+Date: 2026-10-08
 Authors@R: c(
     person("Jose", "Ventura-Leon",
            email = "jventuraleon@gmail.com",
@@ -61,5 +61,6 @@ Suggests:
     Rtsne,
     scales,
     umap,
+    withr,
     writexl
 Config/testthat/edition: 3

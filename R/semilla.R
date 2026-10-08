@@ -459,6 +459,10 @@ semilla <- function(concepto = NULL,
     if (verbose) cat("\n", .color_gris("[3.5/5] REFINAMIENTO"), " - Omitido (refinar = FALSE)\n", sep = "")
   }
 
+  # Items sobre los que se calculo la estructura ($efa). refinar_escala()
+  # la recalcula con sus propios items, asi que la marca va despues de 3.5.
+  items_en_efa <- resultado$items$item
+
   # PASO 4: Integracion - Exportar (opcional)
   if (exportar_csv) {
     if (verbose) {
@@ -561,6 +565,8 @@ semilla <- function(concepto = NULL,
                      " auditada para campo.\n", sep = "")
   }
 
+  items_en_compuerta <- resultado$items$item
+
   # PASO 6 (OPCIONAL, apagado por defecto): PRUEBA DE ESTRES + optimizacion.
   #  estres = FALSE por defecto (paso pesado; se corre a pedido, tambien en el
   #  camino fuente="usuario" para estresar un test cargado de un articulo).
@@ -622,17 +628,45 @@ semilla <- function(concepto = NULL,
     }
   }
 
+  # La prueba de estres y el blindaje final reemplazan items sin tocar $efa ni
+  # $compuerta: el objeto devolvia una precision y un veredicto calculados
+  # sobre otra escala. La estructura se recalcula (no llama a la API); la
+  # compuerta es cara, asi que se marca como obsoleta y se avisa.
+  items_fin <- resultado$items$item
+  if (!is.null(resultado$efa) && !identical(items_fin, items_en_efa)) {
+    resultado$efa <- tryCatch(
+      precision_clasificacion(resultado,
+                              n_clusters = length(unique(resultado$items$dimension)),
+                              verbose = FALSE),
+      error = function(e) {
+        warning("No se pudo recalcular la estructura sobre la escala final (",
+                conditionMessage(e), "); $efa queda en NULL.", call. = FALSE)
+        NULL
+      })
+  }
+  if (!is.null(resultado$compuerta) && !identical(items_fin, items_en_compuerta)) {
+    resultado$compuerta$obsoleta <- TRUE
+    resultado$compuerta$items_cambiados <-
+      if (length(items_fin) == length(items_en_compuerta))
+        which(items_fin != items_en_compuerta) else NA_integer_
+    warning("La compuerta se calculo antes de que la prueba de estres o el ",
+            "blindaje final cambiaran items; su veredicto no describe la escala ",
+            "entregada. Vuelva a correr compuerta_pre_aplicacion().", call. = FALSE)
+  }
+
   if (verbose) {
     cat("\n")
     cat(.linea(), "\n")
     cat(.color_verde("COMPLETADO"), "\n")
-    cat("Items generados: ", nrow(items_result$items), "\n", sep = "")
-    cat("Dimensiones: ", length(unique(items_result$items$dimension)), "\n", sep = "")
-    if (!is.null(efa_result)) {
-      cat("Factores EFA: ", efa_result$metadata$n_factores, "\n", sep = "")
+    cat("Items en la escala final: ", nrow(resultado$items), "\n", sep = "")
+    cat("Dimensiones: ", length(unique(resultado$items$dimension)), "\n", sep = "")
+    if (!is.null(resultado$efa$metadata$n_factores)) {
+      cat("Factores EFA: ", resultado$efa$metadata$n_factores, "\n", sep = "")
     }
     if (!is.null(resultado$compuerta)) {
-      cat("Compuerta pre-aplicacion: ", resultado$compuerta$veredicto, "\n", sep = "")
+      cat("Compuerta pre-aplicacion: ", resultado$compuerta$veredicto,
+          if (isTRUE(resultado$compuerta$obsoleta)) " (OBSOLETA: la escala cambio despues)",
+          "\n", sep = "")
     }
     if (!is.null(resultado$optimizacion)) {
       cat("Optimizacion automatica: ", nrow(resultado$optimizacion$reemplazos),

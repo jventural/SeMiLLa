@@ -776,6 +776,11 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
         razonamiento %||% getOption("SeMiLLa.reasoning_effort", "minimal")
       else NULL
     )
+    # El mismo nombre de modelo en dos proveedores (OpenAI y Groq, p. ej.) no
+    # es el mismo modelo. Solo se anade cuando hay base_url, para que las
+    # caches ya creadas con OpenAI conserven su clave.
+    base_url <- getOption("SeMiLLa.base_url", NULL)
+    if (!is.null(base_url)) payload$base_url <- base_url
     cache_path <- .cache_key("chat", payload)
     cached <- .cache_get(cache_path)
     if (!is.null(cached)) {
@@ -798,13 +803,71 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
   })
 
   contenido <- respuesta$choices[[1]]$message$content
+  fin <- tryCatch(respuesta$choices[[1]]$finish_reason, error = function(e) NULL)
+  .registrar_llamada(respuesta, modelo)
 
-  # Guardar en cache
-  if (!is.null(cache_path)) {
+  # Una respuesta vacia o cortada por max_tokens (un razonador puede gastar
+  # todos los tokens pensando) no se guarda: si se guardara, cada corrida
+  # siguiente releeria el mismo fallo desde el disco.
+  vacia     <- is.null(contenido) || !nzchar(trimws(contenido))
+  truncada  <- identical(fin, "length")
+  if (truncada)
+    warning("La respuesta de ", modelo, " se corto por max_tokens (",
+            max_tokens, "); puede venir incompleta.", call. = FALSE)
+
+  if (!is.null(cache_path) && !vacia && !truncada) {
     .cache_set(cache_path, contenido)
   }
 
   return(contenido)
+}
+
+
+# Registro de lo que de verdad respondio la API. El alias pedido
+# ("gpt-4.1-mini") no basta para reproducir ni para reportar: la API resuelve
+# el alias a una version con fecha que cambia sin aviso.
+
+.semilla_registro <- new.env(parent = emptyenv())
+
+#' @keywords internal
+.registrar_llamada <- function(respuesta, modelo_pedido) {
+  real <- tryCatch(respuesta$model, error = function(e) NULL)
+  fp   <- tryCatch(respuesta$system_fingerprint, error = function(e) NULL)
+  clave <- paste(modelo_pedido, real %||% NA_character_, sep = "|")
+  previo <- .semilla_registro[[clave]]
+  .semilla_registro[[clave]] <- list(
+    modelo_pedido = modelo_pedido,
+    modelo_real   = if (is.null(real)) NA_character_ else as.character(real),
+    fingerprint   = if (is.null(fp)) NA_character_ else as.character(fp),
+    base_url      = getOption("SeMiLLa.base_url", NA_character_),
+    n_llamadas    = (previo$n_llamadas %||% 0L) + 1L
+  )
+  invisible(NULL)
+}
+
+# Devuelve un data.frame con los modelos que respondieron desde 'desde'
+# (una marca de .marca_registro()). Sin marca, todo lo de la sesion.
+
+#' @keywords internal
+.marca_registro <- function() {
+  lapply(as.list(.semilla_registro), function(r) r$n_llamadas)
+}
+
+#' @keywords internal
+.modelos_usados <- function(desde = NULL) {
+  regs <- as.list(.semilla_registro)
+  if (!length(regs)) return(NULL)
+  filas <- lapply(names(regs), function(k) {
+    r <- regs[[k]]
+    n <- r$n_llamadas - (desde[[k]] %||% 0L)
+    if (n <= 0) return(NULL)
+    data.frame(modelo_pedido = r$modelo_pedido, modelo_real = r$modelo_real,
+               fingerprint = r$fingerprint, base_url = r$base_url,
+               n_llamadas = n, stringsAsFactors = FALSE)
+  })
+  filas <- Filter(Negate(is.null), filas)
+  if (!length(filas)) return(NULL)
+  do.call(rbind, filas)
 }
 
 
@@ -1884,6 +1947,10 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
 
   # Recopilar informacion de articulos
   articulos_encontrados <- list()
+  # Las referencias se arman en R con los metadatos de cada base; el LLM no
+  # las escribe (solo ve titulo y resumen, y pedirle autores y anos era
+  # pedirle que los inventara).
+  refs_encontradas <- character(0)
 
   # Buscar en PubMed/PMC (principal fuente)
   if ("pubmed" %in% bases_datos || "pmc" %in% bases_datos) {
@@ -1928,21 +1995,17 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
           if (httr::status_code(response) == 200) {
             content <- httr::content(response, as = "text", encoding = "UTF-8")
 
-            # Extraer titulos y abstracts del XML
-            titulos <- regmatches(content, gregexpr("<ArticleTitle>[^<]+</ArticleTitle>", content))[[1]]
-            titulos <- gsub("</?ArticleTitle>", "", titulos)
-
-            abstracts <- regmatches(content, gregexpr("<AbstractText[^>]*>[^<]+</AbstractText>", content))[[1]]
-            abstracts <- gsub("</?AbstractText[^>]*>", "", abstracts)
-
-            # Combinar titulos y abstracts
-            resultado <- ""
-            for (i in seq_along(titulos)) {
-              resultado <- paste0(resultado,
-                                   "TITULO: ", titulos[i], "\n",
-                                   "ABSTRACT: ", if(i <= length(abstracts)) abstracts[i] else "No disponible", "\n",
-                                   "\n---\n\n")
-            }
+            # Un bloque por articulo: titulo, resumen y metadatos salen del
+            # MISMO <PubmedArticle>. Antes titulos y resumenes se extraian por
+            # separado y se emparejaban por posicion; un resumen estructurado
+            # (varios <AbstractText>) desplazaba todos los siguientes.
+            arts <- .parsear_pubmed_xml(content)
+            refs_encontradas <- c(refs_encontradas,
+                                  vapply(arts, `[[`, "", "referencia"))
+            resultado <- paste0(vapply(arts, function(a)
+              paste0("TITULO: ", a$titulo, "\n",
+                     "ABSTRACT: ", if (nzchar(a$resumen)) a$resumen else "No disponible",
+                     "\n\n---\n\n"), ""), collapse = "")
             resultado
           } else {
             ""
@@ -1971,7 +2034,7 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
       "https://api.semanticscholar.org/graph/v1/paper/search?",
       "query=", utils::URLencode(ss_query),
       "&limit=", min(n_articulos, 10),
-      "&fields=title,abstract,year"
+      "&fields=title,abstract,year,authors,venue,externalIds"
     )
 
     ss_result <- tryCatch({
@@ -1996,6 +2059,16 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
 
       if (n_papers > 0) {
         if (verbose) cat("      [+] Encontrados ", n_papers, " articulos en Semantic Scholar\n")
+
+        # Solo los articulos cuyo resumen llega al LLM: referenciar uno que no
+        # leyo seria atribuirle a la literatura algo que no se uso.
+        con_resumen <- if (is.data.frame(papers))
+          !is.na(papers$abstract) & nchar(papers$abstract) > 10
+        else vapply(papers, function(p) !is.null(p$abstract) &&
+                      nchar(p$abstract) > 10, logical(1))
+        papers_ref <- if (is.data.frame(papers)) papers[which(con_resumen), , drop = FALSE]
+                      else papers[con_resumen]
+        refs_encontradas <- c(refs_encontradas, .referencias_semantic_scholar(papers_ref))
 
         # Extraer abstracts - manejar tanto data.frame como lista
         if (is.data.frame(papers)) {
@@ -2042,8 +2115,9 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
       cat("      [!] No se encontraron suficientes articulos cientificos\n")
       cat("      [!] Utilizando conocimiento del LLM como respaldo\n")
     }
-    # Fallback al modo LLM
-    return(.analizar_concepto(openai, concepto, idioma, poblacion, n_dimensiones, modelo))
+    # Respaldo al modo LLM, etiquetado como tal: no es un analisis de literatura.
+    return(.respaldo_llm(openai, concepto, idioma, poblacion, n_dimensiones, modelo,
+                         "literatura insuficiente"))
   }
 
   # Truncar si es muy largo
@@ -2081,14 +2155,12 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
     "--- FIN DE LITERATURA ---\n\n",
     "Basandote en la literatura proporcionada, extrae:\n",
     "1. Una definicion operacional del constructo basada en los estudios\n",
-    "2. Las dimensiones o factores identificados en las escalas/cuestionarios\n",
-    "3. Referencias bibliograficas REALES extraidas de los titulos de los articulos\n\n",
+    "2. Las dimensiones o factores identificados en las escalas/cuestionarios\n\n",
     instrucciones_dim, "\n\n",
     "INSTRUCCIONES IMPORTANTES:\n",
     "- Las CLAVES de 'dimensiones' deben ser NOMBRES DESCRIPTIVOS reales (ej: 'Autoeficacia', ",
     "'Regulacion Emocional', 'Apoyo Social'), NO 'dimension1', 'dimension2', etc.\n",
-    "- Las CLAVES de 'caracteristicas' deben coincidir EXACTAMENTE con las claves de 'dimensiones'\n",
-    "- Las referencias deben incluir los NOMBRES REALES de autores y anos que aparecen en los titulos\n\n",
+    "- Las CLAVES de 'caracteristicas' deben coincidir EXACTAMENTE con las claves de 'dimensiones'\n\n",
     "Responde en formato JSON con esta estructura:\n",
     "{\n",
     "  \"definicion\": \"definicion operacional basada en la literatura\",\n",
@@ -2103,8 +2175,7 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
     "  \"caracteristicas\": {\n",
     "    \"Nombre Descriptivo de Dimension 1\": [\"caracteristica1\", \"caracteristica2\", \"caracteristica3\"],\n",
     "    \"Nombre Descriptivo de Dimension 2\": [\"caracteristica1\", \"caracteristica2\", \"caracteristica3\"]\n",
-    "  },\n",
-    "  \"referencias\": [\"Apellido, N. (2023). Titulo real del articulo. Journal Name.\"]\n",
+    "  }\n",
     "}\n\n",
     "Responde SOLO con el JSON, sin texto adicional."
   )
@@ -2119,19 +2190,149 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
   respuesta <- gsub("```json|```", "", respuesta)
   respuesta <- trimws(respuesta)
 
-  resultado <- tryCatch({
-    jsonlite::fromJSON(respuesta, simplifyVector = FALSE)
-  }, error = function(e) {
-    if (verbose) cat("      [!] Error al parsear: ", e$message, "\n")
-    # Fallback al modo LLM
-    return(.analizar_concepto(openai, concepto, idioma, poblacion, n_dimensiones, modelo))
-  })
+  resultado <- tryCatch(
+    jsonlite::fromJSON(respuesta, simplifyVector = FALSE),
+    error = function(e) {
+      if (verbose) cat("      [!] Error al parsear: ", e$message, "\n")
+      NULL
+    })
+  if (is.null(resultado))
+    return(.respaldo_llm(openai, concepto, idioma, poblacion, n_dimensiones, modelo,
+                         "respuesta ilegible del LLM"))
 
   resultado$concepto <- concepto
   resultado$fuente <- "cientifico"
   resultado$bases_consultadas <- bases_datos
+  resultado$referencias <- as.list(unique(refs_encontradas[nzchar(refs_encontradas)]))
 
   return(resultado)
+}
+
+
+#' @keywords internal
+.respaldo_llm <- function(openai, concepto, idioma, poblacion, n_dimensiones,
+                          modelo, motivo) {
+  warning("Modo cientifico sin analisis de literatura (", motivo,
+          "): se uso el conocimiento del LLM y la fuente queda como 'llm_respaldo'.",
+          call. = FALSE)
+  r <- .analizar_concepto(openai, concepto, idioma, poblacion, n_dimensiones, modelo)
+  r$fuente <- "llm_respaldo"
+  r$motivo_respaldo <- motivo
+  # Las referencias que el LLM escriba de memoria no estan verificadas.
+  r$referencias <- NULL
+  r
+}
+
+
+# Parte el XML de efetch en articulos y saca de cada uno titulo, resumen y
+# referencia. Sin xml2: expresiones regulares acotadas a un solo articulo.
+
+#' @keywords internal
+.parsear_pubmed_xml <- function(xml) {
+  # El XML viene en varias lineas y '.' no cruza saltos de linea.
+  xml <- gsub("[\r\n]+", " ", xml)
+  bloques <- regmatches(xml, gregexpr("<PubmedArticle>.*?</PubmedArticle>", xml,
+                                      perl = TRUE))[[1]]
+  quitar_tags <- function(x) .decodificar_entidades(
+    trimws(gsub("\\s+", " ", gsub("<[^>]+>", "", x))))
+  uno <- function(b, patron) {
+    m <- regmatches(b, regexpr(patron, b, perl = TRUE))
+    if (length(m)) quitar_tags(m) else ""
+  }
+  todos <- function(b, patron)
+    quitar_tags(regmatches(b, gregexpr(patron, b, perl = TRUE))[[1]])
+
+  lapply(bloques, function(b) {
+    titulo  <- uno(b, "<ArticleTitle[^>]*>.*?</ArticleTitle>")
+    resumen <- paste(todos(b, "<AbstractText[^>]*>.*?</AbstractText>"), collapse = " ")
+    autores <- regmatches(b, gregexpr("<Author[ >].*?</Author>", b, perl = TRUE))[[1]]
+    autores <- vapply(autores, function(a) {
+      ap <- uno(a, "<LastName>.*?</LastName>")
+      ini <- uno(a, "<Initials>.*?</Initials>")
+      if (!nzchar(ap)) return("")
+      if (nzchar(ini)) paste0(ap, ", ", paste0(strsplit(ini, "")[[1]], ".", collapse = " "))
+      else ap
+    }, "", USE.NAMES = FALSE)
+    autores <- autores[nzchar(autores)]
+    pubdate <- uno(b, "<PubDate>.*?</PubDate>")
+    anio    <- regmatches(pubdate, regexpr("[12][0-9]{3}", pubdate))
+    j       <- regmatches(b, regexpr("<Journal>.*?</Journal>", b, perl = TRUE))
+    revista <- if (length(j)) uno(j, "<Title>.*?</Title>") else ""
+    doi     <- uno(b, "<ArticleId IdType=\"doi\">.*?</ArticleId>")
+    list(titulo = titulo, resumen = resumen,
+         referencia = .formatear_referencia(autores, if (length(anio)) anio else "",
+                                            titulo, revista, doi))
+  })
+}
+
+
+# PubMed escribe los acentos como entidades (&#xf6;, &#246;) y escapa & < >.
+
+#' @keywords internal
+.decodificar_entidades <- function(x) {
+  dec <- function(s, patron, base) {
+    m <- gregexpr(patron, s, perl = TRUE)
+    regmatches(s, m) <- lapply(regmatches(s, m), function(v) {
+      cod <- strtoi(sub(patron, "\\1", v, perl = TRUE), base)
+      ifelse(is.na(cod), v, intToUtf8(cod, multiple = TRUE))
+    })
+    s
+  }
+  x <- dec(x, "&#[xX]([0-9a-fA-F]+);", 16L)
+  x <- dec(x, "&#([0-9]+);", 10L)
+  x <- gsub("&quot;", "\"", x, fixed = TRUE)
+  x <- gsub("&apos;", "'", x, fixed = TRUE)
+  x <- gsub("&lt;", "<", x, fixed = TRUE)
+  x <- gsub("&gt;", ">", x, fixed = TRUE)
+  gsub("&amp;", "&", x, fixed = TRUE)
+}
+
+
+#' @keywords internal
+.referencias_semantic_scholar <- function(papers) {
+  if (is.data.frame(papers))
+    papers <- lapply(seq_len(nrow(papers)), function(i) as.list(papers[i, , drop = FALSE]))
+  vapply(papers, function(p) {
+    aut <- p$authors
+    if (is.list(aut) && length(aut) == 1 && is.data.frame(aut[[1]])) aut <- aut[[1]]
+    nombres <- if (is.data.frame(aut)) aut$name
+               else unlist(lapply(aut, function(a) a$name))
+    nombres <- vapply(nombres %||% character(0), function(n) {
+      partes <- strsplit(trimws(n), "\\s+")[[1]]
+      if (length(partes) < 2) return(n)
+      paste0(partes[length(partes)], ", ",
+             paste0(substr(partes[-length(partes)], 1, 1), ".", collapse = " "))
+    }, "", USE.NAMES = FALSE)
+    ext <- p$externalIds
+    if (is.list(ext) && length(ext) == 1 && is.data.frame(ext[[1]])) ext <- ext[[1]]
+    doi <- tryCatch(as.character(ext$DOI %||% ""), error = function(e) "")
+    .formatear_referencia(nombres, as.character(p$year %||% ""),
+                          as.character(p$title %||% ""), as.character(p$venue %||% ""),
+                          if (length(doi) && !is.na(doi[1])) doi[1] else "")
+  }, "")
+}
+
+
+# Referencia en formato APA aproximado, solo con lo que la base devolvio.
+
+#' @keywords internal
+.formatear_referencia <- function(autores, anio, titulo, revista, doi) {
+  if (!nzchar(titulo)) return("")
+  # APA 7: hasta 20 autores con "&" antes del ultimo; con mas, los 19 primeros,
+  # puntos suspensivos y el ultimo, sin "&".
+  aut <- if (!length(autores)) ""
+         else if (length(autores) == 1) autores
+         else if (length(autores) > 20)
+           paste0(paste(autores[1:19], collapse = ", "), ", . . . ",
+                  autores[length(autores)])
+         else paste0(paste(autores[-length(autores)], collapse = ", "), ", & ",
+                     autores[length(autores)])
+  anio <- if (is.na(anio) || !nzchar(anio)) "s. f." else anio
+  titulo <- sub("\\.$", "", titulo)
+  out <- paste0(if (nzchar(aut)) paste0(aut, " ") else "", "(", anio, "). ", titulo, ".")
+  if (!is.na(revista) && nzchar(revista)) out <- paste0(out, " ", revista, ".")
+  if (!is.na(doi) && nzchar(doi)) out <- paste0(out, " https://doi.org/", doi)
+  out
 }
 
 
