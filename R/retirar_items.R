@@ -29,7 +29,8 @@
 #' Por eso no se permite dejar una dimension por debajo de
 #' \code{minimo_por_dimension}.
 #'
-#' \strong{Que se invalida.} \code{$efa} (la estructura medida) se borra, porque
+#' \strong{Que se invalida.} \code{$separabilidad} (la estructura medida; su
+#' alias heredado \code{$efa}) se borra, porque
 #' describe a una escala que ya no existe. La compuerta NO se borra -de ella
 #' heredan el umbral de redundancia, los vetos lexicos y la exposicion por
 #' dimension- pero se marca con \code{$compuerta$caduca = TRUE} y
@@ -47,7 +48,7 @@
 #'   queda.
 #'
 #' @return El objeto de entrada con menos items, con \code{$embeddings} y
-#'   \code{$similitud} recortados en el mismo orden, \code{$efa} a \code{NULL} y
+#'   \code{$similitud} recortados en el mismo orden, \code{$separabilidad} a \code{NULL} y
 #'   la compuerta marcada como caduca. Ademas, el atributo
 #'   \code{"items_retirados"} acumula los identificadores retirados.
 #'
@@ -116,7 +117,7 @@ retirar_items <- function(x, items, minimo_por_dimension = 2,
     x$similitud <- x$similitud[keep, keep, drop = FALSE]
 
   # Lo medido describia la escala CON esos items
-  x$efa <- NULL
+  x <- .fijar_separabilidad(x, NULL)
   if (!is.null(x$compuerta)) {
     x$compuerta$caduca <- TRUE
     x$compuerta$caduca_motivo <- "retiro_manual"

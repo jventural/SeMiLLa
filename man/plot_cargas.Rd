@@ -2,7 +2,7 @@
 % Please edit documentation in R/plots.R
 \name{plot_cargas}
 \alias{plot_cargas}
-\title{Visualizar Cargas Factoriales}
+\title{Visualizar Cargas Factoriales (obsoleta)}
 \usage{
 plot_cargas(x, ordenar = TRUE, umbral_carga = 0.4)
 }
@@ -17,6 +17,9 @@ plot_cargas(x, ordenar = TRUE, umbral_carga = 0.4)
 Objeto ggplot2
 }
 \description{
-Muestra las cargas factoriales de cada item como barras horizontales,
-agrupadas por factor.
+\strong{Obsoleta desde 2.10.0.} Muestra las cargas de un objeto
+\code{semilla_efa} heredado. Un objeto \code{semilla} ya no trae cargas
+(su estructura es un clustering de embeddings) y la funcion se detiene con
+un mensaje; para la estructura semantica use \code{\link{plot_sankey}} o
+\code{\link{plot_precision}}.
 }

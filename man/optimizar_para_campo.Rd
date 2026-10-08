@@ -18,6 +18,7 @@ optimizar_para_campo(
   modelo = "gpt-4.1-mini",
   poblacion = NULL,
   seed = 2026,
+  margen_mejora = 4,
   verbose = TRUE
 )
 }
@@ -63,6 +64,13 @@ veredicto reportado.}
 
 \item{seed}{Semilla de la simulacion.}
 
+\item{margen_mejora}{Puntos que una iteracion debe ganar, con el mismo
+veredicto, para sustituir a la mejor version guardada (default 4, el peso
+de un gemelo confirmado). Subir de veredicto basta siempre. Es una
+convencion: evita que una diferencia dentro del ruido de los jueces LLM se
+tome por mejora. Los pesos del puntaje se cambian con
+\code{options(SeMiLLa.pesos_score = list(...))}.}
+
 \item{verbose}{Mostrar progreso.}
 }
 \value{
@@ -74,8 +82,10 @@ El objeto \code{semilla} corregido, con:
 n_reemplazos x score), \code{reemplazos} (data.frame con item
 viejo, item nuevo, dimension y motivo), \code{balance}
 (data.frame antes/despues por indicador, con el sentido del
-cambio) y \code{revertido} (TRUE si la ultima iteracion degrado
-la escala y se devolvio una version anterior).
+cambio), \code{revertido} (TRUE si la ultima iteracion degrado
+la escala y se devolvio una version anterior) y
+\code{cambios_entregados} (items cuyo texto difiere entre la
+escala de entrada y la entregada).
 }
 }
 \description{

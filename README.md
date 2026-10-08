@@ -54,8 +54,7 @@ El paquete sigue un flujo de 25 pasos agrupados en 9 fases. Cada paso correspond
 |---|---|---|
 | 5 | Convertir items a embeddings | `obtener_embeddings()` |
 | 6 | Detectar redundancias | `analizar_redundancia()`, `items_similares()` |
-| 7 | Estructura factorial alternativa | `efa_regularizado()` |
-| 8 | Estructura por consenso ensemble | `precision_clasificacion(metodo = "ensemble")` |
+| 7 | Separabilidad semantica por consenso ensemble | `precision_clasificacion(metodo = "ensemble")` |
 
 ### Fase IV. Refinamiento
 
@@ -182,8 +181,6 @@ test <- ensamblar(
 | `plot_evolucion_precision()` | Trayectoria del refinamiento |
 | `plot_redundancia()` | Pares de items con similitud > 0.85 |
 | `plot_sankey()` | Flujo dimension teorica -> cluster empirico |
-| `plot_cargas()` | Heatmap de cargas del EFA regularizado |
-| `plot_scree()` | Sedimentacion de eigenvalues |
 | `plot_forma_corta()` | Items seleccionados para la forma corta |
 | `plot_resumen()` | Reporte agregado (todas las metricas) |
 
@@ -203,7 +200,8 @@ test <- ensamblar(
 
 ### Funciones archivadas (no exportadas, accesibles via `SeMiLLa:::`)
 
-- `efa_embeddings()`, `comparar_estructura()` — reemplazadas por `precision_clasificacion()` con `metodo = "ensemble"` y `efa_regularizado()`
+- `efa_embeddings()`, `comparar_estructura()` — reemplazadas por `precision_clasificacion()` con `metodo = "ensemble"`; su codigo esta en `inst/archivo/`
+- `efa_regularizado()`, `plot_cargas()`, `plot_scree()` — obsoletas desde 2.10.0 (siguen exportadas y avisan): el EFA regularizado no recupera la estructura y el scree aplica parallel analysis a una matriz de cosenos con un n supuesto
 - `predecir_irt()`, `plot_irt()` — heuristica sin respaldo empirico
 - `plot_jaccard()` — solapa con `plot_sankey()`
 - `validar_escala()` — ahora interna, llamada desde `generar_items()`
@@ -236,8 +234,12 @@ warning informativo una vez por sesion.
    (caso_a + caso_b + caso_c + caso_d en `evaluar.R`).
 3. Adaptacion transcultural amplifica el DIF semantico cuando los items
    son cortos. Conviene validar con panel bilingue humano.
-4. EFA regularizado puede colapsar a 1 factor sin double-centering. El
-   default `centrado = "double"` previene este problema.
+4. La estructura que reporta SeMiLLa es separabilidad semantica: si los
+   embeddings de los items de una dimension se agrupan juntos. No es un
+   analisis factorial de respuestas y no anticipa las cargas ni el ajuste
+   que se obtendran en campo. Cuando `refinar_escala()` reescribe items para
+   mejorarla, la mide despues con el mismo clustering: esa mejora no es
+   evidencia independiente.
 
 ---
 

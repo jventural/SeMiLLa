@@ -48,8 +48,8 @@ plot_similitud <- function(x,
 
   if (ordenar_por == "dimension" && !is.null(items_df$dimension)) {
     orden <- order(items_df$dimension)
-  } else if (ordenar_por == "cluster" && !is.null(datos$efa)) {
-    orden <- order(datos$efa$asignacion$factor_EFA)
+  } else if (ordenar_por == "cluster" && !is.null(.cluster_por_item(datos$efa))) {
+    orden <- order(.cluster_por_item(datos$efa))
   } else {
     orden <- 1:n_items
   }
@@ -195,9 +195,11 @@ plot_embeddings <- function(x,
   coords$item_num <- 1:n_items
   coords$dimension <- items_df$dimension
 
-  if (colorear_por == "factor_efa" && !is.null(datos$efa)) {
-    coords$color_var <- datos$efa$asignacion$factor_EFA[order(datos$efa$asignacion$item_num)]
-    color_label <- "Factor EFA"
+  # "factor_efa" se conserva como valor aceptado por compatibilidad: colorea
+  # por el cluster semantico de cada item (no hay factores de un EFA).
+  if (colorear_por == "factor_efa" && !is.null(.cluster_por_item(datos$efa))) {
+    coords$color_var <- as.factor(.cluster_por_item(datos$efa))
+    color_label <- "Cluster semantico"
   } else {
     coords$color_var <- items_df$dimension
     color_label <- "Dimension"
@@ -357,11 +359,14 @@ plot_red_items <- function(x,
 }
 
 
-#' @title Scree Plot con Parallel Analysis
+#' @title Scree Plot con Parallel Analysis (obsoleta)
 #'
 #' @description
-#' Visualiza eigenvalues del EFA junto con la linea de parallel analysis
-#' para determinar el numero optimo de factores.
+#' \strong{Obsoleta desde 2.10.0; emite un aviso.} Aplica parallel analysis
+#' a la matriz de similitud coseno entre embeddings con un n = 500 supuesto.
+#' Esa matriz no es una matriz de correlaciones de respuestas, asi que el
+#' grafico no indica cuantos factores tendra la escala. Use
+#' \code{\link{precision_clasificacion}} con \code{metodo = "ensemble"}.
 #'
 #' @param x Objeto semilla o semilla_efa
 #'
@@ -371,6 +376,11 @@ plot_red_items <- function(x,
 plot_scree <- function(x) {
 
   .verificar_ggplot2()
+  warning("plot_scree() esta obsoleta: aplica parallel analysis a una matriz ",
+          "de similitud coseno con un n = 500 supuesto, que no es una matriz de ",
+          "correlaciones de respuestas. No informa cuantos factores tendra la ",
+          "escala. Use precision_clasificacion(metodo = 'ensemble').",
+          call. = FALSE)
 
   if (!requireNamespace("psych", quietly = TRUE)) {
     stop("Instala psych: install.packages('psych')")
@@ -437,11 +447,14 @@ plot_scree <- function(x) {
 }
 
 
-#' @title Visualizar Cargas Factoriales
+#' @title Visualizar Cargas Factoriales (obsoleta)
 #'
 #' @description
-#' Muestra las cargas factoriales de cada item como barras horizontales,
-#' agrupadas por factor.
+#' \strong{Obsoleta desde 2.10.0.} Muestra las cargas de un objeto
+#' \code{semilla_efa} heredado. Un objeto \code{semilla} ya no trae cargas
+#' (su estructura es un clustering de embeddings) y la funcion se detiene con
+#' un mensaje; para la estructura semantica use \code{\link{plot_sankey}} o
+#' \code{\link{plot_precision}}.
 #'
 #' @param x Objeto semilla o semilla_efa
 #' @param ordenar Si TRUE, ordena items por carga dentro de cada factor
@@ -458,8 +471,10 @@ plot_cargas <- function(x,
 
   # Extraer datos
   if (inherits(x, "semilla")) {
-    if (is.null(x$efa)) stop("Ejecuta precision_clasificacion() primero")
-    asig <- x$efa$asignacion
+    # El objeto semilla ya no trae cargas: su estructura es un clustering.
+    stop("plot_cargas() necesita cargas de un EFA, y SeMiLLa ya no calcula ",
+         "un EFA de la escala. Para la estructura semantica use ",
+         "plot_sankey() o plot_precision().", call. = FALSE)
   } else if (inherits(x, "semilla_efa")) {
     asig <- x$asignacion
   } else {
@@ -530,11 +545,12 @@ plot_estructura <- function(x) {
   }
 
   # Extraer datos
-  if (!inherits(x, "semilla") || is.null(x$efa)) {
+  if (!inherits(x, "semilla") || is.null(.separabilidad(x))) {
     stop("Necesitas un objeto semilla con EFA")
   }
 
-  asig <- x$efa$asignacion
+  sep_x <- .separabilidad(x)
+  asig <- sep_x$asignacion_clusters %||% sep_x$asignacion
 
   # Resolver columnas de origen (teorica) y destino (empirica). Acepta tanto el
   # esquema legado (factor_original/factor_EFA) como la asignacion actual de
@@ -1175,10 +1191,13 @@ plot_resumen <- function(x, cv = NULL, fiab = NULL) {
     "Dimensiones: ", length(unique(x$items$dimension)), "\n"
   )
 
-  if (!is.null(x$efa)) {
+  # Antes: "Clusters" y "Varianza" de un EFA que ya no existe (NULL y 0%).
+  sep_x <- .separabilidad(x)
+  if (!is.null(sep_x$precision_global)) {
     metricas_txt <- paste0(metricas_txt,
-      "Clusters: ", x$efa$metadata$n_factores, "\n",
-      "Varianza: ", round(sum(x$efa$varianza$Prop_Var) * 100, 1), "%\n"
+      "Clusters: ", sep_x$n_clusters %||% "?", "\n",
+      "Separabilidad: ", round(sep_x$precision_global, 1), "%\n",
+      if (!is.null(sep_x$ari)) paste0("ARI: ", sprintf("%.2f", sep_x$ari), "\n") else ""
     )
   }
 
@@ -1243,7 +1262,7 @@ plot_resumen <- function(x, cv = NULL, fiab = NULL) {
       embeddings = x$embeddings,
       similitud = x$similitud,
       items = x$items,
-      efa = x$efa
+      efa = .separabilidad(x)
     )
   } else if (inherits(x, "semilla_embeddings")) {
     list(
@@ -2546,4 +2565,20 @@ plot_items_problematicos <- function(x, max_chars = 50, titulo = NULL) {
     )
 
   return(p)
+}
+
+
+# Cluster de cada item, en el orden de x$items. Acepta la asignacion actual de
+# precision_clasificacion() (asignacion_clusters$cluster) y el esquema legado
+# del EFA (asignacion$factor_EFA ordenado por item_num).
+
+#' @keywords internal
+.cluster_por_item <- function(sep) {
+  if (is.null(sep)) return(NULL)
+  a <- sep[["asignacion_clusters"]]
+  if (!is.null(a$cluster)) return(a$cluster)
+  a <- sep[["asignacion"]]
+  if (!is.null(a$factor_EFA))
+    return(if (!is.null(a$item_num)) a$factor_EFA[order(a$item_num)] else a$factor_EFA)
+  NULL
 }

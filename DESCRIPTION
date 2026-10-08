@@ -1,7 +1,7 @@
 Package: SeMiLLa
 Type: Package
 Title: SEmantic Measurement of Items via LLM Assistance
-Version: 2.9.38
+Version: 2.10.0
 Date: 2026-10-08
 Authors@R: c(
     person("Jose", "Ventura-Leon",
@@ -9,13 +9,18 @@ Authors@R: c(
            role = c("aut", "cre"),
            comment = c(ORCID = "0000-0003-2996-4244"))
     )
-Description: Automatic generation of psychometric scale items from psychological
-    constructs using Large Language Models (LLMs). SeMiLLa searches for scientific
-    information about a concept, extracts theoretical dimensions and attributes,
-    generates high-quality items, calculates semantic embeddings, and performs
-    Exploratory Factor Analysis (EFA) to validate the factorial structure.
-    The package implements a complete workflow: from planting a concept (sembrar)
-    to harvesting a validated scale (cosechar).
+Description: Drafts psychometric scale items from a psychological construct
+    with Large Language Models (LLMs) and audits them before any data are
+    collected. It derives a working definition and dimensions from the model's
+    knowledge, from user input or from 'PubMed' and 'Semantic Scholar'
+    abstracts; writes items; obtains text embeddings; and checks whether items
+    of the same dimension group together by ensemble clustering of those
+    embeddings (semantic separability, not factor analysis of responses). A
+    pre-administration gate simulates ordinal responses under stated
+    assumptions about loadings, factor correlations and social desirability,
+    and simulated LLM judges rate content validity (Aiken's V). These checks
+    describe the wording, not the behaviour of real respondents, and do not
+    replace a field study.
 License: MIT + file LICENSE
 URL: https://github.com/jventural/SeMiLLa
 BugReports: https://github.com/jventural/SeMiLLa/issues

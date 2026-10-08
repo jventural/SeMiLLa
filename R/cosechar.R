@@ -32,12 +32,12 @@ exportar_escala <- function(x,
     items <- x$items
     concepto <- x$concepto
     metadata <- x$metadata
-    efa <- x$efa
+    efa <- .separabilidad(x)
   } else if (is.list(x) && !is.null(x$items)) {
     items <- x$items
     concepto <- x$concepto
     metadata <- x$metadata
-    efa <- x$efa
+    efa <- .separabilidad(x)
   } else {
     stop("Objeto no valido. Usa un objeto semilla, semilla_items, o lista con $items")
   }

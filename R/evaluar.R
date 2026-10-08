@@ -1541,20 +1541,20 @@ cargas_semanticas <- function(x,
                                verbose = TRUE) {
 
   # Extraer datos necesarios
-  if (inherits(x, "semilla") || (is.list(x) && !is.null(x$embeddings) && !is.null(x$efa))) {
+  if (inherits(x, "semilla") || (is.list(x) && !is.null(x$embeddings) && !is.null(.separabilidad(x)))) {
     if (is.null(x$embeddings)) {
       stop("El objeto no tiene embeddings. Ejecuta obtener_embeddings() primero.")
     }
-    if (is.null(x$efa)) {
+    if (is.null(.separabilidad(x))) {
       stop("El objeto no tiene estructura de clusters.")
     }
     embeddings <- x$embeddings
-    efa <- x$efa
+    efa <- .separabilidad(x)
     items_df <- x$items
   } else if (inherits(x, "semilla_efa")) {
     stop("Para cargas_semanticas necesitas el objeto semilla completo con embeddings.")
   } else {
-    stop("Objeto no valido. Usa un objeto semilla o lista con $embeddings y $efa.")
+    stop("Objeto no valido. Usa un objeto semilla o lista con $embeddings y $separabilidad.")
   }
 
   n_items <- nrow(embeddings)

@@ -24,7 +24,7 @@ queda.}
 }
 \value{
 El objeto de entrada con menos items, con \code{$embeddings} y
-\code{$similitud} recortados en el mismo orden, \code{$efa} a \code{NULL} y la
+\code{$similitud} recortados en el mismo orden, \code{$separabilidad} (y su alias \code{$efa}) a \code{NULL} y la
 compuerta marcada como caduca. El atributo \code{"items_retirados"} acumula los
 identificadores retirados.
 }
@@ -49,7 +49,7 @@ trabaje desde R: el flujo es identico en los dos sitios.
 demas de su dimension" se calcula excluyendolo a el; con un solo item la
 dimension queda indefinida y ni el consenso ni la compuerta pueden correr.
 
-\strong{Que se invalida.} \code{$efa} se borra. La compuerta NO se borra -de
+\strong{Que se invalida.} \code{$separabilidad} (la estructura medida; su alias heredado \code{$efa}) se borra. La compuerta NO se borra -de
 ella heredan el umbral de redundancia, los vetos lexicos y la exposicion por
 dimension- pero se marca con \code{$compuerta$caduca = TRUE} y
 \code{$compuerta$caduca_motivo = "retiro_manual"}.

@@ -857,6 +857,7 @@ validar_escala <- function(nombre,
     embeddings = emb_result$embeddings,
     similitud = emb_result$similitud,
     cfa = cfa_result,
+    separabilidad = efa_result,
     efa = efa_result,
     metadata = list(
       concepto_original = nombre,
@@ -1132,7 +1133,7 @@ refinar_escala <- function(escala,
   }
   .validar_api_key(api_key)
 
-  if (is.null(escala$efa)) {
+  if (is.null(.separabilidad(escala))) {
     stop("La escala debe tener estructura. Ejecuta precision_clasificacion() primero.")
   }
 
@@ -1775,6 +1776,7 @@ refinar_escala <- function(escala,
       items = items_actuales,
       embeddings = emb_result$embeddings,
       similitud = emb_result$similitud,
+      separabilidad = efa_result,
       efa = efa_result,
       metadata = escala_actual$metadata
     )

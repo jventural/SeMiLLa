@@ -249,7 +249,7 @@ estructura_por_consenso <- function(escala,
     ens1  <- .medir_estructura(escala_refinada, algoritmos, n_replicas, seed)
     gate1 <- .compuerta_estructura(ens1, umbral_consenso, min_precision, min_ari,
                                    escala = escala_refinada, min_prop_items = min_prop_items)
-    escala_refinada$efa <- ens1
+    escala_refinada <- .fijar_separabilidad(escala_refinada, ens1)
     cons1 <- data.frame(numero    = escala_refinada$items$numero,
                         dimension = escala_refinada$items$dimension,
                         item      = escala_refinada$items$item,
@@ -272,7 +272,7 @@ estructura_por_consenso <- function(escala,
   }
 
   if (!falla || !isTRUE(auto_refinar)) {
-    escala$efa <- ens0
+    escala <- .fijar_separabilidad(escala, ens0)
     return(structure(list(
       escala_inicial = escala, escala_final = escala,
       antes = ens0, despues = NULL,
@@ -359,7 +359,7 @@ estructura_por_consenso <- function(escala,
   }
 
   escala_f  <- escala
-  escala_f$efa <- ens0
+  escala_f <- .fijar_separabilidad(escala_f, ens0)
   cambiados <- integer(0)
   hist_all  <- NULL
   n_blind   <- 0L
@@ -492,7 +492,7 @@ estructura_por_consenso <- function(escala,
         hist_all <- hist_all[!fuera, , drop = FALSE]
       }
     }
-    escala_f$efa <- ens1
+    escala_f <- .fijar_separabilidad(escala_f, ens1)
     ciclos <- rbind(ciclos, data.frame(
       ciclo = ciclo,
       items_bajo_umbral = sum(ens1$consenso$Consenso < umbral_consenso, na.rm = TRUE),
@@ -562,7 +562,7 @@ estructura_por_consenso <- function(escala,
         if (mejor$ciclo == 0L) "la de entrada" else paste("ciclo", mejor$ciclo),
         "), no la ultima.\n", sep = "")
   escala_f <- mejor$escala; ens1 <- mejor$ens; gate1 <- mejor$gate
-  escala_f$efa <- ens1
+  escala_f <- .fijar_separabilidad(escala_f, ens1)
 
   #  CERRAR EL CICLO. La compuerta alimenta a este paso (umbral, vetos,
   #  deseabilidad) pero nadie volvia a mirarla despues: el eje 3 -lo que la
@@ -594,6 +594,16 @@ estructura_por_consenso <- function(escala,
     }
   }
 
+  #  Lo que de verdad cambio. 'cambiados' acumulaba todos los ciclos, tambien
+  #  los descartados, aunque se entregara otro estado (incluso el de entrada).
+  cambios_entregados <- .diferencias_items(escala$items, escala_f$items)
+  # Como antes, por 'numero' del item (lo lee plot_estructura_consenso()).
+  #  (.diferencias_items() da posiciones cuando las dos escalas tienen las
+  #  mismas filas, y 'numero' cuando no.)
+  cambiados <- if (!is.null(escala_f$items$numero) &&
+                   nrow(escala$items) == nrow(escala_f$items))
+    escala_f$items$numero[cambios_entregados$item] else cambios_entregados$item
+
   #  Aviso: si se reescribio media escala o mas, ya no es el mismo instrumento.
   aviso_reescritura <- NULL
   prop_cambiada <- length(cambiados) / max(1L, nrow(escala$items))
@@ -618,6 +628,13 @@ estructura_por_consenso <- function(escala,
     gate_antes = gate0, gate_despues = gate1,
     consenso_antes = cons0, consenso_despues = cons1,
     refinamiento = ref, historial = hist_all, cambiados = cambiados,
+    cambios_entregados = cambios_entregados,
+    # La reescritura persigue el mismo clustering con el que despues se mide:
+    # si mejora, eso no es evidencia independiente de estructura.
+    nota_circularidad = if (nrow(cambios_entregados) > 0)
+      paste0("La separabilidad final se midio con el mismo clustering que ",
+             "guio la reescritura de ", nrow(cambios_entregados), " item(s): ",
+             "su mejora no es evidencia independiente de estructura.") else NULL,
     n_blindaje = n_blind, ciclos = ciclos,
     # v2.9.35
     eje3 = eje3, aviso_reescritura = aviso_reescritura,
@@ -667,6 +684,8 @@ print.semilla_estructura <- function(x, ...) {
   if (isTRUE(x$refinado)) {
     cat("\n  Items reescritos: ", length(x$cambiados), " (",
         paste(sort(x$cambiados), collapse = ", "), ")\n", sep = "")
+    if (!is.null(x$nota_circularidad))
+      cat("  Nota: ", x$nota_circularidad, "\n", sep = "")
     if (!is.null(x$ciclos) && nrow(x$ciclos) > 0) {
       cat("  Ciclos refinar -> blindar -> medir:\n")
       print(x$ciclos, row.names = FALSE)

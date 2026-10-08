@@ -37,7 +37,8 @@ exportar_proyecto(
 
 \item{abreviatura}{Prefijo corto para la escala final y el formulario (p. ej. "PM").}
 
-\item{efa}{Resultado de \code{\link{efa_regularizado}} (tabla 03).}
+\item{efa}{Ignorado desde 2.10.0 (antes, resultado de
+\code{\link{efa_regularizado}} para la tabla 03, que ya no se exporta).}
 
 \item{ensemble}{Resultado de \code{\link{precision_clasificacion}} (tabla 04 + graficos 08-09).}
 

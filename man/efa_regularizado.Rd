@@ -2,7 +2,7 @@
 % Please edit documentation in R/efa_regularizado.R
 \name{efa_regularizado}
 \alias{efa_regularizado}
-\title{Analisis Factorial Exploratorio Regularizado sobre Embeddings}
+\title{Analisis Factorial Exploratorio Regularizado sobre Embeddings (obsoleta)}
 \usage{
 efa_regularizado(
   x,
@@ -25,8 +25,10 @@ numero de dimensiones teoricas.}
 \item{penalizacion}{Tipo de penalizacion: "elasticnet" (default,
 alpha=0.5), "lasso" (L1) o "ridge" (L2).}
 
-\item{lambda}{Parametro de penalizacion. Si \code{NULL} se selecciona
-por validacion cruzada \emph{leave-one-item-out}.}
+\item{lambda}{Parametro de penalizacion. Si \code{NULL} se elige el que
+minimiza el error de reconstruccion de la matriz de similitud sobre una
+grilla de 0 a 0.5, con una penalizacion minima por tamano. No es una
+validacion cruzada: no deja ningun item fuera.}
 
 \item{alpha}{Mezcla L1/L2 para elastic-net (1 = lasso puro, 0 = ridge).}
 
@@ -60,6 +62,14 @@ encogidas a cero por debajo del umbral).
 }
 }
 \description{
+\strong{Obsoleta desde 2.10.0.} Su asignacion por item no recupera la
+estructura: medida el 2026-08-07 dio ARI de .12 a .40 donde
+\code{precision_clasificacion(metodo = "ensemble")} daba 1.00 sobre los
+mismos embeddings, porque el maximo absoluto de cada fila borra el signo de
+los eigenvectores. Se conserva para no romper codigo existente y emite
+siempre un aviso. Para decidir la estructura use
+\code{\link{precision_clasificacion}}.
+
 Ajusta una solucion factorial sobre la matriz de similitud de embeddings
 aplicando regularizacion L1 (lasso) o elastic-net sobre las cargas en
 lugar de rotarlas. Reduce la indeterminacion rotacional y promueve
@@ -71,6 +81,11 @@ la matriz de cargas inicial obtenida por descomposicion espectral de la
 matriz de similitud coseno entre items.
 }
 \details{
+Pese al nombre, no es un analisis factorial de respuestas: las "cargas"
+son pesos espectrales de la matriz de similitud coseno entre embeddings y
+la "varianza explicada" se refiere a esa matriz, no a la varianza de las
+respuestas de personas.
+
 La rotacion clasica (varimax, promax, oblimin, etc.) introduce
 arbitrariedad porque varias soluciones rotadas son matematicamente
 equivalentes. La EFA regularizada sustituye la rotacion por una

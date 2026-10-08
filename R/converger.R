@@ -68,10 +68,17 @@
 #' @param formato_si_falla Si \code{TRUE} (default) y el bucle no alcanza el
 #'   objetivo, construye la version de eleccion forzada cuasi-ipsativa.
 #' @param seed Semilla de la simulacion.
+#' @param margen_mejora Puntos que una vuelta debe ganar, con el mismo
+#'   veredicto, para sustituir a la mejor version (default 4, el peso de un
+#'   gemelo confirmado). Subir de veredicto basta siempre. Es una convencion
+#'   para no tomar el ruido de los jueces LLM por mejora.
 #' @param verbose Mostrar progreso.
 #'
 #' @return Lista con \code{escala} (la mejor version), \code{diagnostico},
-#'   \code{historial}, \code{cambios} (item viejo -> nuevo y por que),
+#'   \code{historial}, \code{cambios} (items cuyo texto difiere entre la
+#'   escala de entrada y la entregada, con la iteracion y el motivo de su
+#'   ultima reescritura), \code{registro_cambios} (todas las reescrituras,
+#'   tambien las de vueltas descartadas),
 #'   \code{forced_choice}, \code{objetivo_alcanzado} y \code{minutos}.
 #'
 #' @seealso \code{\link{compuerta_pre_aplicacion}},
@@ -92,9 +99,11 @@ converger_escala <- function(x,
                              n_jueces        = 10,
                              formato_si_falla = TRUE,
                              seed            = 2026,
+                             margen_mejora   = 4,
                              verbose         = TRUE) {
 
   objetivo <- match.arg(objetivo)
+  items_entrada <- x$items
   if (is.null(x$items) || is.null(x$items$item))
     stop("'x' debe contener $items con la columna 'item'.")
   if (is.null(x$embeddings))
@@ -135,8 +144,8 @@ converger_escala <- function(x,
   x$compuerta <- dg$compuerta
   aiken_ini   <- dg$aiken
 
-  mejor <- list(escala = x, dg = dg, score = dg$score, iter = 0L,
-                cambios = data.frame())
+  mejor <- list(escala = x, dg = dg, score = dg$score, iter = 0L)
+  registro <- data.frame()
   # 'escenario' viaja junto al veredicto (2.9.16): el bucle sigue decidiendo con
   # las cadenas antiguas -esta funcion ramifica sobre ellas- pero quien lea el
   # historial tiene que poder mostrar el mismo vocabulario que la compuerta, o
@@ -248,9 +257,9 @@ converger_escala <- function(x,
       cat(sprintf("  -> %s | marcados: %d | score: %.1f (mejor: %.1f)\n",
                   dg$compuerta$veredicto, nrow(dg$marcados), dg$score, mejor$score))
 
-    if (dg$score > mejor$score) {
-      mejor <- list(escala = x, dg = dg, score = dg$score, iter = it,
-                    cambios = rbind(mejor$cambios, cambios))
+    registro <- rbind(registro, cambios)
+    if (.supera_mejor(dg$score, mejor$score, margen_mejora)) {
+      mejor <- list(escala = x, dg = dg, score = dg$score, iter = it)
       sin_mejora <- 0L
       if (verbose) cat("     (nueva mejor version)\n")
     } else {
@@ -313,8 +322,24 @@ converger_escala <- function(x,
     cat(.linea("-"), "\n", sep = "")
   }
 
+  # $cambios: lo que difiere entre la escala de entrada y la entregada. Antes
+  # sumaba solo las iteraciones ganadoras, pero el bucle sigue desde la ultima
+  # version, asi que reescrituras de vueltas que no ganaron quedaban dentro de
+  # la escala sin figurar. El motivo es el de la ultima reescritura del item.
+  cambios <- .diferencias_items(items_entrada, mejor$escala$items)
+  cambios$iteracion <- rep(NA_integer_, nrow(cambios))
+  cambios$motivo    <- rep(NA_character_, nrow(cambios))
+  if (nrow(cambios) && nrow(registro)) {
+    reg <- registro[registro$iteracion <= mejor$iter, , drop = FALSE]
+    reg <- reg[nrow(reg):1, , drop = FALSE]
+    reg <- reg[!duplicated(reg$item), , drop = FALSE]
+    k <- match(cambios$item, reg$item)
+    cambios$iteracion <- reg$iteracion[k]
+    cambios$motivo    <- reg$motivo[k]
+  }
   out <- list(escala = mejor$escala, diagnostico = mejor$dg,
-              historial = historial, cambios = mejor$cambios,
+              historial = historial, cambios = cambios,
+              registro_cambios = registro, margen_mejora = margen_mejora,
               forced_choice = fc, objetivo_alcanzado = alcanzado,
               objetivo = objetivo, minutos = mins, tiempos = tiempos)
   class(out) <- c("semilla_convergencia", "list")

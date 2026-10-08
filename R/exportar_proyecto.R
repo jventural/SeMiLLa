@@ -13,7 +13,8 @@
 #' @param escala Objeto \code{semilla} final (con items y, idealmente, embeddings/similitud).
 #' @param dir Carpeta de salida (se crea junto con \code{graficos/} y \code{test_aplicacion/}).
 #' @param abreviatura Prefijo corto para la escala final y el formulario (p. ej. "PM").
-#' @param efa Resultado de \code{\link{efa_regularizado}} (tabla 03).
+#' @param efa Ignorado desde 2.10.0 (antes, resultado de
+#'   \code{\link{efa_regularizado}} para la tabla 03, que ya no se exporta).
 #' @param ensemble Resultado de \code{\link{precision_clasificacion}} (tabla 04 + graficos 08-09).
 #' @param refinamiento Resultado de \code{\link{refinar_escala}} (tabla 05).
 #' @param cv Resultado de \code{\link{validez_contenido}} (tabla 06 + grafico 03).
@@ -73,20 +74,16 @@ exportar_proyecto <- function(escala, dir, abreviatura = "TEST",
     reg(file.path("graficos", nombre), ok)
   }
 
-  efa      <- efa %||% escala$efa
-  ensemble <- ensemble %||% escala$efa
+  ensemble <- ensemble %||% .separabilidad(escala)
   k        <- k %||% length(unique(escala$items$dimension))
 
   msg(">> Exportando tablas...")
   wx(escala$items, "01_items_generados.xlsx")
   if (!is.null(escala$similitud))
     wx(as.data.frame(round(escala$similitud, 3)), "02_matriz_similitud.xlsx")
-  if (!is.null(efa) && !is.null(efa$cargas))
-    wx(list(cargas = as.data.frame(efa$cargas),
-            asignacion = data.frame(Item = rownames(efa$cargas),
-                                    Factor = efa$asignacion %||% NA_character_,
-                                    stringsAsFactors = FALSE)),
-       "03_efa_regularizado.xlsx")
+  # 2.10.0: ya no se exportan la tabla 03 ni las figuras 10-11 del EFA
+  # regularizado (obsoleto: no recupera la estructura). El argumento 'efa' se
+  # acepta y se ignora para no romper llamadas existentes.
   if (!is.null(ensemble) && !is.null(ensemble$consenso))
     wx(ensemble$consenso, "04_consenso_ensemble.xlsx")
   if (!is.null(refinamiento) && !is.null(refinamiento$historial))
@@ -142,13 +139,9 @@ exportar_proyecto <- function(escala, dir, abreviatura = "TEST",
   }
   # ---- Figuras comparativas sin refinar vs refinado (10-13) ----
   if (!is.null(escala_sin_refinar)) {
-    .fig_efa_cargas(escala_sin_refinar, k, file.path(GR, "10_efa_cargas_sinrefinar.png"),
-                    paste0(abreviatura, " (sin refinar)"), gp_reg = reg, msg = msg)
     .fig_sankey_de(escala_sin_refinar, file.path(GR, "12_sankey_sinrefinar.png"),
                    paste0(abreviatura, " (sin refinar)"), gp_reg = reg, msg = msg)
   }
-  .fig_efa_cargas(escala, k, file.path(GR, "11_efa_cargas_refinado.png"),
-                  paste0(abreviatura, " (refinado)"), gp_reg = reg, msg = msg)
   .fig_sankey_de(escala, file.path(GR, "13_sankey_refinado.png"),
                  paste0(abreviatura, " (refinado)"), gp_reg = reg, msg = msg)
   # ---- Lollipop de consenso por item: sin refinar (14) y refinado (15) ----
@@ -206,64 +199,6 @@ exportar_proyecto <- function(escala, dir, abreviatura = "TEST",
 }
 
 # --- helpers internos (no exportados) -------------------------------------
-
-.alinear_dims <- function(asign, teor, factores) {
-  dims <- unique(teor)
-  tab <- table(factor = factor(asign, levels = factores), dim = factor(teor, levels = dims))
-  mp <- stats::setNames(rep(NA_character_, length(factores)), factores)
-  tm <- matrix(as.numeric(tab), nrow = nrow(tab), dimnames = list(rownames(tab), colnames(tab)))
-  for (s in seq_len(min(length(factores), length(dims)))) {
-    if (all(tm < 0)) break
-    idx <- which(tm == max(tm), arr.ind = TRUE)[1, ]
-    if (tm[idx[1], idx[2]] <= 0) break
-    mp[rownames(tm)[idx[1]]] <- colnames(tm)[idx[2]]; tm[idx[1], ] <- -1; tm[, idx[2]] <- -1
-  }
-  mp
-}
-
-.fig_efa_cargas <- function(esc, k, file, etiqueta, gp_reg = NULL, msg = message) {
-  ok <- tryCatch({
-    df <- esc$items
-    if (is.null(df$numero)) df$numero <- seq_len(nrow(df))
-    if (is.null(df$codigo)) df$codigo <- paste0("I", df$numero)
-    efa <- efa_regularizado(esc, n_factores = k, centrado = "double", ejecutar = TRUE, verbose = FALSE)
-    L <- as.matrix(efa$cargas)
-    if (ncol(L) < 1) stop("cargas vacias")
-    if (is.null(colnames(L))) colnames(L) <- paste0("F", seq_len(ncol(L)))
-    rownames(L) <- df$codigo
-    factores <- colnames(L); asign <- efa$asignacion; teor <- df$dimension
-    mp <- .alinear_dims(asign, teor, factores)
-    short <- function(s, n = 22) ifelse(nchar(s) > n, paste0(substr(s, 1, n - 1), "…"), s)
-    col_lab <- stats::setNames(vapply(factores, function(f) {
-      d <- mp[f]; if (is.na(d)) paste0(f, "\n(—)") else paste0(f, "\n", short(d)) }, character(1)), factores)
-    long <- expand.grid(codigo = df$codigo, factor = factores, stringsAsFactors = FALSE)
-    long$carga <- as.numeric(L[cbind(match(long$codigo, df$codigo), match(long$factor, factores))])
-    long$dim_teorica <- df$dimension[match(long$codigo, df$codigo)]
-    long$dom <- mapply(function(c, f) !is.na(asign[match(c, df$codigo)]) && asign[match(c, df$codigo)] == f,
-                       long$codigo, long$factor)
-    ord <- df$codigo[order(match(df$dimension, unique(df$dimension)), df$numero)]
-    long$codigo <- factor(long$codigo, levels = rev(ord))
-    long$dim_teorica <- factor(long$dim_teorica, levels = unique(df$dimension))
-    long$factor <- factor(long$factor, levels = factores)
-    p <- ggplot2::ggplot(long, ggplot2::aes(.data$factor, .data$codigo, fill = .data$carga)) +
-      ggplot2::geom_tile(color = "grey90") +
-      ggplot2::geom_tile(data = subset(long, long$dom), color = "black", linewidth = 0.8, fill = NA) +
-      ggplot2::geom_text(ggplot2::aes(label = ifelse(abs(.data$carga) >= 0.10, sprintf("%.2f", .data$carga), "")), size = 2.4) +
-      ggplot2::scale_fill_gradient2(low = "#C0392B", mid = "white", high = "#2E5D33", midpoint = 0) +
-      ggplot2::scale_x_discrete(labels = col_lab) +
-      ggplot2::facet_grid(dim_teorica ~ ., scales = "free_y", space = "free_y", switch = "y") +
-      ggplot2::labs(title = paste0("EFA regularizado — ", etiqueta), x = "Factor empirico", y = "Item", fill = "Carga") +
-      ggplot2::theme_minimal(base_size = 9) +
-      ggplot2::theme(strip.text.y.left = ggplot2::element_text(angle = 0, hjust = 1, size = 7),
-                     strip.placement = "outside", panel.spacing = ggplot2::unit(2, "pt"),
-                     axis.text.x = ggplot2::element_text(size = 7), plot.title = ggplot2::element_text(face = "bold"))
-    ggplot2::ggsave(file, p, width = max(7, 1.0 * length(factores) + 3),
-                    height = max(6, 0.32 * nrow(df) + 2), dpi = dpi, bg = "white")
-    TRUE
-  }, error = function(e) { msg("   [x] ", basename(file), ": ", e$message); FALSE })
-  if (!is.null(gp_reg)) gp_reg(file.path("graficos", basename(file)), ok)
-  invisible(ok)
-}
 
 .fig_sankey_de <- function(esc, file, etiqueta, gp_reg = NULL, msg = message) {
   ok <- tryCatch({

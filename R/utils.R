@@ -823,6 +823,37 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
 }
 
 
+# Estructura semantica medida sobre la escala. Su nombre es $separabilidad:
+# es un clustering de embeddings, no un analisis factorial. $efa se conserva
+# como alias heredado (la app y los .rds guardados lo leen) y se escribe
+# siempre junto con $separabilidad para que no se desincronicen.
+
+#' @keywords internal
+.separabilidad <- function(x) {
+  if (!is.null(x[["separabilidad"]])) x[["separabilidad"]] else x[["efa"]]
+}
+
+#' @keywords internal
+.imprimir_separabilidad <- function(s) {
+  if (!is.null(s$n_clusters))
+    cat("  Clusters pedidos: ", s$n_clusters, " (", s$metodo %||% "?", ")\n", sep = "")
+  if (!is.null(s$precision_global))
+    cat("  Items agrupados con su dimension: ", round(s$precision_global, 1), "%\n", sep = "")
+  if (!is.null(s$ari))
+    cat("  ARI (clusters vs dimensiones): ", sprintf("%.2f", s$ari), "\n", sep = "")
+  if (!is.null(s$silhouette))
+    cat("  Silhouette medio: ", sprintf("%.2f", s$silhouette), "\n", sep = "")
+  invisible(NULL)
+}
+
+#' @keywords internal
+.fijar_separabilidad <- function(x, valor) {
+  x[["separabilidad"]] <- valor
+  x[["efa"]] <- valor
+  x
+}
+
+
 # Registro de lo que de verdad respondio la API. El alias pedido
 # ("gpt-4.1-mini") no basta para reproducir ni para reportar: la API resuelve
 # el alias a una version con fecha que cambia sin aviso.

@@ -401,6 +401,7 @@ semilla <- function(concepto = NULL,
     items = items_result$items,
     embeddings = emb_result$embeddings,
     similitud = emb_result$similitud,
+    separabilidad = efa_result,
     efa = efa_result,
     metadata = list(
       concepto_original = concepto,
@@ -459,7 +460,7 @@ semilla <- function(concepto = NULL,
     if (verbose) cat("\n", .color_gris("[3.5/5] REFINAMIENTO"), " - Omitido (refinar = FALSE)\n", sep = "")
   }
 
-  # Items sobre los que se calculo la estructura ($efa). refinar_escala()
+  # Items sobre los que se calculo la estructura ($separabilidad). refinar_escala()
   # la recalcula con sus propios items, asi que la marca va despues de 3.5.
   items_en_efa <- resultado$items$item
 
@@ -478,7 +479,7 @@ semilla <- function(concepto = NULL,
     }
 
     exportar_escala(
-      x = list(items = resultado$items, concepto = resultado$concepto, metadata = resultado$metadata, efa = resultado$efa),
+      x = list(items = resultado$items, concepto = resultado$concepto, metadata = resultado$metadata, efa = .separabilidad(resultado)),
       archivo = archivo_salida,
       verbose = verbose
     )
@@ -628,24 +629,27 @@ semilla <- function(concepto = NULL,
     }
   }
 
-  # La prueba de estres y el blindaje final reemplazan items sin tocar $efa ni
+  # La prueba de estres y el blindaje final reemplazan items sin tocar
+  # $separabilidad ni
   # $compuerta: el objeto devolvia una precision y un veredicto calculados
   # sobre otra escala. La estructura se recalcula (no llama a la API); la
   # compuerta es cara, asi que se marca como obsoleta y se avisa.
   items_fin <- resultado$items$item
-  if (!is.null(resultado$efa) && !identical(items_fin, items_en_efa)) {
-    resultado$efa <- tryCatch(
+  if (!is.null(.separabilidad(resultado)) && !identical(items_fin, items_en_efa)) {
+    resultado <- .fijar_separabilidad(resultado, tryCatch(
       precision_clasificacion(resultado,
                               n_clusters = length(unique(resultado$items$dimension)),
                               verbose = FALSE),
       error = function(e) {
         warning("No se pudo recalcular la estructura sobre la escala final (",
-                conditionMessage(e), "); $efa queda en NULL.", call. = FALSE)
+                conditionMessage(e), "); $separabilidad queda en NULL.",
+                call. = FALSE)
         NULL
-      })
+      }))
   }
   if (!is.null(resultado$compuerta) && !identical(items_fin, items_en_compuerta)) {
-    resultado$compuerta$obsoleta <- TRUE
+    resultado$compuerta$caduca <- TRUE
+    resultado$compuerta$caduca_motivo <- "items_cambiados_tras_compuerta"
     resultado$compuerta$items_cambiados <-
       if (length(items_fin) == length(items_en_compuerta))
         which(items_fin != items_en_compuerta) else NA_integer_
@@ -660,12 +664,14 @@ semilla <- function(concepto = NULL,
     cat(.color_verde("COMPLETADO"), "\n")
     cat("Items en la escala final: ", nrow(resultado$items), "\n", sep = "")
     cat("Dimensiones: ", length(unique(resultado$items$dimension)), "\n", sep = "")
-    if (!is.null(resultado$efa$metadata$n_factores)) {
-      cat("Factores EFA: ", resultado$efa$metadata$n_factores, "\n", sep = "")
+    sep_fin <- .separabilidad(resultado)
+    if (!is.null(sep_fin$precision_global)) {
+      cat("Separabilidad semantica: ", round(sep_fin$precision_global, 1),
+          "% de items agrupados con su dimension\n", sep = "")
     }
     if (!is.null(resultado$compuerta)) {
       cat("Compuerta pre-aplicacion: ", resultado$compuerta$veredicto,
-          if (isTRUE(resultado$compuerta$obsoleta)) " (OBSOLETA: la escala cambio despues)",
+          if (isTRUE(resultado$compuerta$caduca)) " (CADUCA: la escala cambio despues)",
           "\n", sep = "")
     }
     if (!is.null(resultado$optimizacion)) {
@@ -752,13 +758,13 @@ print.semilla <- function(x, ...) {
   }
   cat("\n")
 
-  # EFA
-  if (!is.null(x$efa)) {
+  # Separabilidad semantica. Antes se imprimian "Rotacion" y "Varianza
+  # explicada" de un EFA que el paquete ya no calcula: salian en blanco y 0%.
+  sep_x <- .separabilidad(x)
+  if (!is.null(sep_x)) {
     cat(.linea("-"), "\n")
-    cat(.color_verde("CLUSTERING SEMANTICO:"), "\n\n")
-    cat("  Clusters identificados: ", x$efa$metadata$n_factores, "\n", sep = "")
-    cat("  Rotacion: ", x$efa$metadata$rotacion, "\n", sep = "")
-    cat("  Varianza explicada: ", round(sum(x$efa$varianza$Prop_Var) * 100, 1), "%\n", sep = "")
+    cat(.color_verde("SEPARABILIDAD SEMANTICA (clustering de embeddings):"), "\n\n")
+    .imprimir_separabilidad(sep_x)
     cat("\n")
   }
 

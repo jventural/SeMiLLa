@@ -79,6 +79,12 @@
 #' @param poblacion Poblacion objetivo; si NULL se toma de
 #'   \code{x$metadata$poblacion}.
 #' @param seed Semilla de la simulacion.
+#' @param margen_mejora Puntos que una iteracion debe ganar, con el mismo
+#'   veredicto, para sustituir a la mejor version guardada (default 4, el peso
+#'   de un gemelo confirmado). Subir de veredicto basta siempre. Es una
+#'   convencion: evita que una diferencia dentro del ruido de los jueces LLM se
+#'   tome por mejora. Los pesos del puntaje se cambian con
+#'   \code{options(SeMiLLa.pesos_score = list(...))}.
 #' @param verbose Mostrar progreso.
 #'
 #' @return El objeto \code{semilla} corregido, con:
@@ -89,8 +95,10 @@
 #'         n_reemplazos x score), \code{reemplazos} (data.frame con item
 #'         viejo, item nuevo, dimension y motivo), \code{balance}
 #'         (data.frame antes/despues por indicador, con el sentido del
-#'         cambio) y \code{revertido} (TRUE si la ultima iteracion degrado
-#'         la escala y se devolvio una version anterior).
+#'         cambio), \code{revertido} (TRUE si la ultima iteracion degrado
+#'         la escala y se devolvio una version anterior) y
+#'         \code{cambios_entregados} (items cuyo texto difiere entre la
+#'         escala de entrada y la entregada).
 #' }
 #'
 #' @section No regresion:
@@ -126,9 +134,11 @@ optimizar_para_campo <- function(x,
                                  modelo                = "gpt-4.1-mini",
                                  poblacion             = NULL,
                                  seed                  = 2026,
+                                 margen_mejora         = 4,
                                  verbose               = TRUE) {
 
   veredicto_objetivo <- match.arg(veredicto_objetivo)
+  items_entrada <- x$items
   if (is.null(x$items) || is.null(x$items$item))
     stop("'x' debe contener $items con la columna 'item'.")
   if (is.null(poblacion)) poblacion <- x$metadata$poblacion
@@ -339,7 +349,7 @@ optimizar_para_campo <- function(x,
       iteracion = it, veredicto = x$compuerta$veredicto,
       n_reemplazos = n_ok, score = round(sc, 2), stringsAsFactors = FALSE))
 
-    if (sc > mejor$score) {
+    if (.supera_mejor(sc, mejor$score, margen_mejora)) {
       mejor <- list(items = x$items, embeddings = x$embeddings,
                     similitud = x$similitud, compuerta = x$compuerta,
                     score = sc, iteracion = it, n_reemplazos = n_ok)
@@ -399,7 +409,10 @@ optimizar_para_campo <- function(x,
     revertido = revertido,
     balance = balance,
     historial = historial,
-    reemplazos = reemplazos
+    reemplazos = reemplazos,
+    # 2.10.0: lo que de verdad cambio entre la escala de entrada y la entregada
+    cambios_entregados = .diferencias_items(items_entrada, x$items),
+    margen_mejora = margen_mejora
   )
 
   if (verbose) {
@@ -570,10 +583,75 @@ balance_optimizacion <- function(g0, g1) .balance_optimizacion(g0, g1)
   if (is.null(prob) || is.na(prob)) prob <- 0
 
   # Un gemelo confirmado por el juez LLM pesa mas que un cluster, y un
-  # cluster mas que un par suelto (jerarquia de la propia compuerta).
-  penal <- 4 * n_gem + 2.5 * n_fac + 0.5 * n_par +
-           5 * intra + 8 * halo + 2 * unifor
-  as.numeric(niv) * 1000 - penal + 10 * prob
+  # cluster mas que un par suelto (jerarquia de la propia compuerta). Los
+  # pesos son una CONVENCION que ordena esa jerarquia, no una estimacion: se
+  # pueden cambiar con options(SeMiLLa.pesos_score = list(...)).
+  w <- .pesos_score()
+  penal <- w$gemelo * n_gem + w$faceta * n_fac + w$par * n_par +
+           w$alerta_intra * intra + w$halo * halo + w$uniforme * unifor
+  as.numeric(niv) * w$veredicto - penal + w$prob_limpia * prob
+}
+
+
+# Pesos del puntaje de la compuerta. Los valores por defecto son los que el
+# paquete uso siempre; se exponen para que se puedan declarar y variar.
+
+#' @keywords internal
+.pesos_score <- function() {
+  def <- list(veredicto = 1000, gemelo = 4, faceta = 2.5, par = 0.5,
+              alerta_intra = 5, halo = 8, uniforme = 2, prob_limpia = 10)
+  usr <- getOption("SeMiLLa.pesos_score", NULL)
+  if (is.list(usr)) def[names(usr)] <- usr
+  def
+}
+
+
+# Una version nueva sustituye a la mejor guardada solo si sube de veredicto o,
+# con el mismo veredicto, gana al menos 'margen' puntos. Sin margen, un cambio
+# dentro del ruido de los jueces LLM (el juez de gemelos dio 15, 4 y 7 en tres
+# corridas de la misma escala) bastaba para declarar una "nueva mejor version".
+# El margen por defecto (4) equivale a un gemelo confirmado: es una convencion
+# declarada, no un intervalo de ruido medido.
+
+#' @keywords internal
+.supera_mejor <- function(score_nuevo, score_mejor, margen = 4) {
+  if (!is.finite(score_mejor)) return(is.finite(score_nuevo))
+  if (!is.finite(score_nuevo)) return(FALSE)
+  w <- .pesos_score()$veredicto
+  nivel_nuevo <- floor((score_nuevo + w / 2) / w)
+  nivel_mejor <- floor((score_mejor + w / 2) / w)
+  if (nivel_nuevo != nivel_mejor) return(nivel_nuevo > nivel_mejor)
+  score_nuevo >= score_mejor + margen
+}
+
+
+# Items cuyo texto difiere entre la escala de entrada y la entregada. Es el
+# historial que corresponde a lo que se entrega: los registros por iteracion
+# incluyen reescrituras de vueltas descartadas y omiten las de vueltas que,
+# sin ganar, quedaron dentro de la escala.
+
+#' @keywords internal
+.diferencias_items <- function(antes, despues) {
+  vacio <- data.frame(item = integer(0), dimension = character(0),
+                      item_viejo = character(0), item_nuevo = character(0),
+                      stringsAsFactors = FALSE)
+  if (is.null(antes) || is.null(despues)) return(vacio)
+  if (nrow(antes) == nrow(despues)) {
+    i <- which(as.character(antes$item) != as.character(despues$item))
+    if (!length(i)) return(vacio)
+    return(data.frame(item = i, dimension = as.character(despues$dimension[i]),
+                      item_viejo = as.character(antes$item[i]),
+                      item_nuevo = as.character(despues$item[i]),
+                      stringsAsFactors = FALSE))
+  }
+  if (is.null(antes$numero) || is.null(despues$numero)) return(vacio)
+  m <- match(despues$numero, antes$numero)
+  i <- which(!is.na(m) & as.character(antes$item[m]) != as.character(despues$item))
+  if (!length(i)) return(vacio)
+  data.frame(item = despues$numero[i], dimension = as.character(despues$dimension[i]),
+             item_viejo = as.character(antes$item[m[i]]),
+             item_nuevo = as.character(despues$item[i]),
+             stringsAsFactors = FALSE)
 }
 
 

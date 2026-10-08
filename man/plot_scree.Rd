@@ -2,7 +2,7 @@
 % Please edit documentation in R/plots.R
 \name{plot_scree}
 \alias{plot_scree}
-\title{Scree Plot con Parallel Analysis}
+\title{Scree Plot con Parallel Analysis (obsoleta)}
 \usage{
 plot_scree(x)
 }
@@ -13,6 +13,9 @@ plot_scree(x)
 Objeto ggplot2
 }
 \description{
-Visualiza eigenvalues del EFA junto con la linea de parallel analysis
-para determinar el numero optimo de factores.
+\strong{Obsoleta desde 2.10.0; emite un aviso.} Aplica parallel analysis
+a la matriz de similitud coseno entre embeddings con un n = 500 supuesto.
+Esa matriz no es una matriz de correlaciones de respuestas, asi que el
+grafico no indica cuantos factores tendra la escala. Use
+\code{\link{precision_clasificacion}} con \code{metodo = "ensemble"}.
 }

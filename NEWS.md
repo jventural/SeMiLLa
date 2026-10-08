@@ -1,3 +1,85 @@
+# SeMiLLa 2.10.0 (2026-10-08)
+## Nombres que dicen lo que se mide
+
+Los tests estan en `tests/testthat/test-regresion-2100.R` y ninguno llama a
+la API.
+
+### La estructura se llama separabilidad, no EFA
+
+* `DESCRIPTION` decia que el paquete "performs Exploratory Factor Analysis
+  (EFA) to validate the factorial structure". No lo hace desde hace tiempo: la
+  estructura es un clustering ensemble de embeddings. La descripcion nueva lo
+  dice, y dice que la compuerta simula bajo supuestos y que los jueces son
+  simulados.
+* El resultado de la estructura se guarda en `$separabilidad`. `$efa` se
+  conserva como alias heredado y se escribe siempre junto con
+  `$separabilidad`, para que la app y los `.rds` guardados sigan funcionando.
+  Se retirara en la 3.0.
+* `print()` de un objeto `semilla`, el resumen final de `semilla()` y el panel
+  de metricas de los graficos mostraban "Rotacion" en blanco, "Varianza
+  explicada: 0 %" y "Factores EFA" vacio: leian campos de un EFA que ya no se
+  calcula. Ahora muestran clusters, porcentaje de items agrupados con su
+  dimension, ARI y silhouette.
+
+### Funciones obsoletas (siguen exportadas y avisan)
+
+* `efa_regularizado()`: su asignacion por item no recupera la estructura (ARI
+  .12 a .40 donde el ensemble da 1.00, medido el 2026-08-07). El aviso sale
+  siempre, no solo con `verbose = TRUE`. La documentacion decia que lambda se
+  elegia por validacion cruzada *leave-one-item-out*; no deja ningun item
+  fuera, y ahora lo dice.
+* `plot_scree()`: aplicaba parallel analysis a la matriz de cosenos con un
+  n = 500 supuesto. Avisa que eso no indica cuantos factores tendra la escala.
+* `plot_cargas()`: un objeto `semilla` no trae cargas; ahora se detiene con un
+  mensaje que remite a `plot_sankey()` y `plot_precision()`.
+* `exportar_proyecto()` ya no genera `03_efa_regularizado.xlsx` ni las figuras
+  `10_efa_cargas_*.png` y `11_efa_cargas_*.png`.
+* `workflow()` y el README ya no recomiendan `efa_regularizado()`.
+* `R/efa_semantico_archivo.R` decia "NO se carga automaticamente" pero estaba
+  en `R/` y se cargaba (e imprimia un mensaje al cargar el paquete). Pasa a
+  `inst/archivo/`.
+
+### Que version es la "mejor"
+
+* `converger_escala()` y `optimizar_para_campo()` daban por mejor cualquier
+  version con un puntaje mayor, aunque fuera por una decima. Los jueces LLM
+  varian entre corridas (el de gemelos dio 15, 4 y 7 en la misma escala). Ahora
+  una version sustituye a la mejor si sube de veredicto o, con el mismo, gana
+  al menos `margen_mejora` puntos (por defecto 4, el peso de un gemelo
+  confirmado). **Es una convencion declarada, no un intervalo de ruido
+  medido.** Con el margen, algunas corridas conservaran una version anterior
+  donde antes adoptaban una posterior.
+* Los pesos del puntaje de la compuerta (veredicto 1000, gemelo 4, faceta
+  2.5, par 0.5, alerta intra 5, halo 8, uniforme 2, prob. limpia 10) no
+  cambian, pero se pueden declarar con
+  `options(SeMiLLa.pesos_score = list(...))`.
+
+### El historial corresponde a la escala que se entrega
+
+* `converger_escala()$cambios` sumaba solo las reescrituras de las vueltas
+  ganadoras. Como el bucle sigue desde la ultima version, las de vueltas que
+  no ganaron quedaban dentro de la escala entregada sin figurar. Ahora
+  `$cambios` es la diferencia texto a texto entre la escala de entrada y la
+  entregada, con la iteracion y el motivo de la ultima reescritura de cada
+  item. El registro completo queda en `$registro_cambios`.
+* `estructura_por_consenso()$cambiados` acumulaba todos los ciclos aunque se
+  entregara otro estado (incluso el de entrada). Ahora son los items que de
+  verdad difieren; el detalle esta en `$cambios_entregados`.
+* `optimizar_para_campo()` gana `$optimizacion$cambios_entregados`.
+
+### Circularidad declarada
+
+* `refinar_escala()` reescribe items hasta que el clustering coincide con las
+  dimensiones y despues mide con ese mismo clustering. `estructura_por_consenso()`
+  lo dice ahora en `$nota_circularidad` y en su `print()`; el README lo recoge
+  entre las limitaciones.
+
+### Nombre unico para una compuerta vencida
+
+* El aviso de la 2.9.38 en `semilla()` marcaba la compuerta con `obsoleta`;
+  `retirar_items()` ya usaba `caduca` y `caduca_motivo`. Ahora las dos usan
+  `caduca`.
+
 # SeMiLLa 2.9.38 (2026-10-08)
 ## Seis salidas que cambiaban resultados sin avisar
 

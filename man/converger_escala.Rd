@@ -18,6 +18,7 @@ converger_escala(
   n_jueces = 10,
   formato_si_falla = TRUE,
   seed = 2026,
+  margen_mejora = 4,
   verbose = TRUE
 )
 }
@@ -56,11 +57,19 @@ objetivo, construye la version de eleccion forzada cuasi-ipsativa.}
 
 \item{seed}{Semilla de la simulacion.}
 
+\item{margen_mejora}{Puntos que una vuelta debe ganar, con el mismo
+veredicto, para sustituir a la mejor version (default 4, el peso de un
+gemelo confirmado). Subir de veredicto basta siempre. Es una convencion
+para no tomar el ruido de los jueces LLM por mejora.}
+
 \item{verbose}{Mostrar progreso.}
 }
 \value{
 Lista con \code{escala} (la mejor version), \code{diagnostico},
-\code{historial}, \code{cambios} (item viejo -> nuevo y por que),
+\code{historial}, \code{cambios} (items cuyo texto difiere entre la
+escala de entrada y la entregada, con la iteracion y el motivo de su
+ultima reescritura), \code{registro_cambios} (todas las reescrituras,
+tambien las de vueltas descartadas),
 \code{forced_choice}, \code{objetivo_alcanzado} y \code{minutos}.
 }
 \description{

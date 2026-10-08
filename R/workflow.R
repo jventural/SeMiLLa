@@ -53,8 +53,8 @@ flujo <- function(tipo = "texto", archivo = NULL) {
   cat("  ", .color_azul("FASE III. ANALISIS SEMANTICO"), "\n", sep = "")
   cat("    Paso 5.  obtener_embeddings()             [OpenAI text-embedding-3-small]\n")
   cat("    Paso 6.  analizar_redundancia()           [pares con sim > 0.70]\n")
-  cat("    Paso 7.  efa_regularizado()               [Goretzko, 2023]\n")
-  cat("    Paso 8.  precision_clasificacion(metodo='ensemble')  [Voss et al., 2026]\n\n")
+  cat("    Paso 7.  precision_clasificacion(metodo='ensemble')  [Voss et al., 2026]\n")
+  cat("    Paso 8.  (retirado en 2.10.0: efa_regularizado() esta obsoleta)\n\n")
 
   cat("  ", .color_amarillo("FASE IV. REFINAMIENTO"), "\n", sep = "")
   cat("    Paso 9.  refinar_escala(criterio = 'ensemble')\n\n")
@@ -119,7 +119,7 @@ flujo <- function(tipo = "texto", archivo = NULL) {
     label = c(
       "FASE I. ANTES DE EMPEZAR\ncache(action, path)",
       "FASE II. CONSTRUCCION\ngenerar_items(tipo = 'likert')\nver_items()",
-      "FASE III. ANALISIS SEMANTICO\nobtener_embeddings()\nprecision_clasificacion(ensemble)\nefa_regularizado()",
+      "FASE III. ANALISIS SEMANTICO\nobtener_embeddings()\nprecision_clasificacion(ensemble)",
       "FASE IV. REFINAMIENTO\nrefinar_escala(criterio = 'ensemble')",
       "FASE V. EVALUACION PSICOMETRICA\nvalidez_contenido() + auditar_redaccion()\nfiabilidad / discriminacion / coherencia\nvalidez_criterio_predicha()",
       "FASE VI. ENTREGABLE FINAL\nforma_corta() + sugerir_escala_respuesta()\nensamblar(tipo = 'likert')\nexportar_escala() + guardar()",
