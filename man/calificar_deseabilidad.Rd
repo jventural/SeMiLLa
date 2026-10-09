@@ -13,7 +13,7 @@ calificar_deseabilidad(
   n_pasadas = 4,
   max_imputados = 0.25,
   seed = NULL,
-  lector = c("auto", "jev", "chat"),
+  lector = c("chat", "jev", "auto"),
   verbose = TRUE
 )
 }
@@ -49,11 +49,14 @@ API). Los pocos items no calificados se imputan a 0.5 con warning.}
 orden; la respuesta del LLM sigue siendo estocastica). Con \code{NULL}
 (default) no se fija semilla y el orden puede variar entre corridas.}
 
-\item{lector}{Quien juzga. \code{"auto"} (default): con una clave de
-OpenRouter, Jev (modelo de decision: da la probabilidad de cada nivel de
-una escala de 7 anclas y se usa el valor esperado, que no salta de una
-llamada a otra); con otra clave, el modelo de chat. \code{"jev"} o
-\code{"chat"} lo fijan.}
+\item{lector}{Quien juzga. \code{"chat"} (default): el modelo de juicio
+(Claude Haiku 5.5 con una clave de OpenRouter). \code{"jev"}: el modelo de
+decision Jev, que da la probabilidad de cada nivel de una escala de 7
+anclas y no varia entre llamadas (r = 1,00 entre dos corridas en 306
+items). \code{"auto"}: Jev si hay clave de OpenRouter. Jev no es el
+default porque, medido el 09-10-2026 contra la realidad en 9 escalas, la
+compuerta acerto peor con su deseabilidad (AUC 0,525) que con la de
+Haiku (0,575).}
 
 \item{verbose}{Logico; imprime resumen y advertencia.}
 }

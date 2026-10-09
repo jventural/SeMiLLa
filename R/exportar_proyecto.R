@@ -99,6 +99,18 @@ exportar_proyecto <- function(escala, dir, abreviatura = "TEST",
   # acepta y se ignora para no romper llamadas existentes.
   if (!is.null(ensemble) && !is.null(ensemble$consenso))
     wx(ensemble$consenso, "04_consenso_ensemble.xlsx")
+  # 2.12.0: la pertenencia de Jev + juez (con la segunda lectura del
+  # clustering) y la correlacion entre dimensiones estimada por par.
+  if (!is.null(ensemble) && !is.null(ensemble$pertenencia))
+    wx(as.data.frame(ensemble$pertenencia), "04b_pertenencia_jev_juez.xlsx")
+  phi_est <- escala$compuerta$phi_estimado
+  if (is.matrix(phi_est)) {
+    ij <- which(lower.tri(phi_est), arr.ind = TRUE)
+    wx(data.frame(dimension_a = colnames(phi_est)[ij[, 2]],
+                  dimension_b = rownames(phi_est)[ij[, 1]],
+                  correlacion_estimada = round(phi_est[ij], 3)),
+       "04c_correlaciones_estimadas.xlsx")
+  }
   if (!is.null(refinamiento) && !is.null(refinamiento$historial))
     wx(refinamiento$historial, "05_historial_refinamiento.xlsx")
   if (!is.null(cv) && !is.null(cv$v_aiken))

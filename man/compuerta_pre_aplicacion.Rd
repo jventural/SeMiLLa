@@ -19,6 +19,7 @@ compuerta_pre_aplicacion(
   n_nucleos = NULL,
   seed = NULL,
   verbose = TRUE,
+  phi_simulacion = c("supuesto", "estimado"),
   ...
 )
 }
@@ -82,6 +83,13 @@ semilla y el resultado puede variar entre corridas; pase un entero
 (p. ej. \code{2026}) para reproducir la simulacion.}
 
 \item{verbose}{Mostrar el detalle de cada paso.}
+
+\item{phi_simulacion}{Con una clave de OpenRouter, la correlacion entre
+dimensiones se estima por par y se devuelve en \code{$phi_estimado}.
+\code{"supuesto"} (default) la informa pero simula con la phi supuesta de
+siempre; \code{"estimado"} simula con ella. Medido el 09-10-2026 en 9
+escalas reales: la phi estimada se acerca mas a la real, pero usarla en la
+simulacion empeoro el acierto de la compuerta frente a la realidad.}
 
 \item{...}{Argumentos adicionales para \code{\link{simular_estructura}}
 (p. ej. \code{umbral_ld}, \code{carga_propia}, \code{k_cat}).}

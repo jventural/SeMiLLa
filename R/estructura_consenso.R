@@ -467,8 +467,10 @@ estructura_por_consenso <- function(escala,
                                        similitud = esc$similitud,
                                        n = par_prev$n %||% 300,
                                        n_rep = n_rep_ciclo,
-                                       # 2.12.0: la phi por par que estimo la compuerta
-                                       phi_teorico = escala$compuerta$phi_estimado %||% 0.50,
+                                       # 2.12.0: la phi estimada se informa pero no entra al
+                                       # veredicto (empeoraba la compuerta frente a la realidad)
+                                       phi_teorico = if (identical(escala$compuerta$parametros$phi_simulacion, "estimado"))
+                                         escala$compuerta$phi_estimado %||% 0.50 else 0.50,
                                        seed = seed, verbose = FALSE),
                     error = function(e) NULL)
     if (is.null(sim)) return(NULL)

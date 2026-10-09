@@ -33,13 +33,17 @@ escalas reales:
   pertenencia (precision, ARI y consenso pasan a informativos) y
   `refinar_escala(pertenencia = "auto")` reescribe los items que no
   pertenecen.
-* `calificar_deseabilidad(lector = "auto")`: el juez es Jev (valor esperado
+* `calificar_deseabilidad(lector = "jev")`: Jev como juez (valor esperado
   sobre 7 anclas). En 306 items, dos corridas: r = 1,000 y diferencia maxima
-  0,021, frente a 0,150 del modelo de chat.
+  0,021, frente a 0,150 del modelo de chat. NO es el default: contra la
+  realidad (9 escalas con AFC, n = 1500) la compuerta acerto peor con su
+  deseabilidad (AUC 0,525, 4 de 9) que con la de Haiku (0,575, 5 de 9).
 * `compuerta_pre_aplicacion()` estima la correlacion de cada par de
-  dimensiones (`$phi_estimado`) y `simular_estructura()` acepta una matriz
-  K x K en `phi_teorico`. Contra 72 pares reales, el error medio bajo de
-  0,248 (constante) a 0,135.
+  dimensiones y la devuelve en `$phi_estimado` (contra 72 pares reales, error
+  medio 0,135 frente a 0,248 de una constante), pero la INFORMA sin usarla en
+  el veredicto: simular con ella empeoro el acierto de la compuerta (AUC
+  0,375). `phi_simulacion = "estimado"` la usa a pedido.
+  `simular_estructura()` acepta una matriz K x K en `phi_teorico`.
 * `validez_contenido()` agrega `V_jev` y `discrepancia_jev`: segunda lectura
   que marca los items en que la V del panel no se sostiene.
 * Se probaron y NO se cambiaron la direccion de los items (Jev y Haiku

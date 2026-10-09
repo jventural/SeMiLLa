@@ -88,6 +88,12 @@
 #'   2026-08-20 en la misma maquina, la compuerta tardaba 12.0 min (432 CFAs,
 #'   1 nucleo) mientras \code{estres_escala()} despachaba 1500 CFAs en 2.7 min
 #'   con 22. Use 1 para volver al comportamiento secuencial.
+#' @param phi_simulacion Con una clave de OpenRouter, la correlacion entre
+#'   dimensiones se estima por par y se devuelve en \code{$phi_estimado}.
+#'   \code{"supuesto"} (default) la informa pero simula con la phi supuesta de
+#'   siempre; \code{"estimado"} simula con ella. Medido el 09-10-2026 en 9
+#'   escalas reales: la phi estimada se acerca mas a la real, pero usarla en la
+#'   simulacion empeoro el acierto de la compuerta frente a la realidad.
 #' @param seed Semilla. Alimenta \code{set.seed()} de la simulacion y, desde
 #'   2.9.15, tambien la opcion \code{SeMiLLa.seed} que \code{.llamar_openai()}
 #'   envia a la API. Ojo: el seed de OpenAI es best-effort y no garantiza
@@ -154,7 +160,9 @@ compuerta_pre_aplicacion <- function(x,
                                      n_nucleos     = NULL,
                                      seed          = NULL,
                                      verbose       = TRUE,
+                                     phi_simulacion = c("supuesto", "estimado"),
                                      ...) {
+  phi_simulacion <- match.arg(phi_simulacion)
 
   if (is.null(x$items) || is.null(x$items$item))
     stop("'x' debe contener $items con la columna 'item'.")
@@ -469,14 +477,18 @@ compuerta_pre_aplicacion <- function(x,
   # ---------------------------------------------------------------------------
   if (verbose) cat("\n", .color_azul("[COMPUERTA 3/3] ESTRUCTURA SIMULADA"), "\n", sep = "")
   # 2.12.0: con una clave de OpenRouter, la correlacion entre dimensiones se
-  # ESTIMA por par (Jev + modelo de juicio) en vez de suponer la misma para
-  # todos. Medido contra 72 pares reales: el error medio bajo de 0,248 (la
-  # constante) a 0,135. Si quien llama paso phi_teorico, se respeta.
+  # ESTIMA por par (Jev + modelo de juicio). Contra 72 pares reales el error
+  # medio bajo de 0,248 (constante) a 0,135, asi que se INFORMA. Pero NO entra
+  # al veredicto por defecto: medido contra la realidad en las mismas 9 escalas
+  # de agosto, simular con la phi estimada empeoro la compuerta (AUC 0,525 ->
+  # 0,375; con phi baja la simulacion aprueba escalas que en campo fallan,
+  # como ECR). phi_simulacion = "estimado" la usa igual, bajo responsabilidad
+  # de quien llama. Si quien llama paso phi_teorico, se respeta.
   dots <- list(...)
   phi_estimado <- NULL
   if (is.null(dots$phi_teorico) && .decision_disponible(api_key)) {
     phi_estimado <- tryCatch(.estimar_phi_pares(x, api_key, modelo), error = function(e) NULL)
-    if (!is.null(phi_estimado)) {
+    if (!is.null(phi_estimado) && identical(phi_simulacion, "estimado")) {
       dots$phi_teorico <- phi_estimado
       if (verbose) cat("  Correlacion entre dimensiones estimada por par (Jev + juez): ",
                        paste(sprintf("%.2f", phi_estimado[lower.tri(phi_estimado)]), collapse = ", "),
@@ -896,7 +908,8 @@ compuerta_pre_aplicacion <- function(x,
     estructura_alternativa = estructura_alternativa,
     # banda: NULL si n_banda = 0 o si el juez no dejo pasadas utilizables
     banda_estructura = if (exists("banda", inherits = FALSE)) banda else NULL,
-    parametros   = list(umbral_sem = umbral_sem, umbral_faceta = umbral_faceta,
+    parametros   = list(phi_simulacion = phi_simulacion,
+                        umbral_sem = umbral_sem, umbral_faceta = umbral_faceta,
                         n = n, n_rep = n_rep, n_banda = n_banda,
                         fecha = format(Sys.Date()))
   )

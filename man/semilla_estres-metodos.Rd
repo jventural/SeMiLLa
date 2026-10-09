@@ -30,9 +30,9 @@ quiebre.
 \examples{
 \donttest{
 st <- estres_escala(semilla_demo, sesgos = "aquiescencia",
-                    dosis = list(aquiescencia = c(0.4, 0.8)),
+                    dosis = list(aquiescencia = 0.8),
                     dl_juez = "off", optimizar_estres = FALSE,
-                    n_rep = 4, n_nucleos = 1, api_key = "",
+                    n_rep = 2, n_nucleos = 1, api_key = "",
                     seed = 2026, verbose = FALSE)
 print(st)
 plot(st)

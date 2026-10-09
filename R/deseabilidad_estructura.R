@@ -33,11 +33,14 @@
 #'   colapso en campo con DE = .031 (Phi = .92) mientras que ACO se separo
 #'   con DE = .059-.077 (Phi = .64-.84); el antiguo 0.10 marcaba como
 #'   "uniforme" tambien a ACO (falsa alarma).
-#' @param lector Quien juzga. \code{"auto"} (default): con una clave de
-#'   OpenRouter, Jev (modelo de decision: da la probabilidad de cada nivel de
-#'   una escala de 7 anclas y se usa el valor esperado, que no salta de una
-#'   llamada a otra); con otra clave, el modelo de chat. \code{"jev"} o
-#'   \code{"chat"} lo fijan.
+#' @param lector Quien juzga. \code{"chat"} (default): el modelo de juicio
+#'   (Claude Haiku 5.5 con una clave de OpenRouter). \code{"jev"}: el modelo de
+#'   decision Jev, que da la probabilidad de cada nivel de una escala de 7
+#'   anclas y no varia entre llamadas (r = 1,00 entre dos corridas en 306
+#'   items). \code{"auto"}: Jev si hay clave de OpenRouter. Jev no es el
+#'   default porque, medido el 09-10-2026 contra la realidad en 9 escalas, la
+#'   compuerta acerto peor con su deseabilidad (AUC 0,525) que con la de
+#'   Haiku (0,575).
 #' @param n_pasadas Numero de pasadas independientes del LLM que se promedian.
 #'   Por defecto 4 (desde 2.9.12; antes 2). El motivo no es tanto la precision
 #'   del promedio como las IMPUTACIONES: con 2 pasadas se observaron hasta 5
@@ -73,7 +76,7 @@ calificar_deseabilidad <- function(x, api_key = Sys.getenv("OPENAI_API_KEY"),
                                     modelo = "gpt-4.1-mini", poblacion = NULL,
                                     umbral_uniforme = 0.05, n_pasadas = 4,
                                     max_imputados = 0.25, seed = NULL,
-                                    lector = c("auto", "jev", "chat"),
+                                    lector = c("chat", "jev", "auto"),
                                     verbose = TRUE) {
   lector <- match.arg(lector)
   items <- x$items
@@ -138,7 +141,7 @@ calificar_deseabilidad <- function(x, api_key = Sys.getenv("OPENAI_API_KEY"),
     for (ch in chunks) plan[[length(plan) + 1L]] <- list(pas = pas, idx = ch)
   }
 
-  # 2.12.0: con una clave de OpenRouter el juez es Jev, un modelo de DECISION.
+  # 2.12.0: con lector = "jev" (o "auto" con clave de OpenRouter) el juez es Jev, un modelo de DECISION.
   # En vez de pedir un numero (que el modelo de chat cambiaba de 0.20 a 0.60
   # para el mismo item entre llamadas identicas), da la probabilidad de cada
   # nivel de una escala de 7 anclas y se toma el valor esperado. Cada pasada

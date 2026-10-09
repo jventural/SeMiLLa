@@ -1,5 +1,23 @@
 # SeMiLLa: retomar aqui
 
+Ultima actualizacion: 2026-10-09.
+
+## Donde quedo (2.12.0)
+
+- Rama de trabajo: `openrouter-modelos-baratos` (publicada en GitHub). `main`
+  sigue en la 2.9.37; la 2.12.0 todavia no se fusiona ni se envia a CRAN.
+- `R CMD check --as-cran --run-donttest`: 0 errores, 0 warnings, 2 NOTE
+  (New submission y hora). Tests: 60/60.
+- OpenRouter + Jev: ver NEWS.md y MEJORAS_PARA_POST.md (cada cambio con su
+  medicion, incluido lo que se probo y NO se cambio).
+- La app del VPS (rama `vps` de SeMiLLa_App) usa esta version; Connect Cloud
+  sigue en la antigua a proposito.
+- Pendiente a decision del autor: fusionar en main y enviar a CRAN.
+
+---
+
+# SeMiLLa: retomar aqui
+
 Ultima actualizacion: 2026-10-08. Este archivo no viaja en el paquete
 (esta en `.Rbuildignore`).
 

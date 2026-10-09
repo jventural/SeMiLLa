@@ -54,7 +54,12 @@ Ganancia de Jev + Haiku sobre el clustering: +0,20 de AUC (IC 95 %: 0,08 a
 las 9 escalas: Jev US$ 0,002, Haiku US$ 0,01. Cautela: solo 27 de 306 items
 "no pertenecen", asi que los margenes son amplios.
 
-## 3. Correlacion entre factores estimada, no supuesta (en curso)
+## 3. Correlacion entre factores estimada (se informa, no decide)
+
+ACTUALIZACION del mismo dia (ver la seccion 9): la estimacion por par se
+acerca mas a la correlacion real, pero usarla en la simulacion empeoro el
+veredicto de la compuerta frente a la realidad. Por eso se muestra como
+informacion y el veredicto se calcula con el supuesto de siempre.
 
 Antes, el motor de simulacion suponia la misma correlacion (phi = 0,47) para
 todos los pares de dimensiones; lo que devolvia era ese supuesto con ruido.
@@ -76,6 +81,12 @@ El error baja casi a la mitad. Jev da la misma respuesta en dos corridas
 (r = 0,998). Estimar los 72 pares costo menos de un centavo.
 
 ## 4. El juez de deseabilidad ya no "salta" (compuerta reproducible)
+
+ACTUALIZACION del mismo dia (ver la seccion 9): Jev es el juez mas estable,
+pero NO quedo como juez por defecto de la compuerta, porque frente a la
+realidad acerto peor que Haiku. El juez por defecto es Haiku, que ya es
+estable (0,97 a 0,99 entre corridas). Lo de abajo sigue siendo cierto como
+medicion de estabilidad.
 
 En agosto de 2026, repetir la compuerta sobre la misma escala daba
 probabilidades de estructura limpia de 0,87 y luego 0,20: el juez de
@@ -153,3 +164,35 @@ Construir una prueba lista para aplicar cuesta unos 2 centavos de dolar
 La mayor parte del ahorro viene de la estructura: antes el refinamiento
 perseguia al clustering y reescribio 6 items (US$ 0,037); ahora Jev y Haiku
 vieron los 24 items en su dimension y no hizo falta reescribir.
+
+## 8. Probado en todos los caminos de la app
+
+Con una clave de OpenRouter, el 9-oct-2026 funcionaron, sin configurar nada
+mas: escalas de historias, Guttman, prueba objetiva y forced choice; el
+camino Validar sobre una escala real (DASS-21: embeddings, estructura con
+pertenencia y compuerta con correlacion estimada por par); y la adaptacion
+transcultural al portugues. En la app se comprobo que la clave de OpenRouter
+se valida sin gastar saldo, muestra el saldo disponible, rechaza una clave
+falsa y que, con una clave de OpenAI, el modelo pasa solo a gpt-5-mini.
+
+Las exportaciones (Excel de la app y exportar_proyecto()) traen ahora la
+pertenencia de cada item y la correlacion estimada por par.
+
+## 9. La compuerta frente a la realidad: lo que se mantuvo igual
+
+Se repitio el estudio de agosto con las mismas 9 escalas (AFC real con
+n = 1500 como verdad, misma semilla y 30 replicas) para ver si los nuevos
+jueces mejoraban el veredicto de la compuerta:
+
+| Juez de deseabilidad + correlacion usada | AUC | Aciertos con el umbral 0,80 |
+|---|---|---|
+| Agosto: juez anterior + 0,47 | 0,65 | 6 de 9 |
+| Haiku + 0,47 (queda por defecto) | 0,575 | 5 de 9 |
+| Jev + 0,47 | 0,525 | 4 de 9 |
+| Jev + correlacion estimada | 0,375 | 3 de 9 |
+
+Con correlaciones estimadas mas bajas, la simulacion aprobaba escalas que en
+campo fallan (ECR, DD, RIASEC): el error caro. Por eso la correlacion
+estimada se informa pero no decide, y la compuerta usa a Haiku como juez.
+Con 9 escalas, la diferencia entre 0,65 y 0,575 es una sola escala; la
+compuerta sigue siendo una orientacion previa, no un pronostico.

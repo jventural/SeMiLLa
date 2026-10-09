@@ -85,7 +85,7 @@
 #' des <- rep(c(0.70, 0.65, 0.30), each = 5)
 #' res <- analizar_tolerancia(semilla_demo, deseabilidad = des,
 #'                            similitud = semilla_demo$similitud,
-#'                            k_cat = 5, n = 150, n_rep_pronostico = 5,
+#'                            k_cat = 5, n = 100, n_rep_pronostico = 3,
 #'                            solo_pronostico = TRUE,
 #'                            n_nucleos = 1, seed = 123, verbose = FALSE)
 #' res
