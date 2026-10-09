@@ -69,3 +69,26 @@ test_that("los prefijos de OpenRouter no se confunden con Hugging Face", {
   expect_equal(SeMiLLa:::.inferir_proveedor_por_modelo("Qwen/Qwen2.5-72B-Instruct")$proveedor, "huggingface")
   expect_null(SeMiLLa:::.inferir_proveedor_por_modelo("gpt-4.1-mini"))
 })
+
+test_that("una clave sk-or- activa OpenRouter con Luna y Haiku, y otra clave lo deshace", {
+  viejo <- options(SeMiLLa.base_url = NULL, SeMiLLa.modelo_generacion = NULL,
+                   SeMiLLa.modelo_juicio = NULL, SeMiLLa.proveedor_auto = NULL)
+  on.exit(options(viejo))
+  SeMiLLa:::.auto_proveedor_por_clave("sk-or-v1-abc")
+  expect_true(SeMiLLa:::.es_openrouter())
+  expect_equal(SeMiLLa:::.resolver_modelo("gpt-4.1-mini"), "openai/gpt-6-luna")
+  expect_equal(SeMiLLa:::.resolver_modelo("gpt-4.1-mini", "low"), "anthropic/claude-haiku-5.5")
+  SeMiLLa:::.auto_proveedor_por_clave("sk-proj-xyz")
+  expect_false(SeMiLLa:::.es_openrouter())
+  expect_equal(SeMiLLa:::.resolver_modelo("gpt-4.1-mini"), "gpt-4.1-mini")
+})
+
+test_that("la deteccion automatica no pisa un proveedor elegido a mano", {
+  viejo <- options(SeMiLLa.base_url = NULL, SeMiLLa.modelo_generacion = NULL,
+                   SeMiLLa.modelo_juicio = NULL, SeMiLLa.proveedor_auto = NULL)
+  on.exit(options(viejo))
+  usar_proveedor("openrouter", modelo_generacion = "anthropic/claude-haiku-5.5", verbose = FALSE)
+  SeMiLLa:::.auto_proveedor_por_clave("sk-proj-xyz")   # no fue automatica: se respeta
+  expect_true(SeMiLLa:::.es_openrouter())
+  expect_equal(SeMiLLa:::.resolver_modelo("gpt-4.1-mini"), "anthropic/claude-haiku-5.5")
+})

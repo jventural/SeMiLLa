@@ -52,6 +52,12 @@
 #' razonamiento. Asi se puede, por ejemplo, generar con
 #' \code{"anthropic/claude-haiku-5.5"} y juzgar con \code{"openai/gpt-6-luna"}.
 #'
+#' Sin llamar a esta funcion, basta pasar una clave de OpenRouter
+#' (\code{"sk-or-..."}) como \code{api_key}: SeMiLLa activa OpenRouter sola con
+#' GPT-6 Luna para generar y Claude Haiku 5.5 para juzgar (la combinacion que
+#' costo un 40 por ciento menos que gpt-4.1-mini con V de Aiken equivalentes).
+#' Si se fijo un proveedor con esta funcion, la clave no lo cambia.
+#'
 #' @section Embeddings:
 #' Esta redireccion afecta SOLO a la generacion de texto (chat). Las
 #' funciones de embeddings siguen usando OpenAI; si no deseas depender de
@@ -128,7 +134,7 @@ usar_proveedor <- function(
     }
   )
 
-  options(SeMiLLa.base_url = url)
+  options(SeMiLLa.base_url = url, SeMiLLa.proveedor_auto = NULL)
   # Los reemplazos de modelo solo tienen sentido en OpenRouter; cualquier otro
   # proveedor los limpia para que no se arrastren de una configuracion previa.
   es_or <- identical(proveedor, "openrouter")
@@ -223,4 +229,32 @@ usar_proveedor <- function(
   if (.es_openrouter() && !grepl("/", modelo, fixed = TRUE))
     return(paste0("openai/", modelo))
   modelo
+}
+
+# --- Clave de OpenRouter reconocida sola --------------------------------------
+# Una clave de OpenRouter empieza por "sk-or-". Si llega una y nadie fijo un
+# proveedor con usar_proveedor(), se activa OpenRouter con los modelos baratos
+# recomendados (GPT-6 Luna genera, Claude Haiku 5.5 juzga; medido el
+# 2026-10-09: -40 % de costo frente a gpt-4.1-mini con V de Aiken equivalentes).
+# Asi funciona igual en un script, en la app y en los procesos de fondo que la
+# app lanza con callr, que no heredan las opciones de la sesion. Si despues
+# llega una clave que NO es de OpenRouter, la activacion automatica se deshace
+# (en la app, un mismo proceso de R atiende a varios usuarios).
+
+#' @keywords internal
+#' @noRd
+.auto_proveedor_por_clave <- function(api_key) {
+  if (!is.character(api_key) || length(api_key) != 1L || is.na(api_key)) return(invisible())
+  es_or <- grepl("^sk-or-", trimws(api_key))
+  auto  <- isTRUE(getOption("SeMiLLa.proveedor_auto"))
+  if (es_or && is.null(getOption("SeMiLLa.base_url", NULL))) {
+    options(SeMiLLa.base_url = "https://openrouter.ai/api/v1",
+            SeMiLLa.proveedor_auto = TRUE,
+            SeMiLLa.modelo_generacion = getOption("SeMiLLa.modelo_generacion") %||% "openai/gpt-6-luna",
+            SeMiLLa.modelo_juicio     = getOption("SeMiLLa.modelo_juicio") %||% "anthropic/claude-haiku-5.5")
+  } else if (!es_or && auto) {
+    options(SeMiLLa.base_url = NULL, SeMiLLa.proveedor_auto = NULL,
+            SeMiLLa.modelo_generacion = NULL, SeMiLLa.modelo_juicio = NULL)
+  }
+  invisible()
 }

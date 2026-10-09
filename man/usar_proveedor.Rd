@@ -70,6 +70,12 @@ modelo; si se fija \code{modelo_juicio}, lo usan las que JUZGAN
 (deseabilidad, jueces de validez, auditorias), que son las que piden
 razonamiento. Asi se puede, por ejemplo, generar con
 \code{"anthropic/claude-haiku-5.5"} y juzgar con \code{"openai/gpt-6-luna"}.
+
+Sin llamar a esta funcion, basta pasar una clave de OpenRouter
+(\code{"sk-or-..."}) como \code{api_key}: SeMiLLa activa OpenRouter sola con
+GPT-6 Luna para generar y Claude Haiku 5.5 para juzgar (la combinacion que
+costo un 40 por ciento menos que gpt-4.1-mini con V de Aiken equivalentes).
+Si se fijo un proveedor con esta funcion, la clave no lo cambia.
 }
 \section{Embeddings}{
 

@@ -35,6 +35,7 @@
 
   n <- length(prompts)
   if (n == 0L) return(list())
+  .auto_proveedor_por_clave(api_key)
   max_paralelo <- max(1L, as.integer(max_paralelo))
 
   # Los argumentos del modelo se calculan UNA vez con la misma funcion que usa

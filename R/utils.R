@@ -629,6 +629,10 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
     stop("No se pudo importar openai. Instala con: pip install openai")
   })
 
+  # Una clave de OpenRouter ("sk-or-...") activa OpenRouter sola, salvo que se
+  # haya fijado otro proveedor (ver .auto_proveedor_por_clave).
+  if (is.null(base_url)) .auto_proveedor_por_clave(api_key)
+
   # Resolver endpoint de chat: argumento explicito > usar_proveedor() >
   # inferencia por nombre de modelo > OpenAI (default). El protocolo es el
   # mismo (OpenAI-compatible); solo cambia la base_url.

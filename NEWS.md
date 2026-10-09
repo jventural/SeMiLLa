@@ -13,6 +13,10 @@
   de tokens, al juzgar.
 * Corregido: la ruta en paralelo (deseabilidad y jueces) ignoraba el proveedor
   elegido con `usar_proveedor()` y llamaba siempre a OpenAI.
+* Una clave de OpenRouter (`sk-or-...`) pasada como `api_key` activa
+  OpenRouter sola, con GPT-6 Luna para generar y Claude Haiku 5.5 para juzgar,
+  salvo que se haya elegido otro proveedor con `usar_proveedor()`. Asi tambien
+  funciona en procesos de fondo que no heredan las opciones de la sesion.
 * La cache distingue el modelo que de verdad responde.
 * Medido el 2026-10-09 (escala de 18 items y 3 dimensiones, generar +
   embeddings + clustering + deseabilidad + 10 jueces, 2 corridas): con
