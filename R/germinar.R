@@ -165,11 +165,12 @@ obtener_embeddings <- function(items,
       # Backend local de acceso libre (sentence-transformers via reticulate)
       embeddings_matrix <- .embeddings_locales(items_texto, modelo_embedding, verbose = verbose)
     } else {
-      if (verbose) cat("  ", .color_flecha(), " Conectando con OpenAI...\n", sep = "")
+      if (verbose) cat("  ", .color_flecha(), " Conectando con ",
+                       if (.es_openrouter()) "OpenRouter" else "OpenAI", "...\n", sep = "")
 
       respuesta <- tryCatch({
         openai$embeddings$create(
-          model = modelo_embedding,
+          model = .modelo_embedding_proveedor(modelo_embedding),
           input = items_texto
         )
       }, error = function(e) {

@@ -670,7 +670,8 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
 
 #' @keywords internal
 .es_modelo_razonador <- function(modelo) {
-  grepl("^(gpt-5|o[0-9])", tolower(modelo %||% ""))
+  # Con OpenRouter el nombre llega como "openai/gpt-5-mini": se mira sin prefijo.
+  grepl("^(openai/)?(gpt-5|o[0-9])", tolower(modelo %||% ""))
 }
 
 # Construye la lista de argumentos correcta para chat$completions$create
@@ -692,7 +693,7 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
 
 #' @keywords internal
 .normalizar_razonamiento <- function(modelo, razonamiento) {
-  m <- tolower(modelo)
+  m <- sub("^openai/", "", tolower(modelo))
   if (razonamiento %in% c("minimal", "none")) {
     if (grepl("^gpt-5\\.[0-9]", m)) return("none")     # gpt-5.1+
     if (grepl("^o[0-9]", m))        return("low")      # o-series
@@ -705,6 +706,9 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
 .args_chat_modelo <- function(modelo, messages, max_tokens = NULL,
                               temperature = NULL, seed = NULL, top_p = NULL,
                               razonamiento = NULL) {
+  # Con OpenRouter se traduce el nombre y se aplica el modelo barato elegido
+  # con usar_proveedor(); en los demas proveedores no cambia nada.
+  modelo <- .resolver_modelo(modelo, razonamiento)
   args <- list(model = modelo, messages = messages)
   if (.es_modelo_razonador(modelo)) {
     esfuerzo <- .normalizar_razonamiento(
@@ -728,6 +732,24 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
     args$reasoning_effort <- esfuerzo
     if (!is.null(seed)) args$seed <- as.integer(seed)
     # temperature / top_p: estos modelos solo aceptan el default; se omiten.
+  } else if (.es_openrouter() && grepl("/", modelo, fixed = TRUE)) {
+    # Por OpenRouter, Claude Haiku y GPT-6 Luna RAZONAN por defecto aunque no se
+    # les pida, y ese razonamiento se descuenta de max_tokens: con 2000 tokens
+    # Haiku entregaba un JSON cortado a las pocas palabras (medido 09-10-2026).
+    # Generar texto no necesita razonar: se apaga. Los juicios piden "low" y
+    # llevan reserva aparte, como en los razonadores de OpenAI.
+    esfuerzo <- razonamiento %||% "none"
+    juicio <- esfuerzo %in% c("low", "medium", "high")
+    args$extra_body <- list(reasoning = if (juicio) list(effort = esfuerzo)
+                                        else list(enabled = FALSE))
+    if (!is.null(max_tokens)) {
+      reserva <- if (juicio) switch(esfuerzo, "low" = 1024L, "medium" = 3072L,
+                                    "high" = 6144L) else 0L
+      args$max_tokens <- as.integer(max_tokens) + reserva
+    }
+    if (!is.null(temperature)) args$temperature <- temperature
+    if (!is.null(seed))        args$seed        <- as.integer(seed)
+    if (!is.null(top_p))       args$top_p       <- top_p
   } else {
     if (!is.null(max_tokens))  args$max_tokens  <- as.integer(max_tokens)
     if (!is.null(temperature)) args$temperature <- temperature
@@ -769,7 +791,9 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
     payload <- list(
       tipo = "chat",
       messages = messages,
-      modelo = modelo,
+      # El modelo que de verdad responde: con OpenRouter puede ser el barato
+      # elegido en usar_proveedor(), y no debe compartir cache con otro.
+      modelo = .resolver_modelo(modelo, razonamiento),
       max_tokens = max_tokens,
       temperature = temperature,
       seed = seed,

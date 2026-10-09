@@ -57,9 +57,9 @@
 import json, os
 from concurrent.futures import ThreadPoolExecutor
 
-def _semilla_chat_paralelo(prompts, api_key, kwargs_json, max_workers, intentos):
+def _semilla_chat_paralelo(prompts, api_key, kwargs_json, max_workers, intentos, base_url=None):
     from openai import OpenAI
-    cli = OpenAI(api_key=api_key)
+    cli = OpenAI(api_key=api_key, base_url=base_url) if base_url else OpenAI(api_key=api_key)
     kw = json.loads(kwargs_json)
 
     def una(p):
@@ -93,7 +93,10 @@ def _semilla_chat_paralelo(prompts, api_key, kwargs_json, max_workers, intentos)
       api_key      = as.character(api_key),
       kwargs_json  = jsonlite::toJSON(args_modelo, auto_unbox = TRUE),
       max_workers  = as.integer(max_paralelo),
-      intentos     = as.integer(intentos)),
+      intentos     = as.integer(intentos),
+      # Antes no se pasaba: con Groq, Hugging Face u OpenRouter, la ruta en
+      # paralelo seguia llamando a OpenAI con la clave de otro proveedor.
+      base_url     = getOption("SeMiLLa.base_url", NULL)),
     error = function(e) e)
 
   # Si el camino paralelo falla por lo que sea, se cae al secuencial: es mas

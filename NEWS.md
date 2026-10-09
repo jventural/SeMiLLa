@@ -1,3 +1,25 @@
+# SeMiLLa 2.12.0 (2026-10-09)
+## OpenRouter y modelos baratos
+
+* `usar_proveedor("openrouter", modelo_generacion, modelo_juicio)`: una sola
+  clave de OpenRouter sirve para el texto y para los embeddings
+  (`openai/text-embedding-3-small`, el mismo modelo de siempre, de modo que los
+  umbrales calibrados siguen valiendo). `modelo_generacion` reemplaza al modelo
+  en las llamadas que generan texto y `modelo_juicio` en las que juzgan
+  (deseabilidad, jueces, auditorias).
+* Por OpenRouter, Claude Haiku 5.5 y GPT-6 Luna razonan por defecto y ese
+  razonamiento se descuenta de `max_tokens`: Haiku entregaba el JSON de los
+  items cortado. Ahora se apaga al generar y se pide bajo, con reserva propia
+  de tokens, al juzgar.
+* Corregido: la ruta en paralelo (deseabilidad y jueces) ignoraba el proveedor
+  elegido con `usar_proveedor()` y llamaba siempre a OpenAI.
+* La cache distingue el modelo que de verdad responde.
+* Medido el 2026-10-09 (escala de 18 items y 3 dimensiones, generar +
+  embeddings + clustering + deseabilidad + 10 jueces, 2 corridas): con
+  gpt-4.1-mini costo US$ 0,017; generando con GPT-6 Luna y juzgando con
+  Claude Haiku 5.5, US$ 0,010; todo con Luna, US$ 0,0055. Luna como juez da V
+  de Aiken mas bajas (0,76 frente a 0,83).
+
 # SeMiLLa 2.11.0 (2026-10-08)
 ## Preparacion para CRAN
 

@@ -31,11 +31,26 @@
 #'         \code{"Qwen/Qwen2.5-72B-Instruct"}). Requiere token HF.
 #'   \item \code{"ollama"}: \code{http://localhost:11434/v1} (servidor local;
 #'         la api_key puede ser cualquier cadena no vacia).
+#'   \item \code{"openrouter"}: \code{https://openrouter.ai/api/v1}. Una sola
+#'         clave de OpenRouter sirve para el texto Y para los embeddings
+#'         (\code{openai/text-embedding-3-small}, el mismo modelo que usa
+#'         SeMiLLa por defecto, de modo que los umbrales calibrados siguen
+#'         valiendo). Con \code{modelo_generacion} y \code{modelo_juicio} se
+#'         eligen modelos mas baratos para toda la sesion (ver Detalles).
 #'   \item \code{"personalizado"}: pasar \code{base_url} explicitamente.
 #' }
 #'
 #' La \code{api_key} que se pasa a las funciones de SeMiLLa debe ser la del
 #' proveedor activo (no la de OpenAI, salvo que el proveedor sea OpenAI).
+#'
+#' Con \code{"openrouter"}, los nombres de OpenAI que usan las funciones por
+#' defecto (\code{"gpt-4.1-mini"}, \code{"text-embedding-3-small"}) se
+#' traducen solos a \code{"openai/..."}. Si se fija \code{modelo_generacion},
+#' las llamadas que GENERAN texto (items, definiciones, reemplazos) usan ese
+#' modelo; si se fija \code{modelo_juicio}, lo usan las que JUZGAN
+#' (deseabilidad, jueces de validez, auditorias), que son las que piden
+#' razonamiento. Asi se puede, por ejemplo, generar con
+#' \code{"anthropic/claude-haiku-5.5"} y juzgar con \code{"openai/gpt-6-luna"}.
 #'
 #' @section Embeddings:
 #' Esta redireccion afecta SOLO a la generacion de texto (chat). Las
@@ -46,6 +61,10 @@
 #'   \code{"huggingface"}, \code{"ollama"}, \code{"personalizado"}.
 #' @param base_url URL base del endpoint (solo requerido con
 #'   \code{proveedor = "personalizado"}; en los demas casos se ignora).
+#' @param modelo_generacion,modelo_juicio Solo con \code{"openrouter"}:
+#'   modelo (formato \code{"organizacion/modelo"}) que reemplaza al de las
+#'   funciones en las llamadas que generan texto y en las que juzgan. Con
+#'   \code{NULL} se usa el modelo que pida cada funcion.
 #' @param verbose Si \code{TRUE}, imprime en consola la confirmacion del
 #'   proveedor activo.
 #'
@@ -77,12 +96,21 @@
 #'
 #' # Volver a OpenAI
 #' usar_proveedor("openai")
+#'
+#' # Todo por OpenRouter con modelos baratos (una sola clave)
+#' usar_proveedor("openrouter",
+#'                modelo_generacion = "anthropic/claude-haiku-5.5",
+#'                modelo_juicio     = "openai/gpt-6-luna")
+#' esc <- semilla("Autoeficacia academica", api_key = Sys.getenv("OPENROUTER_API_KEY"))
 #' }
 #'
 #' @export
 usar_proveedor <- function(
-  proveedor = c("openai", "groq", "huggingface", "ollama", "personalizado"),
+  proveedor = c("openai", "groq", "huggingface", "ollama", "openrouter",
+                "personalizado"),
   base_url  = NULL,
+  modelo_generacion = NULL,
+  modelo_juicio     = NULL,
   verbose   = TRUE
 ) {
   proveedor <- match.arg(proveedor)
@@ -92,6 +120,7 @@ usar_proveedor <- function(
     "groq"          = "https://api.groq.com/openai/v1",
     "huggingface"   = "https://router.huggingface.co/v1",
     "ollama"        = "http://localhost:11434/v1",
+    "openrouter"    = "https://openrouter.ai/api/v1",
     "personalizado" = {
       if (is.null(base_url) || !nzchar(base_url))
         stop("Con proveedor = 'personalizado' debes indicar 'base_url'.")
@@ -100,6 +129,11 @@ usar_proveedor <- function(
   )
 
   options(SeMiLLa.base_url = url)
+  # Los reemplazos de modelo solo tienen sentido en OpenRouter; cualquier otro
+  # proveedor los limpia para que no se arrastren de una configuracion previa.
+  es_or <- identical(proveedor, "openrouter")
+  options(SeMiLLa.modelo_generacion = if (es_or) modelo_generacion else NULL,
+          SeMiLLa.modelo_juicio     = if (es_or) modelo_juicio else NULL)
 
   if (verbose) {
     if (is.null(url)) {
@@ -109,8 +143,17 @@ usar_proveedor <- function(
           proveedor, "':\n  ", url, "\n", sep = "")
       cat("  Recuerda: 'api_key' debe ser la clave de ESTE proveedor y\n",
           "  'modelo' un modelo que el proveedor sirva.\n", sep = "")
-      cat("  Los embeddings siguen en OpenAI; para independencia total usa\n",
-          "  modelos locales (modelos_embeddings_libres()).\n", sep = "")
+      if (es_or) {
+        cat("  Los embeddings tambien van por OpenRouter",
+            " (openai/text-embedding-3-small).\n", sep = "")
+        if (!is.null(modelo_generacion))
+          cat("  Generacion: ", modelo_generacion, "\n", sep = "")
+        if (!is.null(modelo_juicio))
+          cat("  Juicios:    ", modelo_juicio, "\n", sep = "")
+      } else {
+        cat("  Los embeddings siguen en OpenAI; para independencia total usa\n",
+            "  modelos locales (modelos_embeddings_libres()).\n", sep = "")
+      }
     }
   }
 
@@ -131,6 +174,12 @@ usar_proveedor <- function(
   if (is.null(modelo) || !nzchar(modelo)) return(NULL)
   m <- tolower(trimws(modelo))
 
+  # Prefijos que solo sirve OpenRouter (en Hugging Face no existen esas
+  # organizaciones con modelos de chat abiertos).
+  if (grepl("^~?(anthropic|openai|google|x-ai|typesafe)/", m)) {
+    return(list(base_url = "https://openrouter.ai/api/v1",
+                proveedor = "openrouter"))
+  }
   if (grepl("/", m, fixed = TRUE)) {
     return(list(base_url = "https://router.huggingface.co/v1",
                 proveedor = "huggingface"))
@@ -140,4 +189,38 @@ usar_proveedor <- function(
                 proveedor = "groq"))
   }
   NULL
+}
+
+
+# --- OpenRouter: nombres de modelo -------------------------------------------
+# OpenRouter nombra los modelos como "organizacion/modelo". Las funciones del
+# paquete piden nombres de OpenAI sin prefijo ("gpt-4.1-mini"), asi que aqui se
+# traducen, y si el usuario eligio modelos baratos con usar_proveedor() se
+# sustituyen: el de juicio para las llamadas que piden razonamiento (las que
+# JUZGAN) y el de generacion para el resto.
+
+#' @keywords internal
+#' @noRd
+.es_openrouter <- function(base_url = getOption("SeMiLLa.base_url", NULL)) {
+  !is.null(base_url) && grepl("openrouter\\.ai", base_url)
+}
+
+#' @keywords internal
+#' @noRd
+.resolver_modelo <- function(modelo, razonamiento = NULL) {
+  if (!.es_openrouter()) return(modelo)
+  juicio <- !is.null(razonamiento) && razonamiento %in% c("low", "medium", "high")
+  elegido <- if (juicio) getOption("SeMiLLa.modelo_juicio", NULL)
+             else getOption("SeMiLLa.modelo_generacion", NULL)
+  if (!is.null(elegido) && nzchar(elegido)) return(elegido)
+  if (!grepl("/", modelo, fixed = TRUE)) return(paste0("openai/", modelo))
+  modelo
+}
+
+#' @keywords internal
+#' @noRd
+.modelo_embedding_proveedor <- function(modelo) {
+  if (.es_openrouter() && !grepl("/", modelo, fixed = TRUE))
+    return(paste0("openai/", modelo))
+  modelo
 }

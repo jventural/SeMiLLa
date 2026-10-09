@@ -5,8 +5,10 @@
 \title{Redirigir la generacion de texto a otro proveedor LLM}
 \usage{
 usar_proveedor(
-  proveedor = c("openai", "groq", "huggingface", "ollama", "personalizado"),
+  proveedor = c("openai", "groq", "huggingface", "ollama", "openrouter", "personalizado"),
   base_url = NULL,
+  modelo_generacion = NULL,
+  modelo_juicio = NULL,
   verbose = TRUE
 )
 }
@@ -16,6 +18,11 @@ usar_proveedor(
 
 \item{base_url}{URL base del endpoint (solo requerido con
 \code{proveedor = "personalizado"}; en los demas casos se ignora).}
+
+\item{modelo_generacion, modelo_juicio}{Solo con \code{"openrouter"}:
+modelo (formato \code{"organizacion/modelo"}) que reemplaza al de las
+funciones en las llamadas que generan texto y en las que juzgan. Con
+\code{NULL} se usa el modelo que pida cada funcion.}
 
 \item{verbose}{Si \code{TRUE}, imprime en consola la confirmacion del
 proveedor activo.}
@@ -43,11 +50,26 @@ Modelos en formato \code{"organizacion/modelo"} (p. ej.
 \code{"Qwen/Qwen2.5-72B-Instruct"}). Requiere token HF.
 \item \code{"ollama"}: \code{http://localhost:11434/v1} (servidor local;
 la api_key puede ser cualquier cadena no vacia).
+\item \code{"openrouter"}: \code{https://openrouter.ai/api/v1}. Una sola
+clave de OpenRouter sirve para el texto Y para los embeddings
+(\code{openai/text-embedding-3-small}, el mismo modelo que usa
+SeMiLLa por defecto, de modo que los umbrales calibrados siguen
+valiendo). Con \code{modelo_generacion} y \code{modelo_juicio} se
+eligen modelos mas baratos para toda la sesion (ver Detalles).
 \item \code{"personalizado"}: pasar \code{base_url} explicitamente.
 }
 
 La \code{api_key} que se pasa a las funciones de SeMiLLa debe ser la del
 proveedor activo (no la de OpenAI, salvo que el proveedor sea OpenAI).
+
+Con \code{"openrouter"}, los nombres de OpenAI que usan las funciones por
+defecto (\code{"gpt-4.1-mini"}, \code{"text-embedding-3-small"}) se
+traducen solos a \code{"openai/..."}. Si se fija \code{modelo_generacion},
+las llamadas que GENERAN texto (items, definiciones, reemplazos) usan ese
+modelo; si se fija \code{modelo_juicio}, lo usan las que JUZGAN
+(deseabilidad, jueces de validez, auditorias), que son las que piden
+razonamiento. Asi se puede, por ejemplo, generar con
+\code{"anthropic/claude-haiku-5.5"} y juzgar con \code{"openai/gpt-6-luna"}.
 }
 \section{Embeddings}{
 
@@ -78,6 +100,12 @@ p <- generar_prueba_objetiva(
 
 # Volver a OpenAI
 usar_proveedor("openai")
+
+# Todo por OpenRouter con modelos baratos (una sola clave)
+usar_proveedor("openrouter",
+               modelo_generacion = "anthropic/claude-haiku-5.5",
+               modelo_juicio     = "openai/gpt-6-luna")
+esc <- semilla("Autoeficacia academica", api_key = Sys.getenv("OPENROUTER_API_KEY"))
 }
 
 }

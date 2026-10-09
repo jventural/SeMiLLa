@@ -158,7 +158,7 @@ comparar_generadores <- function(concepto,
 
   # --- 2. Metricas objetivas --------------------------------------------------
   .emb <- function(textos) {
-    resp <- openai$embeddings$create(model = modelo_embeddings,
+    resp <- openai$embeddings$create(model = .modelo_embedding_proveedor(modelo_embeddings),
                                      input = as.list(textos))
     E <- do.call(rbind, lapply(resp$data, function(x) as.numeric(x$embedding)))
     E / sqrt(rowSums(E^2))

@@ -1,8 +1,8 @@
 Package: SeMiLLa
 Type: Package
 Title: Drafting and Auditing Psychometric Items with Large Language Models
-Version: 2.11.0
-Date: 2026-10-08
+Version: 2.12.0
+Date: 2026-10-09
 Authors@R: c(
     person("Jose", "Ventura-Leon",
            email = "jventuraleon@gmail.com",
