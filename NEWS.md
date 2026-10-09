@@ -18,6 +18,34 @@
   salvo que se haya elegido otro proveedor con `usar_proveedor()`. Asi tambien
   funciona en procesos de fondo que no heredan las opciones de la sesion.
 * La cache distingue el modelo que de verdad responde.
+
+## Jev: un modelo de decision donde antes se pedia un numero
+
+Con una clave de OpenRouter, SeMiLLa usa Jev (Decisions API), que devuelve la
+probabilidad de cada opcion. Cada uso se midio antes de incorporarlo, contra
+escalas reales:
+
+* `probabilidad_pertenencia()` (nueva): Jev + el modelo de juicio dan la
+  probabilidad de que cada item pertenezca a su dimension; el consenso del
+  clustering queda como segunda lectura que marca discrepancias. En 9 escalas
+  reales (306 items, n = 1500) predijo que items pertenecen con AUC 0,77
+  frente a 0,61 del consenso. `estructura_por_consenso()` bloquea por
+  pertenencia (precision, ARI y consenso pasan a informativos) y
+  `refinar_escala(pertenencia = "auto")` reescribe los items que no
+  pertenecen.
+* `calificar_deseabilidad(lector = "auto")`: el juez es Jev (valor esperado
+  sobre 7 anclas). En 306 items, dos corridas: r = 1,000 y diferencia maxima
+  0,021, frente a 0,150 del modelo de chat.
+* `compuerta_pre_aplicacion()` estima la correlacion de cada par de
+  dimensiones (`$phi_estimado`) y `simular_estructura()` acepta una matriz
+  K x K en `phi_teorico`. Contra 72 pares reales, el error medio bajo de
+  0,248 (constante) a 0,135.
+* `validez_contenido()` agrega `V_jev` y `discrepancia_jev`: segunda lectura
+  que marca los items en que la V del panel no se sostiene.
+* Se probaron y NO se cambiaron la direccion de los items (Jev y Haiku
+  aciertan el 100 % de 33 inversos reales) ni el juez de gemelos (Jev no
+  separa gemelos de no gemelos).
+* Un reemplazo identico a un item de otra dimension ya no se acepta.
 * Medido el 2026-10-09 (escala de 18 items y 3 dimensiones, generar +
   embeddings + clustering + deseabilidad + 10 jueces, 2 corridas): con
   gpt-4.1-mini costo US$ 0,017; generando con GPT-6 Luna y juzgando con

@@ -134,3 +134,22 @@ Se incorpora solo lo que mide mejor que lo que habia.
   los gemelos de los demas pares (todos le salen entre 0,5 y 0,8). Se queda
   Haiku, que en una pasada encontro 13 y 8 de 15; SeMiLLa ya vota con 3
   pasadas para compensar esa variacion.
+
+## 7. Cuanto cuesta construir una prueba completa
+
+Medido el 9-oct-2026 con el gasto real de la clave de OpenRouter, recorriendo
+los pasos de "Construir" de la app salvo el banco de items: generar,
+embeddings, compuerta, estructura con refinamiento, V de Aiken, auditoria de
+redaccion, escala de respuesta y ensamblado. Escala de 24 items (4
+dimensiones x 6), una corrida por configuracion:
+
+| Configuracion | Costo total | Tiempo | Items reescritos | V de Aiken media |
+|---|---|---|---|---|
+| Antes (gpt-4.1-mini, sin Jev) | US$ 0,071 | 14 min | 6 | 0,79 |
+| Ahora (Luna + Haiku + Jev) | US$ 0,020 | 13 min | 0 | 0,83 |
+
+Construir una prueba lista para aplicar cuesta unos 2 centavos de dolar
+(unos 7 centimos de sol): 72 % menos que antes. Cien pruebas, unos US$ 2.
+La mayor parte del ahorro viene de la estructura: antes el refinamiento
+perseguia al clustering y reescribio 6 items (US$ 0,037); ahora Jev y Haiku
+vieron los 24 items en su dimension y no hizo falta reescribir.
