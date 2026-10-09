@@ -215,6 +215,10 @@ usar_proveedor <- function(
 #' @noRd
 .resolver_modelo <- function(modelo, razonamiento = NULL) {
   if (!.es_openrouter()) return(modelo)
+  # Un modelo pedido con su organizacion ("anthropic/...") es una eleccion
+  # explicita del codigo que llama: se respeta. Solo se sustituyen los nombres
+  # de OpenAI sin prefijo, que son los defaults de las funciones.
+  if (grepl("/", modelo, fixed = TRUE)) return(modelo)
   juicio <- !is.null(razonamiento) && razonamiento %in% c("low", "medium", "high")
   elegido <- if (juicio) getOption("SeMiLLa.modelo_juicio", NULL)
              else getOption("SeMiLLa.modelo_generacion", NULL)

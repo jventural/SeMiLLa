@@ -468,12 +468,28 @@ compuerta_pre_aplicacion <- function(x,
   # PASO 3/3: ESTRUCTURA SIMULADA
   # ---------------------------------------------------------------------------
   if (verbose) cat("\n", .color_azul("[COMPUERTA 3/3] ESTRUCTURA SIMULADA"), "\n", sep = "")
+  # 2.12.0: con una clave de OpenRouter, la correlacion entre dimensiones se
+  # ESTIMA por par (Jev + modelo de juicio) en vez de suponer la misma para
+  # todos. Medido contra 72 pares reales: el error medio bajo de 0,248 (la
+  # constante) a 0,135. Si quien llama paso phi_teorico, se respeta.
+  dots <- list(...)
+  phi_estimado <- NULL
+  if (is.null(dots$phi_teorico) && .decision_disponible(api_key)) {
+    phi_estimado <- tryCatch(.estimar_phi_pares(x, api_key, modelo), error = function(e) NULL)
+    if (!is.null(phi_estimado)) {
+      dots$phi_teorico <- phi_estimado
+      if (verbose) cat("  Correlacion entre dimensiones estimada por par (Jev + juez): ",
+                       paste(sprintf("%.2f", phi_estimado[lower.tri(phi_estimado)]), collapse = ", "),
+                       "\n", sep = "")
+    }
+  }
+  .simular <- function(...) do.call(simular_estructura, c(list(...), dots))
   estructura <- tryCatch(
-    simular_estructura(x,
-                       deseabilidad = if (!is.null(deseab)) deseab$deseabilidad else NULL,
-                       similitud = x$similitud,
-                       n = n, n_rep = n_rep, n_nucleos = n_nucleos,
-                       api_key = api_key, seed = seed, verbose = verbose, ...),
+    .simular(x,
+             deseabilidad = if (!is.null(deseab)) deseab$deseabilidad else NULL,
+             similitud = x$similitud,
+             n = n, n_rep = n_rep, n_nucleos = n_nucleos,
+             api_key = api_key, seed = seed, verbose = verbose),
     error = function(e) e
   )
   if (inherits(estructura, "error")) {
@@ -503,12 +519,12 @@ compuerta_pre_aplicacion <- function(x,
         v <- rowMeans(pas[, cols, drop = FALSE], na.rm = TRUE)
         v[!is.finite(v)] <- 0.5
         v <- pmin(1, pmax(0, v))
-        s <- tryCatch(simular_estructura(x, deseabilidad = v,
-                                         similitud = x$similitud,
-                                         n = n, n_rep = n_rep_b,
-                                         n_nucleos = n_nucleos,
-                                         api_key = api_key, seed = seed,
-                                         verbose = FALSE, ...),
+        s <- tryCatch(.simular(x, deseabilidad = v,
+                               similitud = x$similitud,
+                               n = n, n_rep = n_rep_b,
+                               n_nucleos = n_nucleos,
+                               api_key = api_key, seed = seed,
+                               verbose = FALSE),
                       error = function(e) NULL)
         if (is.null(s)) NA_real_ else s$prob_limpia
       }, numeric(1))
@@ -852,6 +868,7 @@ compuerta_pre_aplicacion <- function(x,
   }
 
   out <- list(
+    phi_estimado = phi_estimado,
     # veredicto: se conserva el vocabulario antiguo porque converger_escala(),
     # optimizar_para_campo() y el asistente ramifican sobre estas cadenas.
     # Lo que se muestra al usuario es 'escenario'.

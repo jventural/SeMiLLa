@@ -33,6 +33,11 @@
 #'   colapso en campo con DE = .031 (Phi = .92) mientras que ACO se separo
 #'   con DE = .059-.077 (Phi = .64-.84); el antiguo 0.10 marcaba como
 #'   "uniforme" tambien a ACO (falsa alarma).
+#' @param lector Quien juzga. \code{"auto"} (default): con una clave de
+#'   OpenRouter, Jev (modelo de decision: da la probabilidad de cada nivel de
+#'   una escala de 7 anclas y se usa el valor esperado, que no salta de una
+#'   llamada a otra); con otra clave, el modelo de chat. \code{"jev"} o
+#'   \code{"chat"} lo fijan.
 #' @param n_pasadas Numero de pasadas independientes del LLM que se promedian.
 #'   Por defecto 4 (desde 2.9.12; antes 2). El motivo no es tanto la precision
 #'   del promedio como las IMPUTACIONES: con 2 pasadas se observaron hasta 5
@@ -68,7 +73,9 @@ calificar_deseabilidad <- function(x, api_key = Sys.getenv("OPENAI_API_KEY"),
                                     modelo = "gpt-4.1-mini", poblacion = NULL,
                                     umbral_uniforme = 0.05, n_pasadas = 4,
                                     max_imputados = 0.25, seed = NULL,
+                                    lector = c("auto", "jev", "chat"),
                                     verbose = TRUE) {
+  lector <- match.arg(lector)
   items <- x$items
   if (is.null(items) || is.null(items$item)) stop("x debe tener $items con columna 'item'.")
   concepto <- x$concepto %||% "constructo psicologico"
@@ -131,7 +138,40 @@ calificar_deseabilidad <- function(x, api_key = Sys.getenv("OPENAI_API_KEY"),
     for (ch in chunks) plan[[length(plan) + 1L]] <- list(pas = pas, idx = ch)
   }
 
-  respuestas <- .chat_en_paralelo(
+  # 2.12.0: con una clave de OpenRouter el juez es Jev, un modelo de DECISION.
+  # En vez de pedir un numero (que el modelo de chat cambiaba de 0.20 a 0.60
+  # para el mismo item entre llamadas identicas), da la probabilidad de cada
+  # nivel de una escala de 7 anclas y se toma el valor esperado. Cada pasada
+  # agrupa los items de otra forma (barajados), asi que son llamadas distintas.
+  usar_jev <- identical(lector, "jev") ||
+    (identical(lector, "auto") && .decision_disponible(api_key))
+  if (usar_jev) {
+    anclas <- c("quedaria muy mal visto admitirlo", "quedaria mal visto",
+                "quedaria algo mal visto", "neutro: ni bien ni mal visto",
+                "quedaria algo bien visto", "quedaria bien visto",
+                "quedaria muy bien visto")
+    costo_jev <- 0
+    for (pas in seq_len(n_pasadas)) {
+      orden <- unique(unlist(lapply(plan[vapply(plan, function(z) z$pas == pas, logical(1))], `[[`, "idx")))
+      preg <- stats::setNames(lapply(orden, function(i) list(
+        type = "score", criteria = as.list(anclas),
+        instructions = paste0("Constructo: ", concepto, ". Poblacion: ", poblacion,
+                              ". Que tan socialmente deseable es estar de acuerdo con este item o admitirlo? Item: \"",
+                              txt[i], "\""))), paste0("i", orden))
+      r <- .llamar_decisiones(preg, list(task = "Juzgar la deseabilidad social de items de cuestionario",
+                                         pasada = pas), api_key)
+      if (is.null(r)) next
+      costo_jev <- costo_jev + (attr(r, "costo") %||% 0)
+      for (i in orden) {
+        a <- r[[paste0("i", i)]]
+        if (!is.null(a$probabilities)) {
+          pr <- .probs_decision(a, as.character(0:6))
+          des_mat[i, pas] <- sum(pr * (0:6)) / 6
+        }
+      }
+    }
+  }
+  respuestas <- if (usar_jev) list() else .chat_en_paralelo(
     prompts      = vapply(plan, function(z) .prompt_chunk(z$idx), character(1)),
     api_key      = api_key,
     modelo       = modelo,
@@ -141,7 +181,7 @@ calificar_deseabilidad <- function(x, api_key = Sys.getenv("OPENAI_API_KEY"),
     max_paralelo = getOption("SeMiLLa.max_paralelo", 6L),
     verbose      = verbose)
 
-  for (k in seq_along(plan)) {
+  if (!usar_jev) for (k in seq_along(plan)) {
     v <- if (is.null(respuestas[[k]])) NULL else
       .parse_des(respuestas[[k]], length(plan[[k]]$idx))
     if (!is.null(v)) des_mat[plan[[k]]$idx, plan[[k]]$pas] <- v
@@ -395,12 +435,23 @@ simular_estructura <- function(x, deseabilidad = NULL, similitud = NULL,
   # El modelo principal usa SIEMPRE el valor central; antes se hacia
   # matrix(vector, K, K), que recicla los valores y daba una Phi heterogenea
   # (asimetrica con K = 2) con la que se simulaban los escenarios principales.
+  # 2.12.0: phi_teorico tambien puede ser una MATRIZ K x K (una correlacion
+  # por par de dimensiones), la que estima .estimar_phi_pares() con Jev y el
+  # modelo de juicio. Antes era siempre un escalar para todos los pares.
+  phi_matriz <- NULL
+  if (is.matrix(phi_teorico) && nrow(phi_teorico) == K && ncol(phi_teorico) == K) {
+    phi_matriz <- phi_teorico
+    if (!is.null(rownames(phi_matriz)) && all(dims %in% rownames(phi_matriz)))
+      phi_matriz <- phi_matriz[dims, dims]
+    phi_teorico <- mean(phi_matriz[lower.tri(phi_matriz)])
+  }
   phis_sens <- if (length(phi_teorico) == 2) {
     r_phi <- sort(phi_teorico); c(r_phi[1], mean(r_phi), r_phi[2])
   } else phi_teorico
   hay_sens_phi <- length(phis_sens) > 1
   phi_teorico <- phis_sens[ceiling(length(phis_sens) / 2)]
   Phi    <- matrix(phi_teorico, K, K); diag(Phi) <- 1
+  if (!is.null(phi_matriz)) { Phi <- unname(as.matrix(phi_matriz)); diag(Phi) <- 1 }
   its    <- sprintf("i%02d", seq_len(p))
   syn    <- paste(sapply(seq_len(K), function(kk)
              paste0("F", kk, " =~ ", paste(its[memb == kk], collapse = " + "))), collapse = "\n")

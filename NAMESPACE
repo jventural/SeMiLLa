@@ -17,6 +17,7 @@ export(limpiar_cache)
 # Paso 2b (Fase I). Proveedor LLM (endpoints OpenAI-compatibles)
 # -----------------------------------------------------------------------------
 export(usar_proveedor)
+export(probabilidad_pertenencia)
 
 # -----------------------------------------------------------------------------
 # Pasos 3-4 (Fase II). Construccion de la escala
@@ -225,3 +226,4 @@ importFrom(ggplot2, .data)
 importFrom(lavaan, cfa, fitmeasures, standardizedSolution)
 importFrom(MASS, mvrnorm)
 importFrom(parallel, detectCores, makeCluster, stopCluster, parLapplyLB, clusterEvalQ, nextRNGStream)
+S3method(print, semilla_pertenencia)

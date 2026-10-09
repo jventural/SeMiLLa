@@ -11,6 +11,8 @@ refinar_escala(
   umbral_precision = 100,
   criterio = c("kmeans", "ensemble"),
   umbral_consenso = 0.667,
+  pertenencia = c("auto", "llm", "consenso"),
+  umbral_pertenencia = 0.5,
   umbral_redundancia = "compuerta",
   max_intentos_redundancia = 3,
   heredar_compuerta = TRUE,
@@ -48,6 +50,17 @@ al. (2026) sobre clustering consensus.
 un item bien clasificado (default: 0.667 = al menos 2/3 algoritmos).
 Solo se usa cuando \code{criterio = "ensemble"}. Valores tipicos:
 0.667 (mayoria simple), 0.999 (unanimidad).}
+
+\item{pertenencia}{Que decide que items se reescriben con
+\code{criterio = "ensemble"}. \code{"auto"} (default): con una clave de
+OpenRouter, la probabilidad de pertenencia de Jev + el modelo de juicio
+(\code{probabilidad_pertenencia()}); con otra clave, el consenso del
+clustering, como antes. \code{"llm"} o \code{"consenso"} lo fijan.
+Medido en 9 escalas reales, la probabilidad de los lectores de texto
+predice mejor que items pertenecen a su dimension (AUC 0,77 frente a
+0,61 del consenso).}
+
+\item{umbral_pertenencia}{Probabilidad minima de pertenencia (default 0.5).}
 
 \item{umbral_redundancia}{Similitud maxima permitida entre items 0-1.
 Default \code{"compuerta"}: toma el umbral efectivo de la compuerta

@@ -37,9 +37,18 @@
 #  2.10.0: el ensemble depende de 'seed' (antes .clusterizar() fijaba 2024 y
 #  2024 + replica por dentro, y el argumento no tenia efecto). La misma semilla
 #  en todas las mediciones de una corrida hace comparables los estados.
-.medir_estructura <- function(escala, algoritmos, n_replicas, seed, verbose = FALSE) {
-  precision_clasificacion(escala, metodo = "ensemble", algoritmos = algoritmos,
-                          n_replicas = n_replicas, seed = seed, verbose = verbose)
+.medir_estructura <- function(escala, algoritmos, n_replicas, seed, verbose = FALSE,
+                              api_key = NULL, modelo = "gpt-4.1-mini") {
+  ens <- precision_clasificacion(escala, metodo = "ensemble", algoritmos = algoritmos,
+                                 n_replicas = n_replicas, seed = seed, verbose = verbose)
+  # 2.12.0: con una clave de OpenRouter, la pertenencia de cada item la leen
+  # Jev y el modelo de juicio; el consenso del clustering queda como segunda
+  # lectura que marca discrepancias (ver probabilidad_pertenencia()).
+  if (.decision_disponible(api_key))
+    ens$pertenencia <- tryCatch(
+      probabilidad_pertenencia(escala, api_key, ensemble = ens, modelo = modelo, verbose = FALSE),
+      error = function(e) NULL)
+  ens
 }
 
 # -----------------------------------------------------------------------------
@@ -49,6 +58,7 @@
                                   escala = NULL, min_prop_items = 0.90) {
   cons <- ens$consenso$Consenso
   n_bajo <- sum(cons < umbral_consenso, na.rm = TRUE)
+  pert <- ens$pertenencia
 
   data.frame(
     indice = c("Items con consenso suficiente",
@@ -80,6 +90,32 @@
     bloquea = c(TRUE, FALSE, TRUE, TRUE, FALSE),
     stringsAsFactors = FALSE
   ) -> tb
+  # 2.12.0: con los lectores de texto, la fila que bloquea pasa a ser la
+  #  probabilidad de pertenencia (Jev + juez), que en 9 escalas reales predijo
+  #  mejor que items pertenecen (AUC 0,77 frente a 0,61). El consenso queda
+  #  informativo y se cuentan las discrepancias entre las dos lecturas.
+  if (!is.null(pert) && nrow(pert) == length(cons)) {
+    ok <- sum(pert$pertenece, na.rm = TRUE)
+    #  Precision y ARI tambien salen del clustering: pasan a segunda lectura.
+    #  Si siguieran bloqueando, el refinamiento reescribiria items que los
+    #  lectores de texto ya ven en su dimension, persiguiendo al clustering.
+    clu <- tb$clave %in% c("items_ok", "precision", "ari")
+    tb$regla[clu] <- paste0(tb$regla[clu], " - segunda lectura (informativo)")
+    tb$bloquea[clu] <- FALSE
+    tb$umbral[clu] <- NA
+    tb <- rbind(data.frame(
+      indice = "Items que pertenecen a su dimension (Jev + juez)",
+      clave = "pertenencia", valor = ok / nrow(pert),
+      crudo = sprintf("%d/%d", ok, nrow(pert)), umbral = min_prop_items,
+      regla = sprintf("%.0f%% de los items con probabilidad >= 0.5", 100 * min_prop_items),
+      bloquea = TRUE, stringsAsFactors = FALSE),
+      tb,
+      data.frame(indice = "Items en que las dos lecturas discrepan",
+                 clave = "discrepancias", valor = sum(pert$discrepancia, na.rm = TRUE),
+                 crudo = sprintf("%d (revisar)", sum(pert$discrepancia, na.rm = TRUE)),
+                 umbral = NA_real_, regla = "informativo: revisar esos items a mano",
+                 bloquea = FALSE, stringsAsFactors = FALSE))
+  }
   tb$cumple <- ifelse(!tb$bloquea, NA, tb$valor >= tb$umbral)
 
   # v2.9.29: CONTENIDO -----------------------------------------------------
@@ -327,7 +363,7 @@ estructura_por_consenso <- function(escala,
 
   t0 <- Sys.time()
   .hito(1, "MEDIR - ensemble sobre la escala que entra")
-  ens0 <- .medir_estructura(escala, algoritmos, n_replicas, seed)
+  ens0 <- .medir_estructura(escala, algoritmos, n_replicas, seed, api_key = api_key, modelo = modelo)
   gate0 <- .compuerta_estructura(ens0, umbral_consenso, min_precision, min_ari,
                                 escala = escala, min_prop_items = min_prop_items)
 
@@ -357,7 +393,7 @@ estructura_por_consenso <- function(escala,
   # ---- Segundo momento YA DADO (script reproducible: no se llama al LLM) ----
   if (!is.null(escala_refinada)) {
     .hito(3, "MEDIR OTRA VEZ - sobre la escala refinada que se entrego")
-    ens1  <- .medir_estructura(escala_refinada, algoritmos, n_replicas, seed)
+    ens1  <- .medir_estructura(escala_refinada, algoritmos, n_replicas, seed, api_key = api_key, modelo = modelo)
     gate1 <- .compuerta_estructura(ens1, umbral_consenso, min_precision, min_ari,
                                    escala = escala_refinada, min_prop_items = min_prop_items)
     escala_refinada <- .fijar_separabilidad(escala_refinada, ens1)
@@ -431,6 +467,8 @@ estructura_por_consenso <- function(escala,
                                        similitud = esc$similitud,
                                        n = par_prev$n %||% 300,
                                        n_rep = n_rep_ciclo,
+                                       # 2.12.0: la phi por par que estimo la compuerta
+                                       phi_teorico = escala$compuerta$phi_estimado %||% 0.50,
                                        seed = seed, verbose = FALSE),
                     error = function(e) NULL)
     if (is.null(sim)) return(NULL)
@@ -546,7 +584,7 @@ estructura_por_consenso <- function(escala,
     ens_pre <- gate_pre <- NULL
     i_cam <- integer(0)
     if (isTRUE(blindaje_cierre) && isTRUE(revertir_blindaje)) {
-      ens_pre  <- .medir_estructura(escala_f, algoritmos, n_replicas, seed)
+      ens_pre  <- .medir_estructura(escala_f, algoritmos, n_replicas, seed, api_key = api_key, modelo = modelo)
       gate_pre <- .compuerta_estructura(ens_pre, umbral_consenso, min_precision,
                                         min_ari, escala = escala_f, min_prop_items = min_prop_items)
     }
@@ -584,7 +622,7 @@ estructura_por_consenso <- function(escala,
     # ---- VOLVER A MEDIR (esto es lo que hoy no hace nadie) -----------------
     .hito(3, sprintf("MEDIR OTRA VEZ - ciclo %d: sobre la escala que se entrega",
                      ciclo))
-    ens1  <- .medir_estructura(escala_f, algoritmos, n_replicas, seed)
+    ens1  <- .medir_estructura(escala_f, algoritmos, n_replicas, seed, api_key = api_key, modelo = modelo)
     gate1 <- .compuerta_estructura(ens1, umbral_consenso, min_precision, min_ari,
                                    escala = escala_f, min_prop_items = min_prop_items)
     #  ¿El blindaje ayudo? Si no, se vuelve a la escala de antes de blindar.

@@ -228,6 +228,45 @@ validez_contenido <- function(x,
     warning(length(sin_evaluar), " item(s) sin evaluacion legible quedaron en NA: ",
             paste(sin_evaluar, collapse = ", "), call. = FALSE)
 
+  # 2.12.0: SEGUNDA LECTURA con Jev (solo con clave de OpenRouter). La V de
+  # Aiken sigue saliendo del panel simulado; Jev da, por item, el valor
+  # esperado de la relevancia (0-3) y se marcan los items en que las dos
+  # lecturas se separan mas de 0.30. Medido el 09-10-2026 con 168 juicios
+  # (cada item real con su dimension y con una equivocada): el panel separa
+  # mejor (AUC 0,92 frente a 0,85) pero salta hasta 0,77 de V entre dos
+  # corridas; Jev salta 0,05 y cuesta 60 veces menos.
+  if (.decision_disponible(api_key)) {
+    defs <- if (is.list(x) && is.list(x$concepto)) x$concepto$dimensiones else NULL
+    preg <- stats::setNames(lapply(seq_len(nrow(items_df)), function(i) {
+      d <- as.character(items_df$dimension[i])
+      def <- if (is.list(defs) && is.character(defs[[d]])) paste0(" (", defs[[d]], ")") else ""
+      list(type = "score",
+           criteria = list("0: nada relevante", "1: poco relevante",
+                           "2: bastante relevante", "3: totalmente relevante"),
+           instructions = paste0("Como juez experto en psicometria: que tan RELEVANTE es este item para medir la dimension \"",
+                                 gsub("_", " ", d), "\"", def, "? Item: \"", items_df$item[i], "\""))
+    }), paste0("i", seq_len(nrow(items_df))))
+    rj <- tryCatch(.llamar_decisiones(preg, list(task = "Validez de contenido"), api_key),
+                   error = function(e) NULL)
+    if (!is.null(rj)) {
+      v_jev <- vapply(seq_len(nrow(items_df)), function(i) {
+        a <- rj[[paste0("i", i)]]
+        if (is.null(a$probabilities)) NA_real_ else
+          sum(.probs_decision(a, as.character(0:3)) * (0:3)) / 3
+      }, numeric(1))
+      va <- resultados_v$v_aiken
+      k <- match(items_df$item, va$item)
+      va$V_jev <- NA_real_
+      va$V_jev[k[!is.na(k)]] <- round(v_jev[!is.na(k)], 3)
+      va$discrepancia_jev <- !is.na(va$V_jev) & !is.na(va$V_promedio) &
+        abs(va$V_promedio - va$V_jev) > 0.30
+      resultados_v$v_aiken <- va
+      if (verbose && any(va$discrepancia_jev))
+        cat("  Segunda lectura (Jev): ", sum(va$discrepancia_jev),
+            " item(s) con V muy distinta a la del panel: revisarlos.\n", sep = "")
+    }
+  }
+
   # Construir resultado
   resultado <- list(
     v_aiken = resultados_v$v_aiken,

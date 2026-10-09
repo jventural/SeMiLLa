@@ -13,6 +13,7 @@ calificar_deseabilidad(
   n_pasadas = 4,
   max_imputados = 0.25,
   seed = NULL,
+  lector = c("auto", "jev", "chat"),
   verbose = TRUE
 )
 }
@@ -47,6 +48,12 @@ API). Los pocos items no calificados se imputan a 0.5 con warning.}
 \item{seed}{Semilla opcional para el barajado de items (reproducibilidad del
 orden; la respuesta del LLM sigue siendo estocastica). Con \code{NULL}
 (default) no se fija semilla y el orden puede variar entre corridas.}
+
+\item{lector}{Quien juzga. \code{"auto"} (default): con una clave de
+OpenRouter, Jev (modelo de decision: da la probabilidad de cada nivel de
+una escala de 7 anclas y se usa el valor esperado, que no salta de una
+llamada a otra); con otra clave, el modelo de chat. \code{"jev"} o
+\code{"chat"} lo fijan.}
 
 \item{verbose}{Logico; imprime resumen y advertencia.}
 }

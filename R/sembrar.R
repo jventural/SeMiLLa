@@ -1007,6 +1007,15 @@ ver_items <- function(x, dimension = NULL) {
 #'        un item bien clasificado (default: 0.667 = al menos 2/3 algoritmos).
 #'        Solo se usa cuando \code{criterio = "ensemble"}. Valores tipicos:
 #'        0.667 (mayoria simple), 0.999 (unanimidad).
+#' @param pertenencia Que decide que items se reescriben con
+#'   \code{criterio = "ensemble"}. \code{"auto"} (default): con una clave de
+#'   OpenRouter, la probabilidad de pertenencia de Jev + el modelo de juicio
+#'   (\code{probabilidad_pertenencia()}); con otra clave, el consenso del
+#'   clustering, como antes. \code{"llm"} o \code{"consenso"} lo fijan.
+#'   Medido en 9 escalas reales, la probabilidad de los lectores de texto
+#'   predice mejor que items pertenecen a su dimension (AUC 0,77 frente a
+#'   0,61 del consenso).
+#' @param umbral_pertenencia Probabilidad minima de pertenencia (default 0.5).
 #' @param heredar_compuerta Si \code{TRUE} (default) y la escala trae
 #'        \code{$compuerta}, el refinamiento hereda su umbral de deteccion y
 #'        prohibe los nucleos lexicos que la compuerta mando a eliminar. Ademas
@@ -1083,6 +1092,8 @@ refinar_escala <- function(escala,
                            umbral_precision = 100,
                            criterio = c("kmeans", "ensemble"),
                            umbral_consenso = 0.667,
+                           pertenencia = c("auto", "llm", "consenso"),
+                           umbral_pertenencia = 0.5,
                            umbral_redundancia = "compuerta",
                            max_intentos_redundancia = 3,
                            heredar_compuerta = TRUE,
@@ -1108,6 +1119,10 @@ refinar_escala <- function(escala,
                            verbose = TRUE) {
 
   criterio <- match.arg(criterio)
+  pertenencia <- match.arg(pertenencia)
+  usar_llm <- criterio == "ensemble" &&
+    (identical(pertenencia, "llm") ||
+       (identical(pertenencia, "auto") && .decision_disponible(api_key)))
   if (umbral_consenso < 0 || umbral_consenso > 1) {
     stop("umbral_consenso debe estar entre 0 y 1")
   }
@@ -1291,11 +1306,23 @@ refinar_escala <- function(escala,
   #
   # Se puntua la escala inicial con LA MISMA formula que las iteraciones y se
   # mete en la competencia. Si ninguna vuelta la supera, se devuelve intacta.
+  # 2.12.0: con lectores de texto, la parte "estructura" del score es la
+  # proporcion de items que pertenecen a su dimension segun Jev + juez, la
+  # misma lectura que decide que reescribir. Antes se elegia la mejor vuelta
+  # con la precision del clustering y se descartaban reescrituras que los
+  # lectores si veian como mejoras.
+  .calidad_estructura <- function(esc, precision_global) {
+    if (!usar_llm) return(precision_global / 100)
+    pp <- tryCatch(probabilidad_pertenencia(esc, api_key, modelo = modelo,
+                                            umbral = umbral_pertenencia, verbose = FALSE),
+                   error = function(e) NULL)
+    if (is.null(pp)) precision_global / 100 else mean(pp$pertenece, na.rm = TRUE)
+  }
   score_inicial <- tryCatch({
     ef0  <- precision_clasificacion(escala, verbose = FALSE)
     red0 <- auditar_redundancia(escala)
     n0   <- nrow(escala$items)
-    (ef0$precision_global / 100) -
+    .calidad_estructura(escala, ef0$precision_global) -
       0.5 * (nrow(red0$pares_redundantes) / max(1, n0 * (n0 - 1) / 2)) -
       0.1 * nrow(red0$facetas_repetidas)
   }, error = function(e) -Inf)
@@ -1341,6 +1368,15 @@ refinar_escala <- function(escala,
     metodo_clust <- if (criterio == "ensemble") "ensemble" else "kmeans"
     prec <- precision_clasificacion(escala_actual, metodo = metodo_clust, verbose = FALSE)
     precision_actual <- prec$precision_global
+    # Con lectores de texto disponibles, la pertenencia la deciden ellos y el
+    # consenso queda como segunda lectura (marca discrepancias, no decide).
+    pert <- if (usar_llm) tryCatch(
+      probabilidad_pertenencia(escala_actual, api_key, ensemble = prec, modelo = modelo,
+                               umbral = umbral_pertenencia, umbral_consenso = umbral_consenso,
+                               verbose = FALSE),
+      error = function(e) NULL) else NULL
+    if (usar_llm && is.null(pert) && verbose)
+      cat("  (los lectores de texto no respondieron: se usa el consenso del clustering)\n")
     evolucion <- rbind(evolucion,
                        data.frame(Iteracion = nrow(evolucion),
                                   Precision = precision_actual,
@@ -1358,7 +1394,9 @@ refinar_escala <- function(escala,
     }
 
     # Verificar si alcanzamos el umbral del criterio elegido
-    umbral_alcanzado <- if (criterio == "ensemble") {
+    umbral_alcanzado <- if (!is.null(pert)) {
+      all(pert$prob_pertenencia >= umbral_pertenencia, na.rm = TRUE)
+    } else if (criterio == "ensemble") {
       all(prec$consenso$Consenso >= umbral_consenso)
     } else {
       precision_actual >= umbral_precision
@@ -1374,7 +1412,13 @@ refinar_escala <- function(escala,
     asig <- prec$asignacion_clusters
     correctos_df <- prec$precision_por_dimension
 
-    if (criterio == "ensemble") {
+    if (!is.null(pert)) {
+      # Problematico = los lectores de texto no lo ven en su dimension.
+      asig$consenso <- pert$consenso[match(asig$codigo, pert$codigo)]
+      asig$prob_pertenencia <- pert$prob_pertenencia[match(asig$codigo, pert$codigo)]
+      asig$estado <- ifelse(is.na(asig$prob_pertenencia) | asig$prob_pertenencia < umbral_pertenencia,
+                            "problematico", "correcto")
+    } else if (criterio == "ensemble") {
       # Items con consenso por debajo del umbral son problematicos.
       # Se cruza el consenso (por codigo) con la asignacion para obtener el
       # cluster asignado por el voto mayoritario del ensemble.
@@ -1603,6 +1647,18 @@ refinar_escala <- function(escala,
         if (!is.null(nuevo_item) && nrow(nuevo_item) > 0) {
           nuevo_texto <- nuevo_item$item[1]
 
+          # 2.12.0: un reemplazo identico a un item de OTRA dimension pasaba,
+          # porque la redundancia solo se mira dentro de la misma dimension.
+          # Medido el 09-10-2026: Luna propuso como reemplazo, palabra por
+          # palabra, un item que ya estaba en otra dimension de la escala.
+          .norm_txt <- function(z) tolower(gsub("[^[:alnum:]]+", " ", trimws(z)))
+          if (.norm_txt(nuevo_texto) %in% .norm_txt(items_actuales$item)) {
+            items_evitar <- unique(c(items_evitar, nuevo_texto))
+            if (verbose && intento < max_intentos_redundancia)
+              cat("\n      Repite un item de la escala, reintentando...")
+            next
+          }
+
           # Verificar redundancia con items de la misma dimension
           if (length(items_misma_dim) > 0 && umbral_redundancia < 1) {
             check <- .verificar_redundancia_item(
@@ -1683,7 +1739,11 @@ refinar_escala <- function(escala,
             item_original_texto = item_prob$item,
             dimension = dim_nombre,
             item_nuevo_texto = nuevo_item$item[1],
-            razon = if (criterio == "ensemble") {
+            razon = if (!is.null(pert)) {
+              pp <- asig$prob_pertenencia[match(item_prob$codigo, asig$codigo)]
+              paste0("Probabilidad de pertenencia baja (", round(pp, 3),
+                     " < ", umbral_pertenencia, ", iter ", iteracion, ")")
+            } else if (criterio == "ensemble") {
               cs <- asig$consenso[match(item_prob$codigo, asig$codigo)]
               paste0("Consenso ensemble bajo (", round(cs, 3),
                      " < ", umbral_consenso, ", iter ", iteracion, ")")
@@ -1840,7 +1900,7 @@ refinar_escala <- function(escala,
       red_it <- auditar_redundancia(escala_actual)
       n_it   <- nrow(escala_actual$items)
       n_pares_pos <- max(1, n_it * (n_it - 1) / 2)
-      (efa_result$precision_global / 100) -
+      .calidad_estructura(escala_actual, efa_result$precision_global) -
         0.5 * (nrow(red_it$pares_redundantes) / n_pares_pos) -
         0.1 * nrow(red_it$facetas_repetidas)
     }, error = function(e) efa_result$precision_global / 100)
