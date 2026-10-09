@@ -45,15 +45,20 @@ encima se aborta con error (evita diagnosticos optimistas tras un fallo de
 API). Los pocos items no calificados se imputan a 0.5 con warning.}
 
 \item{seed}{Semilla opcional para el barajado de items (reproducibilidad del
-orden; la respuesta del LLM sigue siendo estocastica).}
+orden; la respuesta del LLM sigue siendo estocastica). Con \code{NULL}
+(default) no se fija semilla y el orden puede variar entre corridas.}
 
 \item{verbose}{Logico; imprime resumen y advertencia.}
 }
 \value{
-Lista con \code{deseabilidad} (vector 0-1 por item), \code{por_dimension},
-\code{sd_entre_dim}, \code{sd_intra_dim}, \code{alerta_intra},
-\code{estabilidad} (correlacion media entre pasadas), \code{n_imputados},
-\code{uniforme} (logico), \code{riesgo_halo} y \code{mensaje}.
+Lista (devuelta de forma invisible) con \code{deseabilidad} (vector
+numerico 0-1, un valor por item), \code{por_dimension} (media por
+dimension), \code{sd_entre_dim} y \code{sd_intra_dim} (DE entre y dentro
+de dimensiones), \code{alerta_intra} (logico), \code{estabilidad}
+(correlacion media entre pasadas), \code{n_imputados} (items imputados a
+0.5), \code{uniforme} (logico), \code{riesgo_halo} (logico),
+\code{mensaje} (diagnostico en texto) y \code{pasadas} (matriz items x
+pasadas con las calificaciones individuales).
 }
 \description{
 Para cada item, un modelo de lenguaje estima cuan socialmente deseable es
@@ -69,4 +74,14 @@ final; la correlacion media entre pasadas se reporta como \code{estabilidad}.
 Ademas del contraste ENTRE dimensiones (favorable a la separabilidad), se
 vigila el contraste DENTRO de cada dimension (desfavorable: deseabilidad
 mixta intra-factor genera varianza de metodo que rompe el propio factor).
+}
+\examples{
+# Requiere una clave de API de OpenAI (el juez es un LLM).
+\dontrun{
+d <- calificar_deseabilidad(semilla_demo,
+                            api_key = Sys.getenv("OPENAI_API_KEY"),
+                            n_pasadas = 2, seed = 2026)
+d$por_dimension
+d$mensaje
+}
 }

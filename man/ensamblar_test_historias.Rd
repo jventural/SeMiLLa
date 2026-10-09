@@ -2,6 +2,9 @@
 % Please edit documentation in R/ensamblar_historias.R
 \name{ensamblar_test_historias}
 \alias{ensamblar_test_historias}
+\alias{print.semilla_test_historias}
+\alias{print.semilla_test_historias_completo}
+\alias{print.semilla_test_historias_multi}
 \title{Ensamblar test basado en historias}
 \usage{
 ensamblar_test_historias(
@@ -23,6 +26,12 @@ ensamblar_test_historias(
   imagenes = NULL,
   verbose = TRUE
 )
+
+\method{print}{semilla_test_historias}(x, ...)
+
+\method{print}{semilla_test_historias_completo}(x, ...)
+
+\method{print}{semilla_test_historias_multi}(x, ...)
 }
 \arguments{
 \item{escala_h}{Objeto \code{semilla_historias} devuelto por
@@ -45,27 +54,54 @@ anclajes. Si NULL, se usa Likert 1-6 de acuerdo (default del PDVS).}
 
 \item{instrucciones}{Texto custom; si NULL, se autogenera.}
 
-\item{archivo}{Ruta de salida SIN extension.}
+\item{archivo}{Ruta de salida SIN extension. Si \code{NULL} (default), no
+se escribe nada en disco y solo se devuelve el objeto.}
 
 \item{formato}{Vector con: "md", "docx", "html", "txt".}
 
-\item{modo}{\code{"una_por_factor"} (default, K archivos) o
-\code{"compilado"} (un archivo con todas las historias).}
+\item{modo}{\code{"una_por_factor"} (default, K archivos),
+\code{"compilado"} (un archivo con todas las historias) o
+\code{"completo_horizontal"} (un DOCX apaisado con una pagina por
+historia: texto, imagen e items; requiere \pkg{officer} y
+\pkg{flextable}).}
 
 \item{sufijo_archivo}{Sufijo a anteponer al nombre del factor en cada
 archivo. Default \code{"_"}. Resultado: \code{<archivo>_<factor>.docx}.}
 
-\item{idioma}{"es", "en", "pt".}
+\item{idioma}{"es", "en", "pt". Si \code{NULL} (default), se toma el de
+\code{escala_h}.}
 
 \item{imagenes}{Lista nombrada (factor -> ruta de imagen PNG) usada en el
 modo \code{"completo_horizontal"}. NULL por defecto.}
 
 \item{verbose}{Mostrar progreso.}
+
+\item{x}{Objeto devuelto por esta funcion (metodos \code{print}).}
+
+\item{...}{Argumentos adicionales (ignorados por los metodos \code{print}).}
 }
 \value{
-Lista con clase \code{semilla_test_historias_multi} (modo
-"una_por_factor") o \code{semilla_test_historias} (modo "compilado").
-Incluye rutas de archivos generados.
+Segun \code{modo}:
+\itemize{
+\item \code{"una_por_factor"}: lista de clase
+\code{semilla_test_historias_multi} con un elemento por factor
+(nombrado con el factor); cada uno es un \code{semilla_test_historias}
+con \code{factor}, \code{nombre_test}, \code{subtitulo},
+\code{introduccion}, \code{texto_historia}, \code{items}
+(data.frame de items), \code{anclajes} (vector nombrado de opciones de
+respuesta), \code{texto_md} (cuestionario en Markdown) y
+\code{archivos} (rutas escritas; vacio si \code{archivo = NULL}).
+\item \code{"compilado"}: un \code{semilla_test_historias} con
+\code{nombre_test}, \code{subtitulo}, \code{introduccion},
+\code{historias}, \code{items}, \code{anclajes}, \code{texto_md} y
+\code{archivos}.
+\item \code{"completo_horizontal"}: lista de clase
+\code{semilla_test_historias_completo} con \code{nombre_test},
+\code{subtitulo}, \code{historias}, \code{items}, \code{anclajes} y
+\code{archivos}.
+}
+Los metodos \code{print} devuelven \code{x} de forma invisible; se llaman
+por su efecto (resumen en consola).
 }
 \description{
 Toma un objeto \code{semilla_historias} y produce el cuestionario listo
@@ -87,4 +123,39 @@ Cada participante responderia UN solo cuestionario.
 
 Exporta a Markdown, DOCX (officer + flextable, layout profesional),
 HTML y TXT.
+}
+\examples{
+# Objeto semilla_historias minimo construido a mano (sin API)
+h <- structure(list(
+  introduccion = "Ana y Luis son companeros de trabajo desde hace un anio.",
+  historias = data.frame(
+    factor      = c("Control", "Aislamiento"),
+    descripcion = c("Vigilar al otro", "Alejarlo de su entorno"),
+    texto       = c("Luis revisa a diario el telefono de Ana.",
+                    "Luis le pide a Ana que no salga con sus amigas."),
+    stringsAsFactors = FALSE),
+  items = data.frame(
+    n_item    = 1:3,
+    item      = c("Lo que hace Luis es grave.",
+                  "Luis tiene motivos para actuar asi.",
+                  "Esto ocurre en muchas parejas."),
+    faceta    = c("severidad", "justificacion", "normalizacion"),
+    polaridad = c("directa", "inversa", "inversa"),
+    stringsAsFactors = FALSE),
+  personajes = list(agresor = "Luis", victima = "Ana"),
+  concepto = "normalizacion del control en la pareja",
+  poblacion = "adultos", idioma = "es"),
+  class = c("semilla_historias", "list"))
+
+# Un cuestionario por historia, sin escribir en disco
+tests <- ensamblar_test_historias(h, verbose = FALSE)
+print(tests)
+
+# Todas las historias en un solo archivo Markdown temporal
+f <- file.path(tempdir(), "historias_demo")
+comp <- ensamblar_test_historias(h, archivo = f, formato = "md",
+                                 modo = "compilado", verbose = FALSE)
+comp$archivos
+unlink(comp$archivos)
+
 }

@@ -14,12 +14,23 @@ fiabilidad_semantica(x, metodo = "spearman_brown", verbose = TRUE)
 \item{verbose}{Mostrar progreso}
 }
 \value{
-Lista con:
+Lista de clase \code{c("semilla_fiabilidad", "list")} con:
 \itemize{
-\item \code{alpha_dimensiones}: Alpha semantico por dimension (principal)
-\item \code{alpha_promedio}: Promedio ponderado de alphas por dimension
-\item \code{similitud_intra}: Similitud promedio DENTRO de cada dimension
-\item \code{similitud_inter}: Similitud promedio ENTRE dimensiones
+\item \code{alpha_dimensiones}: data.frame con columnas \code{dimension},
+\code{n_items}, \code{similitud_promedio} y \code{alpha_semantico}
+(el resultado principal).
+\item \code{alpha_promedio}: promedio de los alphas por dimension,
+ponderado por el numero de items.
+\item \code{similitud_intra}: similitud coseno promedio DENTRO de las
+dimensiones.
+\item \code{similitud_inter}: similitud coseno promedio ENTRE
+dimensiones (\code{NA} si hay una sola).
+\item \code{discriminacion}: \code{similitud_intra - similitud_inter}
+(solo cuando hay dimensiones).
+\item \code{advertencia}: texto, solo cuando no hay informacion de
+dimensiones y se calcula un alpha unico.
+\item \code{metadata}: lista con \code{metodo}, \code{n_items},
+\code{n_dimensiones} y \code{fecha}.
 }
 }
 \description{
@@ -65,9 +76,8 @@ Interpretacion (George & Mallery, 2003):
 }
 }
 \examples{
-\dontrun{
-# Calcular fiabilidad semantica
-fiab <- fiabilidad_semantica(mi_escala)
+# Calcular fiabilidad semantica de la escala de demostracion
+fiab <- fiabilidad_semantica(semilla_demo, verbose = FALSE)
 
 # Ver resultados
 print(fiab)
@@ -77,7 +87,6 @@ fiab$alpha_dimensiones
 
 # Promedio ponderado
 fiab$alpha_promedio
-}
 
 }
 \references{

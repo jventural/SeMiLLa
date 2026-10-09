@@ -81,8 +81,13 @@
 #'   lector adolescente a menudo bilingue) o una cadena libre de guia de
 #'   registro. Se combina con etapa_evolutiva y nivel_socioeconomico.
 #' @param modelo Modelo OpenAI. Default \code{"gpt-4.1-mini-2025-04-14"}.
-#' @param seed Semilla para reproducibilidad.
+#' @param seed Entero o \code{NULL} (default). Si se indica, se pasa a la API
+#'   del LLM (opcion \code{SeMiLLa.seed}, que se restaura al salir) para
+#'   favorecer la reproducibilidad. Con \code{NULL} el resultado puede variar
+#'   entre corridas.
 #' @param verbose Mostrar progreso.
+#' @param x Objeto de clase \code{semilla_historias} (metodo \code{print}).
+#' @param ... Argumentos adicionales (ignorados por el metodo \code{print}).
 #'
 #' @return Objeto \code{semilla_historias} (lista) con:
 #' \itemize{
@@ -93,12 +98,15 @@
 #'   \item \code{concepto}, \code{poblacion}, \code{idioma}.
 #'   \item \code{metadata}: lista con modelo, seed, fecha, n_items, etc.
 #' }
+#' El metodo \code{print} devuelve \code{x} de forma invisible; se llama por
+#' su efecto (muestra un resumen en consola).
 #'
 #' @examples
+#' # Requiere una clave de API de OpenAI (variable OPENAI_API_KEY).
 #' \dontrun{
 #' h <- generar_escala_historias(
 #'   concepto = "normalizacion de violencia psicologica en pareja",
-#'   api_key  = api_key,
+#'   api_key  = Sys.getenv("OPENAI_API_KEY"),
 #'   factores = c("Control", "Celos", "Humillacion", "Aislamiento"),
 #'   agresor  = "Diego",
 #'   victima  = "Camila",
@@ -130,7 +138,7 @@ generar_escala_historias <- function(
   max_palabras_historia     = 110L,
   max_palabras_item         = 18L,
   modelo                  = "gpt-4.1-mini-2025-04-14",
-  seed                    = 2026,
+  seed                    = NULL,
   verbose                 = TRUE,
   # --- v2: items modo (transversal vs por_historia) ---
   items_modo              = c("transversal", "por_historia"),
@@ -162,8 +170,8 @@ generar_escala_historias <- function(
                                         nivel_socioeconomico,
                                         idioma = idioma,
                                         variante_regional = variante_regional)
-  options(SeMiLLa.bloque_lenguaje = bloque_lenguaje)
-  on.exit(options(SeMiLLa.bloque_lenguaje = NULL), add = TRUE)
+  old_bloque <- options(SeMiLLa.bloque_lenguaje = bloque_lenguaje)
+  on.exit(options(old_bloque), add = TRUE)
 
   idioma         <- match.arg(idioma)
   tipo_escala_respuesta <- match.arg(tipo_escala_respuesta)
@@ -176,7 +184,10 @@ generar_escala_historias <- function(
       length(descripcion_factores) != length(factores))
     stop("'descripcion_factores' debe tener el mismo largo que 'factores'.")
 
-  if (!is.null(seed)) options(SeMiLLa.seed = as.integer(seed))
+  if (!is.null(seed)) {
+    old_seed_opt <- options(SeMiLLa.seed = as.integer(seed))
+    on.exit(options(old_seed_opt), add = TRUE)
+  }
 
   # ---- Auto-hint: si la poblacion incluye adolescentes/ninos, sugerir
   # prompts_historieta() para ilustrar las historias como comic strip ----
@@ -798,6 +809,7 @@ generar_escala_historias <- function(
 # Print method
 # =============================================================================
 
+#' @rdname generar_escala_historias
 #' @export
 print.semilla_historias <- function(x, ...) {
   cat("\n")
@@ -1391,8 +1403,8 @@ print.semilla_historias <- function(x, ...) {
   # (angustia, ansiedad, desconectado...). Si el bloque de lenguaje activo
   # restringe el registro, se reescribe cada item que contenga una palabra
   # prohibida, sustituyendola por un equivalente simple (con cache => reproducible).
-  prohibidas <- "angustia|ansiedad|desregulaci[oó]n|desconectad[oa]|vulnerabilidad"
-  registro_simple <- grepl("AMAZONICO|MUY simple|NIÑEZ|MEDIO-BAJO|BAJO",
+  prohibidas <- "angustia|ansiedad|desregulaci[o\u00F3]n|desconectad[oa]|vulnerabilidad"
+  registro_simple <- grepl("AMAZONICO|MUY simple|NI\u00D1EZ|MEDIO-BAJO|BAJO",
                            bloque_leng, ignore.case = TRUE)
   if (registro_simple) {
     for (j in seq_along(lineas)) {
@@ -1410,7 +1422,7 @@ print.semilla_historias <- function(x, ...) {
           "gramaticalmente correcto. IMPORTANTE: si el item menciona a", victima,
           "o un elemento de la historia (patio, recreo, la burla, el video, las",
           "marcas, Camila, etc.), CONSERVA esa referencia; si no la menciona,",
-          "AÑADE una alusion breve a", paste0(victima, ""), "o a la situacion.",
+          "A\u00D1ADE una alusion breve a", paste0(victima, ""), "o a la situacion.",
           "Devuelve SOLO el item, sin comillas ni numero."
         )
         rr <- tryCatch(.llamar_openai(
@@ -1419,7 +1431,7 @@ print.semilla_historias <- function(x, ...) {
                           list(role = "user",   content = lineas[j])),
           modelo = modelo, max_tokens = 80L, temperature = 0.3),
           error = function(e) lineas[j])
-        rr <- trimws(gsub('^[\\s"«–-]+|[\\s"»]+$', "", rr, perl = TRUE))
+        rr <- trimws(gsub('^[\\s"\u00AB\u2013-]+|[\\s"\u00BB]+$', "", rr, perl = TRUE))
         if (nzchar(rr)) lineas[j] <- rr
       }
     }

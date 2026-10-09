@@ -5,3 +5,10 @@
 ^README\.md$
 ^LICENSE\.md$
 ^validation$
+^data-raw$
+^inst/archivo$
+^cran-comments\.md$
+^.*\.Rcheck$
+^CRAN-SUBMISSION$
+^\.RData$
+^RETOMAR_AQUI\.md$

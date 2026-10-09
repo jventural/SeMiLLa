@@ -29,13 +29,23 @@ castellano amazonico simple (lector adolescente a menudo bilingue), o una
 cadena libre que se inyecta como guia de registro.}
 }
 \value{
-Cadena con un bloque de texto listo para inyectar en sys_msg.
-Devuelve cadena vacia si ambos parametros son \code{"auto"}.
+Vector de caracteres de longitud 1 con un bloque de instrucciones
+(varias lineas) listo para inyectar en el mensaje de sistema del LLM.
+Devuelve la cadena vacia \code{""} si \code{etapa_evolutiva},
+\code{nivel_socioeconomico} y \code{variante_regional} son \code{"auto"}.
 }
 \description{
 Construye un bloque de instrucciones para el prompt del LLM, restringiendo
 el vocabulario y la sintaxis al nivel de comprension lectora real de la
-poblacion objetivo. Util en escalas dirigidas a niños o adolescentes,
+poblacion objetivo. Util en escalas dirigidas a ninos o adolescentes,
 especialmente de NSE medio o bajo, donde los modelos LLM tienden a
 generar textos con lexico literario inadecuado.
+}
+\examples{
+# No llama a ninguna API: solo construye el texto del prompt
+bloque <- contexto_lenguaje("adolescencia_temprana", "bajo")
+cat(bloque)
+
+contexto_lenguaje()  # todo "auto": cadena vacia
+
 }

@@ -7,8 +7,20 @@
 deshabilitar_cache(verbose = TRUE)
 }
 \arguments{
-\item{verbose}{Mostrar mensaje (default: TRUE)}
+\item{verbose}{Logico. Si \code{TRUE} (por defecto), muestra un mensaje.}
+}
+\value{
+\code{NULL} de forma invisible; se llama por su efecto.
 }
 \description{
 Desactiva el cache. Las llamadas siguientes iran a la API.
+Su proposito es fijar la opcion de sesion \code{SeMiLLa.cache_enabled =
+  FALSE}; no borra el directorio ni las entradas guardadas.
+}
+\examples{
+old <- options(SeMiLLa.cache_enabled = NULL)
+deshabilitar_cache()
+getOption("SeMiLLa.cache_enabled")
+options(old)
+
 }

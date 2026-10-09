@@ -14,12 +14,19 @@ homogeneidad_semantica(x, metodo = "spearman_brown", verbose = TRUE)
 \item{verbose}{Mostrar progreso}
 }
 \value{
-Igual que \code{\link{fiabilidad_semantica}}.
+Igual que \code{\link{fiabilidad_semantica}}: objeto de clase
+\code{semilla_fiabilidad} con \code{alpha_dimensiones} (alfa semantico por
+dimension), \code{alpha_promedio}, \code{similitud_intra},
+\code{similitud_inter}, \code{discriminacion} y \code{metadata}.
 }
 \description{
 Alias descriptivo de \code{\link{fiabilidad_semantica}}. Resume la
 homogeneidad tipo alfa de cada dimension a partir de la similitud media. Es
 un proxy pre-empirico de consistencia, no fiabilidad poblacional.
+}
+\examples{
+h <- homogeneidad_semantica(semilla_demo, verbose = FALSE)
+h$alpha_dimensiones
 }
 \seealso{
 \code{\link{fiabilidad_semantica}}, \code{\link{auditar_redundancia}}

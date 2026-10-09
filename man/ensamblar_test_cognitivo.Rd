@@ -27,16 +27,23 @@ ensamblar_test_cognitivo(
 
 \item{version}{Version.}
 
-\item{archivo}{Ruta SIN extension.}
+\item{archivo}{Ruta SIN extension (default \code{NULL}). Sin ruta no se
+escribe ningun archivo; con ruta se generan
+\verb{<archivo>_aplicable}, \verb{<archivo>_clave}, \verb{<archivo>_banco.xlsx} y
+\verb{<archivo>_app.R} segun \code{formato}.}
 
-\item{formato}{Vector con: "md", "docx", "xlsx", "shiny".}
+\item{formato}{Vector con: "md", "docx", "xlsx", "shiny" ("docx" requiere
+\pkg{officer} y \pkg{flextable}, o \pkg{rmarkdown}; "xlsx" requiere
+\pkg{openxlsx}).}
 
-\item{idioma}{"es" o "en".}
+\item{idioma}{"es" o "en". Si es \code{NULL} (default) se toma del objeto.}
 
 \item{verbose}{Mostrar progreso.}
 }
 \value{
-Lista con clase \code{semilla_test_cognitivo_multi}.
+Lista de clase \code{c("semilla_test_cognitivo_multi", "list")}
+con \code{nombre_test}, \code{archivos} (rutas de los archivos escritos;
+vacio si \code{archivo = NULL}) y \code{paradigma}.
 }
 \description{
 Toma un objeto \code{semilla_test_cognitivo} y produce los entregables:
@@ -46,4 +53,22 @@ Toma un objeto \code{semilla_test_cognitivo} y produce los entregables:
 \item Un Excel con el banco de trials, validacion procedural y tabla
 de clustering.
 }
+}
+\examples{
+tc <- structure(list(
+  paradigma = "ospan", idioma = "es",
+  trials = data.frame(n_trial = c(1, 1),
+                      operacion_str = c("(2 x 3) - 1", "(8 / 2) + 1"),
+                      valor_dado = c(5, 6), es_verdadera = c(TRUE, FALSE),
+                      estimulo_memoria = c("F", "K")),
+  trials_resumen = data.frame(n_trial = 1, set_size = 2,
+                              nivel_dificultad = 1,
+                              secuencia_estimulos = "F K")),
+  class = c("semilla_test_cognitivo", "list"))
+f <- file.path(tempdir(), "ospan")
+r <- ensamblar_test_cognitivo(tc, archivo = f, formato = "md",
+                              verbose = FALSE)
+r
+unlink(r$archivos)
+
 }

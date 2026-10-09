@@ -15,20 +15,20 @@ plot_coherencia_violin(x, umbral_minimo = 0.5, titulo = NULL)
 \item{titulo}{Titulo del grafico (default: auto)}
 }
 \value{
-Objeto ggplot2
+Objeto de clase \code{ggplot} (ggplot2): un violin por dimension
+con la distribucion de la coherencia de sus items y una linea en
+\code{umbral_minimo}. Se dibuja al imprimirlo.
 }
 \description{
 Genera un violin plot mostrando la distribucion de coherencia interna
 para cada dimension. Permite identificar dimensiones con items heterogeneos.
 }
 \examples{
-\dontrun{
 # Desde objeto semilla
-plot_coherencia_violin(mi_escala)
+plot_coherencia_violin(semilla_demo)
 
 # Desde resultado de analizar_coherencia
-coherencia <- analizar_coherencia(mi_escala)
+coherencia <- analizar_coherencia(semilla_demo, verbose = FALSE)
 plot_coherencia_violin(coherencia)
-}
 
 }

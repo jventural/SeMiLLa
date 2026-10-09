@@ -12,16 +12,16 @@ plot_precision(x, titulo = NULL)
 \item{titulo}{Titulo del grafico (default: auto)}
 }
 \value{
-Objeto ggplot2
+Objeto de clase \code{ggplot} (ggplot2): barras horizontales con
+la precision de clasificacion (\\%) de cada dimension, coloreadas por
+nivel. Se dibuja al imprimirlo.
 }
 \description{
 Genera un grafico de barras horizontales mostrando la precision de
 clasificacion para cada dimension. Incluye colores segun nivel de precision.
 }
 \examples{
-\dontrun{
-prec <- precision_clasificacion(mi_escala)
+prec <- precision_clasificacion(semilla_demo, verbose = FALSE, seed = 1)
 plot_precision(prec)
-}
 
 }

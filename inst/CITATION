@@ -2,12 +2,12 @@ citHeader("Para citar SeMiLLa en publicaciones use:")
 
 ## 'meta' es provisto por readCitationFile() desde el DESCRIPTION,
 ## por lo que funciona aun cuando el paquete no esta instalado (R CMD check).
-ver  <- if (!is.null(meta$Version)) meta$Version else "2.1.0"
+ver  <- if (!is.null(meta$Version)) meta$Version else "2.11.0"
 anio <- if (!is.null(meta$Date)) sub("-.*", "", meta$Date) else format(Sys.Date(), "%Y")
 
 bibentry(
   bibtype = "Manual",
-  title   = "SeMiLLa: SEmantic Measurement of Items via LLM Assistance",
+  title   = "SeMiLLa: Drafting and Auditing Psychometric Items with Large Language Models",
   author  = person("Jose", "Ventura-Leon",
                    email = "jventuraleon@gmail.com",
                    role  = c("aut","cre"),
@@ -17,7 +17,7 @@ bibentry(
   url     = "https://github.com/jventural/SeMiLLa",
   textVersion = paste0(
     "Ventura-Leon, J. (", anio,
-    "). SeMiLLa: SEmantic Measurement of Items via LLM Assistance. ",
+    "). SeMiLLa: Drafting and Auditing Psychometric Items with Large Language Models. ",
     "R package version ", ver,
     ". https://github.com/jventural/SeMiLLa"
   )

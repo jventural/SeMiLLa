@@ -4,16 +4,22 @@
 \alias{habilitar_cache}
 \title{Habilitar Cache de Respuestas LLM}
 \usage{
-habilitar_cache(dir = "SeMiLLa_cache", verbose = TRUE)
+habilitar_cache(dir = tools::R_user_dir("SeMiLLa", "cache"), verbose = TRUE)
 }
 \arguments{
-\item{dir}{Directorio donde se guardara el cache (default: "SeMiLLa_cache"
-en el working directory)}
+\item{dir}{Directorio donde se guardara el cache. Por defecto, el
+directorio de cache de usuario que devuelve
+\code{tools::R_user_dir("SeMiLLa", "cache")} (nunca el directorio de
+trabajo). Para un proyecto concreto, indique una ruta propia.}
 
-\item{verbose}{Mostrar mensajes (default: TRUE)}
+\item{verbose}{Logico. Si \code{TRUE} (por defecto), muestra el directorio
+y el numero de entradas existentes.}
 }
 \value{
-Directorio de cache (invisible)
+Cadena de caracteres con la ruta normalizada del directorio de
+cache, de forma invisible. Se llama sobre todo por su efecto: crea el
+directorio si no existe y fija las opciones \code{SeMiLLa.cache_dir} y
+\code{SeMiLLa.cache_enabled = TRUE}.
 }
 \description{
 Activa el cache de disco para TODAS las llamadas a OpenAI (chat y embeddings)
@@ -22,20 +28,22 @@ por hash. Las corridas siguientes la leen sin llamar a la API.
 
 Esto garantiza reproducibilidad 100\% aun cuando OpenAI actualice el modelo
 silenciosamente.
+
+El proposito de esta funcion es fijar las opciones de sesion
+\code{SeMiLLa.cache_dir} y \code{SeMiLLa.cache_enabled}; por eso no las
+restaura al salir. Use \code{deshabilitar_cache()} para desactivarlo.
 }
 \examples{
-\dontrun{
-# Habilitar cache en el directorio del proyecto
-habilitar_cache("D:/mi_proyecto/cache_llm")
-
-# Primera corrida: llama a la API y guarda
-escala <- semilla("resiliencia infantil", api_key, seed = 2026)
-
-# Segunda corrida: lee del cache (items IDENTICOS)
-escala2 <- semilla("resiliencia infantil", api_key, seed = 2026)
-
-# Desactivar
+old <- options(SeMiLLa.cache_dir = NULL, SeMiLLa.cache_enabled = NULL)
+d <- file.path(tempdir(), "semilla_cache_demo")
+habilitar_cache(d)
+info_cache()
 deshabilitar_cache()
-}
+options(old)
+unlink(d, recursive = TRUE)
 
+}
+\seealso{
+\code{\link{cache}}, \code{\link{deshabilitar_cache}},
+\code{\link{info_cache}}, \code{\link{limpiar_cache}}
 }

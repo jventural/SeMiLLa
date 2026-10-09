@@ -1,3 +1,70 @@
+# SeMiLLa 2.11.0 (2026-10-08)
+## Preparacion para CRAN
+
+Se aplicaron de forma preventiva las observaciones que CRAN hizo a otros
+paquetes del autor. Varios comportamientos por defecto cambian.
+
+### Comportamiento por defecto que cambia
+
+* **Semillas.** Ninguna funcion fija ya una semilla con un numero. Los
+  argumentos `seed` (y `semilla` en `plot_embeddings()`) valen `NULL` por
+  defecto en `compuerta_pre_aplicacion()`, `simular_estructura()`,
+  `estres_escala()`, `optimizar_para_campo()`, `converger_escala()`,
+  `estructura_por_consenso()`, `precision_clasificacion()`, `forma_corta()`,
+  `cargas_semanticas()`, `analizar_tolerancia()`, `comparar_generadores()`,
+  `generar_escala_historias()`, `generar_escala_guttman()`,
+  `generar_test_cognitivo()`, `generar_prueba_objetiva()`,
+  `generar_escala_forcedchoice()`, `prompts_historieta()` y
+  `verificar_clave()`. Con `NULL` el resultado puede variar entre corridas;
+  para reproducir, pase `seed`. `precision_clasificacion()` fijaba por dentro
+  2024 y 2024 + replica, asi que su argumento no tenia efecto; ahora si.
+* `converger_escala()`, `optimizar_para_campo()` y `estructura_por_consenso()`
+  sortean UNA semilla al inicio si no se les pasa, la usan en todas las
+  mediciones de la corrida (las versiones que se comparan quedan medidas con
+  los mismos numeros aleatorios) y la devuelven en el resultado (`$seed`,
+  `$optimizacion$seed` y `$parametros$seed`).
+* **Disco.** Nada se escribe por defecto en el directorio de trabajo.
+  `refinar_escala(exportar_excel = FALSE)` por defecto, y exportar exige
+  `carpeta_salida`; `exportar_escala()` y `guardar()` exigen `archivo`;
+  `semilla(exportar_csv = TRUE)` exige `archivo_salida`. La cache usa por
+  defecto `tools::R_user_dir("SeMiLLa", "cache")`.
+* **Nucleos.** Durante `R CMD check` las simulaciones usan como maximo 2.
+* **Barajado de items de emparejamiento.** Usaba `set.seed(n)`; ahora una
+  permutacion determinista propia que no toca el generador de R. La prueba y
+  su clave siguen barajando igual entre si, pero **el orden cambia respecto de
+  versiones anteriores**: una prueba ya impresa con una version anterior no
+  coincidira con la clave regenerada con esta.
+* Varias funciones generadoras dejaban fijada la opcion `SeMiLLa.seed` en la
+  sesion; ahora la restauran al terminar.
+* `cat()` sin `verbose` pasa a `message()` en `leer_escala()`,
+  `crear_plantilla_escala()`, `flujo()`, `info_cache()` y `limpiar_cache()`.
+* `analizar_tolerancia()` gana `n_rep_pronostico` (replicas del pronostico,
+  100 por defecto, como antes).
+
+### Errores corregidos al escribir los ejemplos
+
+* `plot_similitud(mostrar_valores = TRUE)` fallaba siempre: la capa de texto
+  no encontraba la columna de etiquetas.
+* `exportar_proyecto()` nunca generaba las figuras 12 a 15: sus funciones
+  auxiliares usaban `dpi` sin recibirlo y el error quedaba atrapado.
+* `omega_semantico()` decia en consola que omega es "preferible" con cargas
+  heterogeneas; ahora dice que coincide con alfa cuando las cargas son iguales
+  y que la diferencia refleja cuanto se apartan de ese supuesto.
+
+### Documentacion
+
+* Datos nuevos: `semilla_demo`, una escala de 15 items con embeddings
+  sinteticos para que los ejemplos corran sin clave de API.
+* Todas las funciones y metodos exportados documentan su valor de retorno y
+  todos sus argumentos. Los ejemplos que no necesitan API se ejecutan; solo
+  los que llaman a un LLM o a un servicio de embeddings quedan en `\dontrun`.
+* `estructura_por_consenso()` y los cuatro graficos de consenso estaban
+  exportados sin documentacion; ya la tienen.
+* Funciones internas que tenian `@export` sin estar en el NAMESPACE quedan
+  sin pagina de ayuda (`@noRd`).
+* Title y Description nuevos, con las referencias de los metodos (Voss et al.,
+  2026; Aiken, 1985; Penfield y Giacobbi, 2004), verificadas en Crossref.
+
 # SeMiLLa 2.10.0 (2026-10-08)
 ## Nombres que dicen lo que se mide
 

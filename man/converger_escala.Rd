@@ -2,6 +2,7 @@
 % Please edit documentation in R/converger.R
 \name{converger_escala}
 \alias{converger_escala}
+\alias{print.semilla_convergencia}
 \title{Convergencia psicometrica iterativa}
 \usage{
 converger_escala(
@@ -17,10 +18,12 @@ converger_escala(
   umbral_ic = 0.5,
   n_jueces = 10,
   formato_si_falla = TRUE,
-  seed = 2026,
+  seed = NULL,
   margen_mejora = 4,
   verbose = TRUE
 )
+
+\method{print}{semilla_convergencia}(x, ...)
 }
 \arguments{
 \item{x}{Objeto \code{semilla} con \code{$items} y \code{$embeddings}.}
@@ -55,7 +58,9 @@ anterior.}
 \item{formato_si_falla}{Si \code{TRUE} (default) y el bucle no alcanza el
 objetivo, construye la version de eleccion forzada cuasi-ipsativa.}
 
-\item{seed}{Semilla de la simulacion.}
+\item{seed}{Semilla de la simulacion y de las llamadas al LLM. Con
+\code{NULL} (por defecto) no se fija ninguna semilla y el resultado puede
+variar entre corridas.}
 
 \item{margen_mejora}{Puntos que una vuelta debe ganar, con el mismo
 veredicto, para sustituir a la mejor version (default 4, el peso de un
@@ -63,14 +68,23 @@ gemelo confirmado). Subir de veredicto basta siempre. Es una convencion
 para no tomar el ruido de los jueces LLM por mejora.}
 
 \item{verbose}{Mostrar progreso.}
+
+\item{...}{No se usa.}
 }
 \value{
-Lista con \code{escala} (la mejor version), \code{diagnostico},
-\code{historial}, \code{cambios} (items cuyo texto difiere entre la
+Objeto de clase \code{semilla_convergencia} (lista) con
+\code{escala} (objeto \code{semilla} de la mejor version),
+\code{diagnostico} (diagnostico unificado de esa version),
+\code{historial} (data.frame con una fila por iteracion y su puntaje),
+\code{cambios} (data.frame de items cuyo texto difiere entre la
 escala de entrada y la entregada, con la iteracion y el motivo de su
 ultima reescritura), \code{registro_cambios} (todas las reescrituras,
-tambien las de vueltas descartadas),
-\code{forced_choice}, \code{objetivo_alcanzado} y \code{minutos}.
+tambien las de vueltas descartadas), \code{margen_mejora},
+\code{forced_choice} (version de eleccion forzada o \code{NULL}),
+\code{objetivo_alcanzado} (logico), \code{objetivo}, \code{minutos}
+(duracion total) y \code{tiempos} (segundos por fase). El metodo
+\code{print()} devuelve \code{x} de forma invisible; se llama por su
+efecto.
 }
 \description{
 Diagnostica la escala con los tres ejes de la compuerta MAS la validez de
@@ -82,6 +96,18 @@ Cada version se puntua y se devuelve la MEJOR, no la ultima: el bucle puede
 empeorar la escala mientras la corrige, y sin esta proteccion devolveria una
 version peor que la de partida (verificado en las tres corridas de
 calibracion).
+}
+\examples{
+# Requiere clave de API (llama a un LLM en cada iteracion).
+\dontrun{
+x <- semilla(concepto = "Ansiedad ante la estadistica",
+             api_key = Sys.getenv("OPENAI_API_KEY"))
+conv <- converger_escala(x, api_key = Sys.getenv("OPENAI_API_KEY"),
+                         max_iteraciones = 2, seed = 2026)
+conv
+conv$cambios
+}
+
 }
 \seealso{
 \code{\link{compuerta_pre_aplicacion}},

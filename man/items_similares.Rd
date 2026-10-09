@@ -4,7 +4,7 @@
 \alias{items_similares}
 \title{Buscar Items Similares}
 \usage{
-items_similares(embeddings, item, top = 5)
+items_similares(embeddings, item, top = 5, verbose = TRUE)
 }
 \arguments{
 \item{embeddings}{Objeto semilla_embeddings o semilla}
@@ -12,17 +12,22 @@ items_similares(embeddings, item, top = 5)
 \item{item}{Numero del item o texto}
 
 \item{top}{Numero de items similares (default: 5)}
+
+\item{verbose}{Logico. Si \code{TRUE} (por defecto) muestra en consola el
+item de referencia y los mas parecidos.}
 }
 \value{
-Dataframe con items similares
+Data.frame (invisible) con una fila por item similar y columnas
+\code{item_num} (posicion del item), \code{factor} (dimension),
+\code{item} (texto) y \code{similitud} (coseno con el item de
+referencia), ordenado de mayor a menor similitud.
 }
 \description{
 Encuentra items semanticamente similares a un item dado.
 }
 \examples{
-\dontrun{
-# Items similares al item 1
-items_similares(emb, item = 1, top = 5)
-}
+# semilla_demo trae embeddings sinteticos: no requiere clave de API.
+sim <- items_similares(semilla_demo, item = 1, top = 3)
+sim
 
 }

@@ -26,10 +26,12 @@ propietarios de OpenAI (\code{text-embedding-3-small} por defecto) siguen
 disponibles y no se ven afectados.
 }
 \examples{
-\dontrun{
 modelos_embeddings_libres()
-# Usar un modelo libre en local
-emb <- obtener_embeddings(mis_items,
+
+# Lo siguiente requiere Python con 'sentence-transformers' y descarga el
+# modelo la primera vez (no necesita clave de API).
+\dontrun{
+emb <- obtener_embeddings(semilla_demo$items,
                           modelo_embedding = "paraphrase-multilingual-MiniLM-L12-v2")
 }
 

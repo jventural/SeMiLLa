@@ -169,7 +169,18 @@
 #' @param constructo Nombre del constructo. Actualmente: "NSSI_propension".
 #' @param verbose Mostrar tabla resumen.
 #'
-#' @return Lista nombrada con metadatos de cada faceta.
+#' @return De forma invisible, una lista nombrada con una entrada por faceta.
+#'   Cada entrada es una lista con \code{definicion} (definicion operacional),
+#'   \code{instrumento_principal}, \code{fuentes} (cita APA),
+#'   \code{ejemplos_originales} (vector de items de ejemplo),
+#'   \code{persona_recomendada} (\code{"1a persona"}, \code{"3a persona"} o
+#'   \code{"mixta"}), \code{polaridad} y \code{n_factor_origen} (cuantos
+#'   instrumentos revisados respaldan la faceta).
+#'
+#' @examples
+#' fac <- sugerir_facetas("NSSI_propension", verbose = FALSE)
+#' names(fac)
+#' fac$expectativa_alivio$persona_recomendada
 #' @export
 sugerir_facetas <- function(constructo = "NSSI_propension", verbose = TRUE) {
   facetas <- switch(constructo,

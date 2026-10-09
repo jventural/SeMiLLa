@@ -4,15 +4,32 @@
 \alias{guardar}
 \title{Guardar Objeto SeMiLLa}
 \usage{
-guardar(semilla, archivo = "semilla", verbose = TRUE)
+guardar(semilla, archivo, verbose = TRUE)
 }
 \arguments{
-\item{semilla}{Objeto semilla}
+\item{semilla}{Objeto \code{semilla} (o cualquier objeto de R) a guardar.}
 
-\item{archivo}{Nombre del archivo (sin extension .rds)}
+\item{archivo}{Ruta del archivo \strong{sin} la extension \code{.rds}.
+Es obligatoria: no hay valor por defecto para no escribir en el
+directorio de trabajo. Use, por ejemplo,
+\code{file.path(tempdir(), "escala")}.}
 
-\item{verbose}{Mostrar progreso}
+\item{verbose}{Logico. Si \code{TRUE} (por defecto), muestra la ruta del
+archivo creado.}
+}
+\value{
+Cadena de caracteres, invisible, con la ruta del archivo
+\code{.rds} creado. Se llama por su efecto.
 }
 \description{
-Guarda el objeto completo para uso posterior.
+Guarda el objeto completo en un archivo \code{.rds} para uso posterior
+(se recupera con \code{\link{cargar}}).
+}
+\examples{
+f <- file.path(tempdir(), "semilla_demo")
+ruta <- guardar(semilla_demo, f, verbose = FALSE)
+x <- cargar(ruta)
+identical(x$items, semilla_demo$items)
+unlink(ruta)
+
 }

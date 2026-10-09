@@ -14,20 +14,20 @@ plot_evolucion_precision(datos_iteraciones, objetivo = 90, titulo = NULL)
 \item{titulo}{Titulo del grafico (default: auto)}
 }
 \value{
-Objeto ggplot2
+Objeto de clase \code{ggplot} (ggplot2): una linea con la
+precision en cada iteracion, rotulada con su valor, y una linea
+horizontal en \code{objetivo}. Se dibuja al imprimirlo.
 }
 \description{
 Muestra la evolucion de la precision a traves de iteraciones de refinamiento.
 Util para documentar el proceso de mejora de la escala.
 }
 \examples{
-\dontrun{
 # Despues de refinamiento iterativo
 datos <- data.frame(
   Iteracion = 1:3,
   Precision = c(80, 85, 95)
 )
 plot_evolucion_precision(datos, objetivo = 90)
-}
 
 }

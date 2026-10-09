@@ -55,35 +55,54 @@
 #'   (para tests con apoyo grafico). NULL por defecto.
 #' @param respuesta_imagen Configuracion opcional de respuesta basada en
 #'   imagenes. NULL por defecto.
-#' @param seed Semilla aleatoria (solo para orden = "aleatorio").
+#' @param seed Entero o \code{NULL} (default). Semilla aleatoria, solo para
+#'   \code{orden = "aleatorio"}. Con \code{NULL} el orden aleatorio puede
+#'   variar entre corridas.
 #' @param verbose Mostrar progreso.
+#' @param x Objeto \code{semilla_test} o \code{semilla_test_multi} (metodos
+#'   \code{print}).
+#' @param ... Argumentos adicionales (ignorados por los metodos \code{print}).
 #'
-#' @return Objeto \code{semilla_test} con:
+#' @return Con \code{forma = "larga"} o \code{"corta"}, un objeto
+#'   \code{semilla_test} (lista) con:
 #' \itemize{
-#'   \item \code{nombre_test}, \code{subtitulo}, \code{autor}, \code{version}
-#'   \item \code{instrucciones}, \code{datos_demograficos}, \code{anclajes}
-#'   \item \code{items_presentacion}: data.frame con los items ordenados
-#'   \item \code{texto_md}: cadena de markdown ensamblada
-#'   \item \code{archivos}: rutas generadas (si aplica)
+#'   \item \code{forma}: \code{"larga"} o \code{"corta"}.
+#'   \item \code{nombre_test}, \code{subtitulo}, \code{autor}, \code{version},
+#'     \code{idioma}: datos de portada.
+#'   \item \code{instrucciones}: texto de instrucciones.
+#'   \item \code{datos_demograficos}: campos demograficos solicitados.
+#'   \item \code{anclajes}: vector nombrado con las opciones de respuesta;
+#'     \code{tipo_escala} y \code{n_puntos} las describen.
+#'   \item \code{orden}: orden de presentacion usado.
+#'   \item \code{items_presentacion}: data.frame con los items en el orden de
+#'     presentacion (columna \code{numero_presentacion}).
+#'   \item \code{items_inversos}: items a puntuar de forma inversa.
+#'   \item \code{texto_md}: cadena con el test completo en Markdown.
+#'   \item \code{archivos}: vector character con las rutas escritas
+#'     (vacio si \code{archivo = NULL}).
 #' }
+#' Con \code{forma = "ambas"}, un objeto \code{semilla_test_multi}: lista con
+#' \code{larga} y \code{corta}, cada una un \code{semilla_test}.
+#' Los metodos \code{print} devuelven \code{x} de forma invisible; se llaman
+#' por su efecto (resumen en consola).
 #'
 #' @examples
-#' \dontrun{
+#' # Sin 'archivo' no se escribe nada en disco
 #' test <- ensamblar_test(
-#'   escala           = mi_escala,
-#'   escala_respuesta = esc_llm,
-#'   nombre_test      = "Escala de Estilos de Apego Parental (EEAP)",
-#'   autor            = "Dr. J. Ventura-Leon",
-#'   archivo          = "EEAP_v1",
-#'   formato          = c("md", "docx")
+#'   escala      = semilla_demo,
+#'   nombre_test = "Escala de demostracion",
+#'   autor       = "Equipo de investigacion",
+#'   verbose     = FALSE
 #' )
-#'
-#' # Ver el test en consola
 #' print(test)
+#' head(test$items_presentacion[, c("numero_presentacion", "item")])
 #'
-#' # Acceder al texto markdown
-#' cat(test$texto_md)
-#' }
+#' # Exportar a Markdown en un directorio temporal
+#' f <- file.path(tempdir(), "test_demo")
+#' test_md <- ensamblar_test(semilla_demo, archivo = f, formato = "md",
+#'                           verbose = FALSE)
+#' test_md$archivos
+#' unlink(test_md$archivos)
 #'
 #' @export
 ensamblar_test <- function(escala,
@@ -233,7 +252,7 @@ ensamblar_test <- function(escala,
 # Logica de una sola forma (reutilizada)
 # =============================================================================
 
-#' @keywords internal
+#' @noRd
 .ensamblar_una_forma <- function(escala, escala_respuesta, etiqueta_forma,
                                  nombre_test, subtitulo, instrucciones,
                                  incluir_datos, datos_solicitados, orden,
@@ -375,7 +394,7 @@ ensamblar_test <- function(escala,
 # Construir escala corta (usando forma_corta() o seleccion propia)
 # =============================================================================
 
-#' @keywords internal
+#' @noRd
 .construir_escala_corta <- function(escala, forma_corta_obj = NULL,
                                     n_items_corta = 16L,
                                     por_dimension = TRUE,
@@ -423,7 +442,7 @@ ensamblar_test <- function(escala,
 }
 
 
-#' @keywords internal
+#' @noRd
 .seleccion_simple_corta <- function(escala, n_items, por_dimension = TRUE) {
   items_df <- .extraer_df_items(escala)
   if (por_dimension && "dimension" %in% names(items_df)) {
@@ -444,7 +463,7 @@ ensamblar_test <- function(escala,
 # HELPERS INTERNOS
 # =============================================================================
 
-#' @keywords internal
+#' @noRd
 .extraer_df_items <- function(x) {
   if (inherits(x, "semilla") || inherits(x, "semilla_items")) {
     if (!is.null(x$items) && is.data.frame(x$items)) return(x$items)
@@ -454,7 +473,7 @@ ensamblar_test <- function(escala,
 }
 
 
-#' @keywords internal
+#' @noRd
 .extraer_concepto_str <- function(x) {
   if (inherits(x, "semilla") || inherits(x, "semilla_items")) {
     if (!is.null(x$concepto)) {
@@ -471,7 +490,7 @@ ensamblar_test <- function(escala,
 }
 
 
-#' @keywords internal
+#' @noRd
 .capitalizar <- function(s) {
   s <- trimws(as.character(s))
   if (nchar(s) == 0) return(s)
@@ -479,7 +498,7 @@ ensamblar_test <- function(escala,
 }
 
 
-#' @keywords internal
+#' @noRd
 .generar_instrucciones <- function(tipo_esc, idioma = "es") {
 
   if (idioma == "es") {
@@ -519,7 +538,7 @@ ensamblar_test <- function(escala,
 }
 
 
-#' @keywords internal
+#' @noRd
 .ordenar_items <- function(items_df, orden = "intercalado", seed = NULL) {
 
   if (orden == "original") return(items_df)
@@ -551,7 +570,7 @@ ensamblar_test <- function(escala,
 }
 
 
-#' @keywords internal
+#' @noRd
 .etiquetas_demograficas <- function(campos, idioma = "es") {
 
   etiquetas_es <- c(
@@ -586,7 +605,7 @@ ensamblar_test <- function(escala,
 }
 
 
-#' @keywords internal
+#' @noRd
 .bloque_datos_demograficos <- function(campos, idioma = "es") {
   items  <- .etiquetas_demograficas(campos, idioma)
   lineas <- paste0("- ", items, "  \n  _______________________________")
@@ -594,7 +613,7 @@ ensamblar_test <- function(escala,
 }
 
 
-#' @keywords internal
+#' @noRd
 .construir_md_test <- function(nombre_test, subtitulo, autor, version,
                                instrucciones, seccion_datos, anclajes,
                                tipo_esc, n_puntos, tabla_respuesta,
@@ -714,7 +733,7 @@ ensamblar_test <- function(escala,
 }
 
 
-#' @keywords internal
+#' @noRd
 .exportar_test <- function(md, archivo, formato, verbose = TRUE,
                            docx_data = NULL) {
 
@@ -783,7 +802,7 @@ ensamblar_test <- function(escala,
 }
 
 
-#' @keywords internal
+#' @noRd
 .exportar_via_rmarkdown <- function(base_md, archivo, formato, verbose = TRUE) {
   if (!requireNamespace("rmarkdown", quietly = TRUE)) {
     warning("Se requiere 'rmarkdown' para exportar a ", formato, ".")
@@ -821,7 +840,7 @@ ensamblar_test <- function(escala,
 #' por pandoc. Devuelve la ruta del archivo generado o NULL si officer/flextable
 #' no estan disponibles.
 #'
-#' @keywords internal
+#' @noRd
 .exportar_test_docx_officer <- function(archivo, d, verbose = TRUE) {
 
   off <- function(name) get(name, envir = asNamespace("officer"))
@@ -1224,7 +1243,7 @@ ensamblar_test <- function(escala,
 #'
 #' Devuelve un vector character de longitud n_items con NA donde no exista.
 #'
-#' @keywords internal
+#' @noRd
 .resolver_imagenes_items <- function(ilustraciones, n_items, verbose = TRUE) {
 
   rutas <- rep(NA_character_, n_items)
@@ -1268,7 +1287,7 @@ ensamblar_test <- function(escala,
 
 #' Calcula el ancho/alto en pulgadas conservando la relacion de aspecto.
 #'
-#' @keywords internal
+#' @noRd
 .img_dims_inch <- function(ruta, ancho_obj = 4.5, alto_max = 6.0) {
 
   dims_default <- list(w = ancho_obj, h = ancho_obj * 1.25)
@@ -1315,6 +1334,7 @@ ensamblar_test <- function(escala,
 # METODO S3 PRINT
 # =============================================================================
 
+#' @rdname ensamblar_test
 #' @export
 print.semilla_test_multi <- function(x, ...) {
   cat("\n")
@@ -1337,6 +1357,7 @@ print.semilla_test_multi <- function(x, ...) {
 }
 
 
+#' @rdname ensamblar_test
 #' @export
 print.semilla_test <- function(x, ...) {
   cat("\n")
@@ -1394,19 +1415,14 @@ print.semilla_test <- function(x, ...) {
 #'     \item forced_choice \code{->} \code{?ensamblar_test_forcedchoice}
 #'   }
 #'
-#' @return Objeto del tipo correspondiente.
+#' @return El objeto que devuelve la funcion subyacente segun \code{tipo}
+#'   (por ejemplo, \code{semilla_test} o \code{semilla_test_multi} para
+#'   \code{"likert"}); su estructura se describe en la ayuda de esa funcion.
 #'
 #' @examples
-#' \dontrun{
-#' # Likert (default), exportar a md y docx
-#' test <- ensamblar(tipo = "likert",
-#'                    escala = mi_escala,
-#'                    escala_respuesta = esc_resp,
-#'                    formato = c("md","docx"))
-#'
-#' # Forced-choice
-#' test <- ensamblar(tipo = "forced_choice", escala = mi_escala_fc)
-#' }
+#' # Likert (default), sin escribir en disco
+#' test <- ensamblar(tipo = "likert", escala = semilla_demo, verbose = FALSE)
+#' print(test)
 #'
 #' @export
 ensamblar <- function(tipo = c("likert","historias","guttman",

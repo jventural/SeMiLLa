@@ -44,9 +44,13 @@
 #'   aparece DENTRO de los bocadillos en la imagen.
 #' @param modelo Modelo OpenAI para segmentacion narrativa
 #'   (default `"gpt-4.1-mini-2025-04-14"`).
-#' @param seed Semilla para reproducibilidad.
-#' @param archivo Ruta SIN extension. Si se pasa, escribe Excel con prompts
-#'   y instrucciones de uso.
+#' @param seed Semilla que se envia a la API del LLM (best-effort; la opcion
+#'   \code{SeMiLLa.seed} se restaura al salir). Por defecto \code{NULL}: sin
+#'   semilla, el resultado puede variar entre corridas.
+#' @param archivo Ruta SIN extension (default \code{NULL}: no se escribe
+#'   nada). Si se pasa, escribe un Excel (\code{.xlsx}, requiere
+#'   \pkg{openxlsx}) con los prompts, la informacion de la corrida y las
+#'   instrucciones de uso.
 #' @param verbose Mostrar progreso.
 #' @param safe_mode `TRUE` (default) activa contingencias anti-bloqueo de
 #'   modelos texto-a-imagen (Gemini, Imagen, ChatGPT, etc.) cuando el
@@ -60,26 +64,35 @@
 #'   `"suicidio"`, `"violencia"`, `"abuso_sexual"`, `"trastorno_alimentario"`,
 #'   `"consumo"`). Si es `NULL` (default), se auto-detecta a partir de los
 #'   factores y textos de las historias. Solo tiene efecto si `safe_mode = TRUE`.
-#' @param intent_clinico Lógico. Si es `TRUE` inserta un bloque "Intent /
+#' @param intent_clinico Logico. Si es `TRUE` inserta un bloque "Intent /
 #'   Intencion" al inicio del prompt declarando uso clinico/educativo y la
 #'   lista explicita de elementos visuales prohibidos. `NULL` (default) =
 #'   autodetectar: `TRUE` cuando se detecto al menos un tema sensible.
 #'
-#' @return Data.frame con clase `semilla_prompts_historieta` y columnas:
-#'   `factor`, `historia_texto`, `n_panels`, `prompt`. Cada fila es una
-#'   historia con su prompt de historieta completo.
+#' @return Data.frame con clase
+#'   `c("semilla_prompts_historieta", "data.frame")` y columnas: `factor`,
+#'   `historia_texto`, `n_panels`, `paneles_json` (paneles devueltos por el
+#'   LLM, en JSON) y `prompt`. Cada fila es una historia con su prompt de
+#'   historieta completo.
 #'
 #' @examples
+#' # Requiere una clave de API de OpenAI (el LLM segmenta cada historia).
 #' \dontrun{
+#' escala_h <- generar_escala_historias(
+#'   concepto = "violencia en el enamoramiento",
+#'   api_key  = Sys.getenv("OPENAI_API_KEY"),
+#'   factores = c("Control", "Desvalorizacion"))
+#' f <- file.path(tempdir(), "historietas")
 #' h <- prompts_historieta(
-#'   escala_h        = mi_escala_h,
-#'   api_key         = api_key,
+#'   escala_h        = escala_h,
+#'   api_key         = Sys.getenv("OPENAI_API_KEY"),
 #'   n_panels        = 6,
 #'   paleta          = "color",
 #'   idioma_prompts  = "en",
-#'   archivo         = "historietas_EPNA"
+#'   archivo         = f
 #' )
 #' cat(h$prompt[1])  # primer prompt listo para pegar en Gemini
+#' unlink(paste0(f, ".xlsx"))
 #' }
 #'
 #' @export
@@ -93,7 +106,7 @@ prompts_historieta <- function(escala_h,
                                 idioma_prompts       = c("en","es"),
                                 idioma_bocadillos    = c("es","en"),
                                 modelo               = "gpt-4.1-mini-2025-04-14",
-                                seed                 = 2026,
+                                seed                 = NULL,
                                 archivo              = NULL,
                                 verbose              = TRUE,
                                 safe_mode            = TRUE,
@@ -240,7 +253,10 @@ prompts_historieta <- function(escala_h,
   # ---- 2. Cliente OpenAI para segmentacion narrativa ------------------------
 
   openai <- .configurar_openai(api_key)
-  if (!is.null(seed)) options(SeMiLLa.seed = as.integer(seed))
+  if (!is.null(seed)) {
+    .op_prev <- options(SeMiLLa.seed = as.integer(seed))
+    on.exit(options(.op_prev), add = TRUE)
+  }
 
   if (verbose) cat("\n[prompts_historieta] Procesando ",
                     nrow(escala_h$historias), " historias en ",
@@ -813,6 +829,28 @@ prompts_historieta <- function(escala_h,
 }
 
 
+#' @title Imprimir los prompts de historieta
+#'
+#' @description Lista cada historia con su factor, el numero de paneles y la
+#'   longitud del prompt generado por \code{\link{prompts_historieta}}.
+#'
+#' @param x Objeto de clase \code{semilla_prompts_historieta}.
+#' @param ... No se usa; se mantiene por compatibilidad con
+#'   \code{\link[base]{print}}.
+#'
+#' @return Devuelve \code{x} de forma invisible; se llama por su efecto
+#'   (imprimir en la consola).
+#'
+#' @examples
+#' h <- data.frame(factor = c("Control", "Desvalorizacion"),
+#'                 historia_texto = c("Historia 1", "Historia 2"),
+#'                 n_panels = c(6L, 6L),
+#'                 paneles_json = c("[]", "[]"),
+#'                 prompt = c("Comic strip, 6 panels...", "Comic strip..."),
+#'                 stringsAsFactors = FALSE)
+#' class(h) <- c("semilla_prompts_historieta", "data.frame")
+#' print(h)
+#'
 #' @export
 print.semilla_prompts_historieta <- function(x, ...) {
   cat("\n=== prompts_historieta() : ", nrow(x), " historias ===\n", sep = "")

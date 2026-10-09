@@ -21,7 +21,7 @@
 #' @description
 #' Construye un bloque de instrucciones para el prompt del LLM, restringiendo
 #' el vocabulario y la sintaxis al nivel de comprension lectora real de la
-#' poblacion objetivo. Util en escalas dirigidas a niños o adolescentes,
+#' poblacion objetivo. Util en escalas dirigidas a ninos o adolescentes,
 #' especialmente de NSE medio o bajo, donde los modelos LLM tienden a
 #' generar textos con lexico literario inadecuado.
 #'
@@ -38,8 +38,17 @@
 #'   castellano amazonico simple (lector adolescente a menudo bilingue), o una
 #'   cadena libre que se inyecta como guia de registro.
 #'
-#' @return Cadena con un bloque de texto listo para inyectar en sys_msg.
-#'   Devuelve cadena vacia si ambos parametros son `"auto"`.
+#' @return Vector de caracteres de longitud 1 con un bloque de instrucciones
+#'   (varias lineas) listo para inyectar en el mensaje de sistema del LLM.
+#'   Devuelve la cadena vacia `""` si `etapa_evolutiva`,
+#'   `nivel_socioeconomico` y `variante_regional` son `"auto"`.
+#'
+#' @examples
+#' # No llama a ninguna API: solo construye el texto del prompt
+#' bloque <- contexto_lenguaje("adolescencia_temprana", "bajo")
+#' cat(bloque)
+#'
+#' contexto_lenguaje()  # todo "auto": cadena vacia
 #'
 #' @export
 contexto_lenguaje <- function(etapa_evolutiva = "auto",
@@ -161,7 +170,7 @@ contexto_lenguaje <- function(etapa_evolutiva = "auto",
       "- USAR palabras concretas de uso diario: 'hacerme dano', 'lastimarme',",
       "  'me siento mal', 'me da rabia', 'nervios', 'miedo', 'estoy triste',",
       "  'me cuesta calmarme', 'me dan ganas de...', 'pienso que...', 'me siento solo'.",
-      "- EVITAR jerga urbana limeña y modismos costeños.",
+      "- EVITAR jerga urbana lime\u00f1a y modismos coste\u00f1os.",
       "- El sentido del item debe entenderse a la PRIMERA lectura, en voz alta.",
       "- PRUEBA: si un adolescente de la selva con castellano basico tuviera que",
       "  releer la frase o preguntar que significa una palabra, simplificarla."
@@ -196,6 +205,7 @@ contexto_lenguaje <- function(etapa_evolutiva = "auto",
 
 
 #' @keywords internal
+#' @noRd
 .lista_palabras_evitar_adolescente <- function() {
   # Lista de palabras frecuentes en LLM espanol que NO usa un adolescente
   c("fugazmente", "fugaz", "intensificar", "intensificarse", "absorber",

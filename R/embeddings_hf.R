@@ -20,11 +20,13 @@
 # distingue de un modelo local o de uno de OpenAI.
 
 #' @keywords internal
+#' @noRd
 .es_modelo_hf_emb <- function(modelo) {
   is.character(modelo) && length(modelo) == 1 && grepl("^hf:", modelo)
 }
 
 #' @keywords internal
+#' @noRd
 .embeddings_hf <- function(items_texto, modelo, hf_token, verbose = FALSE) {
   if (!is.character(hf_token) || !nzchar(hf_token))
     stop("Para un modelo de embeddings de HuggingFace hace falta tu token. ",

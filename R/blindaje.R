@@ -75,7 +75,7 @@
     "palabras. En datos reales estos pares producen dependencia local, ",
     "fiabilidad inflada y correlaciones entre factores artificialmente altas.\n\n",
     "PRUEBA DECISIVA, aplicala a cada par antes de incluirlo:\n",
-    "  ¿Podria una misma persona puntuar ALTO en uno y BAJO en el otro sin ",
+    "  \u00bfPodria una misma persona puntuar ALTO en uno y BAJO en el otro sin ",
     "contradecirse?\n",
     "  - Si la respuesta es SI, NO son gemelos: no lo incluyas.\n",
     "  - Solo si responder distinto seria practicamente imposible, son gemelos.\n\n",
@@ -328,7 +328,7 @@
   prompt <- paste0(
     "ITEM CANDIDATO: \"", txt, "\"\n\n",
     "ITEMS YA EXISTENTES EN LA ESCALA:\n", lista, "\n\n",
-    "¿El candidato es una PARAFRASIS-GEMELA de alguno de los existentes ",
+    "\u00bfEl candidato es una PARAFRASIS-GEMELA de alguno de los existentes ",
     "(mide exactamente la misma conducta, creencia o emocion especifica, ",
     "aunque cambien las palabras, el verbo sinonimo, el objeto, el recurso ",
     "o el beneficiario)? Compartir tema o dimension NO es ser gemelo.\n",
@@ -619,8 +619,8 @@
 #' palabras). Los items ofensores se reescriben de forma dirigida y, si el
 #' objeto traia embeddings, se recalculan al final.
 #'
-#' Motivacion: los embeddings subdetectan parafrasis (pares con r policorica
-#' >= .70 en datos reales viven en coseno 0.43-0.78), y esos gemelos producen
+#' Motivacion: los embeddings subdetectan parafrasis (los pares con r
+#' policorica de .70 o mas en datos reales viven en coseno 0.43-0.78), y esos gemelos producen
 #' dependencia local y correlaciones interfactoriales infladas.
 #'
 #' @param x Objeto \code{semilla} (o lista con \code{$items}, \code{$concepto},
@@ -628,10 +628,29 @@
 #' @param api_key Clave API de OpenAI.
 #' @param poblacion Poblacion objetivo; default: la del metadata del objeto.
 #' @param modelo Modelo LLM para jueces y reescritura.
+#' @param contexto_prohibido Vector character opcional con terminos o patrones
+#'   (expresiones regulares) que los items no deben contener; los que los
+#'   contienen se reescriben. Si es \code{NULL} (default) se toma de
+#'   \code{x$metadata$contexto_prohibido}.
+#' @param instrucciones_estilo Cadena opcional con instrucciones de estilo de
+#'   redaccion para la reescritura. Si es \code{NULL} (default) se toma de
+#'   \code{x$metadata$instrucciones_estilo}.
+#' @param modelo_jueces Modelo LLM de los jueces de contexto y de parafrasis
+#'   (default \code{"gpt-4.1-mini"}).
 #' @param max_rondas Rondas maximas de juicio + reescritura.
 #' @param verbose Mostrar progreso.
-#' @return El objeto con \code{$items} blindados, \code{$blindaje} (reporte)
-#'   y embeddings/similitud recalculados si existian.
+#' @return El mismo objeto \code{x} (con su clase) con \code{$items}
+#'   blindados (los items ofensores reescritos), \code{$blindaje} (reporte de
+#'   lo que juzgo y cambio cada juez) y \code{$embeddings}/\code{$similitud}
+#'   recalculados si algun item cambio.
+#' @examples
+#' # Requiere una clave de API de OpenAI (jueces LLM y embeddings).
+#' \dontrun{
+#' esc <- blindar_escala(semilla_demo,
+#'                       api_key = Sys.getenv("OPENAI_API_KEY"),
+#'                       poblacion = "estudiantes universitarios")
+#' esc$blindaje
+#' }
 #' @export
 blindar_escala <- function(x, api_key = Sys.getenv("OPENAI_API_KEY"),
                            poblacion = NULL, modelo = "gpt-4.1-mini",

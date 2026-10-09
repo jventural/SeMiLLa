@@ -55,17 +55,31 @@
 #' @param modelo_embeddings Modelo de embeddings para las metricas
 #'   semanticas (default \code{"text-embedding-3-small"}).
 #' @param seed Semilla (baraja el orden en que los jueces ven los conjuntos).
+#'   Con \code{NULL} (por defecto) no se fija semilla y el orden, y por tanto
+#'   el resultado, puede variar entre corridas.
 #' @param verbose Mostrar progreso.
+#' @param x Objeto de clase \code{semilla_benchmark_generadores}.
+#' @param ... No se usa.
 #'
-#' @return Objeto \code{semilla_benchmark_generadores} con:
+#' @return Objeto \code{semilla_benchmark_generadores} (lista, devuelta de
+#'   forma invisible) con:
 #' \itemize{
-#'   \item \code{tabla}: data.frame comparativo (una fila por modelo).
+#'   \item \code{tabla}: data.frame comparativo con una fila por modelo y las
+#'         columnas \code{modelo}, \code{n_items}, \code{valido}, \code{seg},
+#'         \code{palabras_med}, \code{sobre_tope}, \code{muletillas},
+#'         \code{separabilidad}, \code{clasif_loo}, \code{pares},
+#'         \code{facetas} y \code{jueces} (nota media de los jueces, 1-10).
 #'   \item \code{items}: lista de data.frames con los items generados por
 #'         cada modelo (para inspeccion cualitativa y material suplementario).
+#'   \item \code{detalles}: lista por modelo con las metricas intermedias
+#'         (incluidas las notas de cada juez).
 #'   \item \code{parametros}: condiciones del experimento (reproducibilidad).
 #' }
+#' El metodo \code{print()} devuelve \code{x} de forma invisible; se llama por
+#' su efecto.
 #'
 #' @examples
+#' # Requiere clave de API de OpenAI
 #' \dontrun{
 #' bm <- comparar_generadores(
 #'   concepto = "autorregulacion del aprendizaje",
@@ -94,7 +108,7 @@ comparar_generadores <- function(concepto,
                                  jueces = c("gpt-4.1-mini", "gpt-5-mini"),
                                  max_palabras = 14L,
                                  modelo_embeddings = "text-embedding-3-small",
-                                 seed = 2026,
+                                 seed = NULL,
                                  verbose = TRUE) {
 
   if (!is.list(dimensiones) || length(dimensiones) < 2 ||
@@ -268,6 +282,7 @@ comparar_generadores <- function(concepto,
 }
 
 
+#' @rdname comparar_generadores
 #' @export
 print.semilla_benchmark_generadores <- function(x, ...) {
   cat("\n")

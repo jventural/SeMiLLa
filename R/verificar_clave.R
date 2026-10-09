@@ -26,7 +26,9 @@
 #'   items, para que la verificacion no herede los mismos sesgos.
 #' @param n_resoluciones Numero de veces que se resuelve cada item
 #'   (default 1). Con valores > 1 se aplica voto mayoritario.
-#' @param seed Semilla para reproducibilidad.
+#' @param seed Semilla que se envia al LLM (opcion \code{SeMiLLa.seed}, que se
+#'   restaura al salir). Con \code{NULL} (por defecto) no se fija ninguna
+#'   semilla y las respuestas del examinado pueden variar entre corridas.
 #' @param verbose Mostrar progreso.
 #'
 #' @return El mismo objeto \code{semilla_prueba_objetiva} con dos agregados:
@@ -40,17 +42,24 @@
 #'         \code{fecha}, \code{n_verificados}, \code{n_coincidencias},
 #'         \code{tasa_coincidencia} y \code{n_discrepancias}.
 #' }
+#' El metodo \code{print()} de \code{semilla_verificacion_clave} devuelve
+#' \code{x} de forma invisible; se llama por su efecto.
 #'
 #' @examples
+#' # Requiere clave de API (genera y resuelve los items con un LLM).
 #' \dontrun{
+#' tabla <- data.frame(tema = c("Fiabilidad", "Validez"),
+#'                     nivel_bloom = c("Comprender", "Aplicar"),
+#'                     formato = c("usual", "verdadero_falso"),
+#'                     n_items = c(2, 2))
 #' p <- generar_prueba_objetiva(
 #'   dominio = "psicometria introductoria",
-#'   api_key = api_key,
+#'   api_key = Sys.getenv("OPENAI_API_KEY"),
 #'   tabla_especificacion = tabla
 #' )
-#' p <- verificar_clave(p, api_key = api_key)
-#' p$verificacion                      # detalle item por item
-#' subset(p$verificacion, !coincide)   # solo discrepancias
+#' p <- verificar_clave(p, api_key = Sys.getenv("OPENAI_API_KEY"))
+#' p$verificacion
+#' subset(p$verificacion, !coincide)
 #' }
 #'
 #' @seealso \code{\link{generar_prueba_objetiva}},
@@ -62,7 +71,7 @@ verificar_clave <- function(
   api_key,
   modelo         = "gpt-4.1-mini-2025-04-14",
   n_resoluciones = 1L,
-  seed           = 2026,
+  seed           = NULL,
   verbose        = TRUE
 ) {
 
@@ -70,7 +79,10 @@ verificar_clave <- function(
     stop("'escala_o' debe ser un objeto semilla_prueba_objetiva.")
   n_resoluciones <- max(1L, as.integer(n_resoluciones))
 
-  if (!is.null(seed)) options(SeMiLLa.seed = as.integer(seed))
+  if (!is.null(seed)) {
+    old_opt <- options(SeMiLLa.seed = as.integer(seed))
+    on.exit(options(old_opt), add = TRUE)
+  }
 
   if (verbose) {
     cat("\n[verificar_clave] Configurando cliente LLM...\n")
@@ -202,9 +214,9 @@ verificar_clave <- function(
       return(sin_datos("Item sin pares de emparejamiento; no se verifico."))
 
     # Mismo barajado que la version aplicable (.construir_md_objetivas usa
-    # set.seed(n)), de modo que el examinado ve lo que veria un respondiente.
-    set.seed(n)
-    orden <- sample(seq_len(nrow(empar_i)))
+    # .barajado_fijo(k, n)), de modo que el examinado ve lo que veria un respondiente.
+    # Barajado reproducible por item, sin usar el generador aleatorio.
+    orden <- .barajado_fijo(nrow(empar_i), n)
     premisas_txt <- paste0(seq_len(nrow(empar_i)), ") ", empar_i$premisa,
                            collapse = "\n")
     respuestas_txt <- paste0(letters[seq_along(orden)], ") ",
@@ -213,7 +225,7 @@ verificar_clave <- function(
     # respuesta original tras el barajado.
     letras_correctas <- letters[match(seq_len(nrow(empar_i)), orden)]
     clave_txt <- paste(seq_len(nrow(empar_i)), "->", letras_correctas,
-                       collapse = " · ")
+                       collapse = " \u00B7 ")
 
     user_msg <- paste0(
       "Item de emparejamiento.\n",
@@ -236,7 +248,7 @@ verificar_clave <- function(
         if (is.null(v)) "" else substr(trimws(as.character(v)), 1, 1)
       }, character(1)))
       if (any(!nzchar(letras))) return(NULL)
-      paste(k, "->", letras, collapse = " · ")
+      paste(k, "->", letras, collapse = " \u00B7 ")
     })
     if (is.null(votos$valor))
       return(sin_datos("El LLM no devolvio un emparejamiento parseable."))
@@ -266,7 +278,7 @@ verificar_clave <- function(
     idx_verdaderas <- sort(which(opciones_i$es_correcta))
     clave_txt <- paste(letters[seq_len(nrow(opciones_i))], "=",
                        ifelse(opciones_i$es_correcta, "V", "F"),
-                       collapse = " · ")
+                       collapse = " \u00B7 ")
 
     user_msg <- paste0(
       "Item de verdadero/falso multiple.\n",
@@ -293,7 +305,7 @@ verificar_clave <- function(
     idx_llm <- idx_llm[!is.na(idx_llm)]
     resp_txt <- paste(letters[seq_len(nrow(opciones_i))], "=",
                       ifelse(seq_len(nrow(opciones_i)) %in% idx_llm, "V", "F"),
-                      collapse = " · ")
+                      collapse = " \u00B7 ")
     coincide <- identical(sort(idx_llm), idx_verdaderas)
     return(list(
       clave_declarada = clave_txt,
@@ -406,6 +418,10 @@ verificar_clave <- function(
 # Print method
 # =============================================================================
 
+#' @rdname verificar_clave
+#' @param x Objeto de clase \code{semilla_verificacion_clave} (el elemento
+#'   \code{$verificacion} del resultado).
+#' @param ... No se usa.
 #' @export
 print.semilla_verificacion_clave <- function(x, ...) {
   cat("\n")

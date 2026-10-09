@@ -14,7 +14,9 @@ plot_coherencia_boxplot(x, colores = c("#3498db", "#e74c3c"), titulo = NULL)
 \item{titulo}{Titulo del grafico (default: auto)}
 }
 \value{
-Objeto ggplot2
+Objeto de clase \code{ggplot} (ggplot2): dos cajas (similitudes
+intra e inter dimension) con los puntos individuales superpuestos. Se
+dibuja al imprimirlo.
 }
 \description{
 Genera un box plot comparando la similitud semantica dentro de dimensiones
@@ -22,9 +24,7 @@ Genera un box plot comparando la similitud semantica dentro de dimensiones
 de los factores.
 }
 \examples{
-\dontrun{
-coh <- analizar_coherencia(mi_escala)
+coh <- analizar_coherencia(semilla_demo, verbose = FALSE)
 plot_coherencia_boxplot(coh)
-}
 
 }

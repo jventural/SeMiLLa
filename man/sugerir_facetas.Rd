@@ -12,11 +12,22 @@ sugerir_facetas(constructo = "NSSI_propension", verbose = TRUE)
 \item{verbose}{Mostrar tabla resumen.}
 }
 \value{
-Lista nombrada con metadatos de cada faceta.
+De forma invisible, una lista nombrada con una entrada por faceta.
+Cada entrada es una lista con \code{definicion} (definicion operacional),
+\code{instrumento_principal}, \code{fuentes} (cita APA),
+\code{ejemplos_originales} (vector de items de ejemplo),
+\code{persona_recomendada} (\code{"1a persona"}, \code{"3a persona"} o
+\code{"mixta"}), \code{polaridad} y \code{n_factor_origen} (cuantos
+instrumentos revisados respaldan la faceta).
 }
 \description{
 Devuelve la biblioteca de facetas con anclaje empirico para un constructo
 clinico. Actualmente soporta: NSSI propension. Cada faceta incluye
 definicion operacional, instrumento(s) de origen, cita APA, ejemplos y
 recomendacion de persona (1a / 3a / mixta).
+}
+\examples{
+fac <- sugerir_facetas("NSSI_propension", verbose = FALSE)
+names(fac)
+fac$expectativa_alivio$persona_recomendada
 }

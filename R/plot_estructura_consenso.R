@@ -26,6 +26,35 @@
 # -----------------------------------------------------------------------------
 #  Panel A - indices
 # -----------------------------------------------------------------------------
+#' Indices de estructura antes y despues del refinamiento
+#'
+#' @description
+#' Panel A de la figura de dos momentos de \code{\link{estructura_por_consenso}}:
+#' para cada indice de la compuerta de estructura (precision, ARI, proporcion
+#' de items sobre el umbral de consenso, etc.) dibuja una flecha desde su valor
+#' antes del refinamiento (rojo) hasta su valor despues (verde), con el umbral
+#' exigido marcado por una barra vertical. Todos los indices se llevan a la
+#' escala 0-1 (la precision se divide entre 100). La silhouette queda fuera del
+#' panel, porque vive en otra escala, y se informa en el subtitulo.
+#'
+#' @param x Objeto de clase \code{semilla_estructura} devuelto por
+#'   \code{\link{estructura_por_consenso}}. Se usan sus elementos
+#'   \code{gate_antes} y \code{gate_despues} (si este es \code{NULL}, el
+#'   segundo momento repite el primero).
+#' @param titulo Cadena con el titulo del panel.
+#'
+#' @return Un objeto \code{ggplot} (sin dibujar): eje X con el valor del
+#'   indice en 0-1, eje Y con un indice por fila.
+#'
+#' @seealso \code{\link{plot_estructura_consenso}},
+#'   \code{\link{plot_consenso_dos_momentos}}
+#'
+#' @examples
+#' est <- estructura_por_consenso(semilla_demo, escala_refinada = semilla_demo,
+#'                                n_replicas = 2, verbose = FALSE)
+#' plot_indices_dos_momentos(est)
+#'
+#' @export
 plot_indices_dos_momentos <- function(x, titulo = "Los indices, antes y despues") {
   g0 <- x$gate_antes
   g1 <- x$gate_despues %||% g0
@@ -82,6 +111,34 @@ plot_indices_dos_momentos <- function(x, titulo = "Los indices, antes y despues"
 # -----------------------------------------------------------------------------
 #  Panel B - consenso item a item
 # -----------------------------------------------------------------------------
+#' Consenso de cada item antes y despues del refinamiento
+#'
+#' @description
+#' Panel B de la figura de dos momentos de \code{\link{estructura_por_consenso}}:
+#' para cada item, agrupado por dimension, dibuja una flecha desde el grado de
+#' consenso del ensemble antes del refinamiento (punto rojo) hasta el de
+#' despues (punto verde). La flecha es gris si el item se conservo y naranja si
+#' el refinamiento lo reescribio. La linea discontinua marca el umbral de
+#' consenso.
+#'
+#' @param x Objeto de clase \code{semilla_estructura} devuelto por
+#'   \code{\link{estructura_por_consenso}}. Se usan \code{consenso_antes},
+#'   \code{consenso_despues} (si es \code{NULL}, se repite el primero),
+#'   \code{cambiados} y \code{parametros$umbral_consenso}.
+#' @param titulo Cadena con el titulo del panel.
+#'
+#' @return Un objeto \code{ggplot} (sin dibujar), con una faceta por
+#'   dimension, el grado de consenso (0-1) en el eje X y un item por fila.
+#'
+#' @seealso \code{\link{plot_estructura_consenso}},
+#'   \code{\link{plot_indices_dos_momentos}}
+#'
+#' @examples
+#' est <- estructura_por_consenso(semilla_demo, escala_refinada = semilla_demo,
+#'                                n_replicas = 2, verbose = FALSE)
+#' plot_consenso_dos_momentos(est)
+#'
+#' @export
 plot_consenso_dos_momentos <- function(x, titulo = "El consenso de cada item, antes y despues") {
   u  <- x$parametros$umbral_consenso
   a  <- x$consenso_antes
@@ -139,6 +196,34 @@ plot_consenso_dos_momentos <- function(x, titulo = "El consenso de cada item, an
 # -----------------------------------------------------------------------------
 #  Figura completa (A + B)
 # -----------------------------------------------------------------------------
+#' Figura de los dos momentos de la estructura por consenso
+#'
+#' @description
+#' Compone en una sola figura los dos paneles de
+#' \code{\link{estructura_por_consenso}}: arriba los indices antes y despues
+#' (\code{\link{plot_indices_dos_momentos}}) y abajo el consenso item a item
+#' (\code{\link{plot_consenso_dos_momentos}}). El titulo resume el veredicto y
+#' el pie, los parametros del ensemble y cuantos items se reescribieron. No se
+#' confunda con \code{plot_estructura()}, que dibuja otra figura.
+#'
+#' @param x Objeto de clase \code{semilla_estructura} devuelto por
+#'   \code{\link{estructura_por_consenso}}.
+#' @param titulo Cadena con el titulo general. Si es \code{NULL} (por
+#'   defecto), se escribe uno a partir de \code{x$veredicto}.
+#'
+#' @return Si el paquete \pkg{patchwork} esta instalado, un objeto
+#'   \code{patchwork} (sin dibujar) con los dos paneles apilados. Si no lo
+#'   esta, emite un aviso y devuelve una lista con dos objetos \code{ggplot}:
+#'   \code{indices} y \code{consenso}.
+#'
+#' @examples
+#' est <- estructura_por_consenso(semilla_demo, escala_refinada = semilla_demo,
+#'                                n_replicas = 2, verbose = FALSE)
+#' if (requireNamespace("patchwork", quietly = TRUE)) {
+#'   plot_estructura_consenso(est)
+#' }
+#'
+#' @export
 plot_estructura_consenso <- function(x, titulo = NULL) {
   # patchwork esta en Suggests: sin el se devuelven los dos paneles en una lista
   # en vez de fallar (quien llame dibuja el que necesite).
@@ -190,6 +275,40 @@ plot_estructura_consenso <- function(x, titulo = NULL) {
 #  $evolucion de estructura_por_consenso(), que encadena los ciclos y marca en
 #  rombo la medicion posterior al blindaje -la unica que describe la escala que
 #  se entrega-.
+#' Recorrido completo de la correccion de la estructura
+#'
+#' @description
+#' Dibuja la precision de clasificacion en cada medicion que hizo
+#' \code{\link{estructura_por_consenso}} al corregir la escala: la medicion
+#' inicial, cada vuelta del refinamiento de cada ciclo y, en rombo rojo, la
+#' medicion posterior al blindaje (la unica que describe la escala que se
+#' entrega). La linea discontinua marca la precision minima exigida. A
+#' diferencia de \code{plot_evolucion_precision()}, que dibuja un solo ciclo y
+#' se detiene antes del blindaje, esta figura encadena todos los ciclos.
+#'
+#' @param x Objeto de clase \code{semilla_estructura} devuelto por
+#'   \code{\link{estructura_por_consenso}} tras un refinamiento automatico.
+#'   Se usan \code{x$evolucion} (\code{data.frame} con, al menos, las
+#'   columnas \code{etiqueta}, \code{precision} y \code{tipo}) y
+#'   \code{x$parametros$min_precision}. Si \code{x$evolucion} es \code{NULL}
+#'   o tiene menos de dos filas, la funcion se detiene con un error.
+#' @param titulo Cadena con el titulo. Si es \code{NULL} (por defecto), se
+#'   usa "El recorrido completo de la correccion".
+#'
+#' @return Un objeto \code{ggplot} (sin dibujar): una medicion por posicion del
+#'   eje X y la precision, en porcentaje, en el eje Y.
+#'
+#' @examples
+#' # Objeto minimo con la estructura de x$evolucion (valores ilustrativos)
+#' x <- list(
+#'   evolucion = data.frame(
+#'     etiqueta  = c("inicial", "c1.v1", "c1.v2", "c1 tras blindar"),
+#'     precision = c(80, 86.7, 93.3, 86.7),
+#'     tipo      = c("medicion", "iteracion", "iteracion", "tras_blindaje")),
+#'   parametros = list(min_precision = 90))
+#' plot_evolucion_estructura(x)
+#'
+#' @export
 plot_evolucion_estructura <- function(x, titulo = NULL) {
   d <- x$evolucion
   if (is.null(d) || nrow(d) < 2)

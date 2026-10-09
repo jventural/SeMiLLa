@@ -34,15 +34,12 @@
 # -----------------------------------------------------------------------------
 #  Medicion: un ensemble + los indices que mira la compuerta
 # -----------------------------------------------------------------------------
-#  El argumento 'seed' se acepta y se fija por coherencia con el resto del
-#  paquete, pero el ensemble NO depende de el: .clusterizar() fija sus propias
-#  semillas (2024, 2024 + replica) dentro de precision_clasificacion(), tanto
-#  para el clustering como para el submuestreo del 90%. Comprobado con seed = 1
-#  y seed = 999999: resultados identicos hasta el ultimo decimal.
+#  2.10.0: el ensemble depende de 'seed' (antes .clusterizar() fijaba 2024 y
+#  2024 + replica por dentro, y el argumento no tenia efecto). La misma semilla
+#  en todas las mediciones de una corrida hace comparables los estados.
 .medir_estructura <- function(escala, algoritmos, n_replicas, seed, verbose = FALSE) {
-  set.seed(seed)
   precision_clasificacion(escala, metodo = "ensemble", algoritmos = algoritmos,
-                          n_replicas = n_replicas, verbose = verbose)
+                          n_replicas = n_replicas, seed = seed, verbose = verbose)
 }
 
 # -----------------------------------------------------------------------------
@@ -140,26 +137,134 @@
 # -----------------------------------------------------------------------------
 #  PASO 6 (fusionado)
 # -----------------------------------------------------------------------------
-#' @param escala          objeto semilla con embeddings
-#' @param api_key         clave OpenAI (solo se usa si hay que refinar)
-#' @param algoritmos      algoritmos del ensemble (default: 3 familias)
-#' @param n_replicas      replicas por algoritmo
-#' @param umbral_consenso consenso minimo por item (misma regla para medir y
-#'                        para corregir: es el punto de la fusion)
-#' @param min_precision   precision global minima (%)
-#' @param min_ari         ARI minimo
-#' @param auto_refinar    TRUE = si la compuerta falla, refina solo
-#' @param max_iteraciones tope de iteraciones del refinamiento
-#' @param blindaje_cierre aplicar blindar_escala() despues de refinar (lo que
-#'                        ya hace la app: el refinamiento reescribe items sin
-#'                        pasar por los jueces de la generacion)
-#' @param escala_refinada si ya tienes la escala refinada (p. ej. el script
-#'                        reproducible: la app la refino y volver a llamar al
-#'                        LLM daria OTROS items y rompería la paridad), pasala
-#'                        aqui: se mide como SEGUNDO momento sin tocar el LLM.
-#' @param items_cambiados numeros de los items que reescribio el refinamiento,
-#'                        para pintarlos en el grafico cuando se usa
-#'                        \code{escala_refinada}.
+#' @title Estructura por consenso ensemble: medir, decidir y corregir
+#'
+#' @description
+#' Une en una sola llamada la medicion de la estructura semantica de una
+#' escala (\code{\link{precision_clasificacion}} con
+#' \code{metodo = "ensemble"}) y su correccion
+#' (\code{\link{refinar_escala}} con \code{criterio = "ensemble"}), de modo
+#' que se corrija contra la MISMA regla con la que se midio. Tiene tres
+#' momentos:
+#' \enumerate{
+#'   \item \strong{Medir}: ensemble de clustering sobre los embeddings de la
+#'         escala tal como entra.
+#'   \item \strong{Decidir}: una compuerta de estructura con una regla por
+#'         indice (proporcion de items con consenso suficiente, precision de
+#'         clasificacion, ARI y, si la escala declara facetas, cobertura de
+#'         facetas). La silhouette y el consenso medio son informativos y no
+#'         bloquean.
+#'   \item \strong{Corregir}: si la compuerta falla y \code{auto_refinar =
+#'         TRUE}, refina los items con el mismo umbral, opcionalmente aplica
+#'         el blindaje de cierre y VUELVE A MEDIR; el ciclo se repite hasta
+#'         \code{max_ciclos} y se entrega el mejor estado medido (que puede
+#'         ser el de entrada).
+#' }
+#' Es una medida de separabilidad semantica de la redaccion, no un analisis
+#' factorial de respuestas. Cuando hay reescritura, la mejora se mide con el
+#' mismo clustering que la guio, asi que no es evidencia independiente de
+#' estructura (ver \code{nota_circularidad}).
+#'
+#' @param escala Objeto \code{semilla} con \code{$items} (columnas
+#'   \code{numero}, \code{dimension}, \code{item}) y \code{$embeddings}.
+#' @param api_key Clave de OpenAI; solo se usa si hay que refinar (reescribir
+#'   items, recalcular embeddings y deseabilidad).
+#' @param algoritmos Algoritmos del ensemble (default: tres familias,
+#'   \code{c("kmeans", "ward", "gmm")}; \code{"gmm"} requiere \pkg{mclust}).
+#' @param n_replicas Replicas por algoritmo del ensemble (default 10).
+#' @param umbral_consenso Consenso minimo por item (default 0.667). Es la
+#'   misma regla para medir y para corregir.
+#' @param min_prop_items Proporcion minima de items con consenso
+#'   \code{>= umbral_consenso} para que la compuerta se cumpla (default 0.90).
+#' @param min_precision Precision global minima, en porcentaje (default 90).
+#' @param min_ari ARI minimo entre la estructura teorica y la empirica
+#'   (default 0.65).
+#' @param auto_refinar Logico. Si \code{TRUE} (default) y la compuerta falla,
+#'   se refina la escala automaticamente (llama al LLM).
+#' @param max_iteraciones Tope de iteraciones de cada llamada a
+#'   \code{\link{refinar_escala}} (default 8).
+#' @param max_ciclos Tope de ciclos refinar -> blindar -> medir (default 3).
+#' @param modelo Modelo LLM para la reescritura, el blindaje y la
+#'   deseabilidad (default \code{"gpt-4.1-mini"}).
+#' @param blindaje_cierre Logico. Aplicar \code{\link{blindar_escala}}
+#'   despues de cada refinamiento (default \code{FALSE}).
+#' @param escala_refinada Escala ya refinada fuera de esta funcion (p. ej. en
+#'   la app); si se pasa, se mide como SEGUNDO momento sin llamar al LLM, lo
+#'   que conserva la paridad entre la app y un script reproducible.
+#' @param items_cambiados Numeros de los items que reescribio el
+#'   refinamiento, para marcarlos en el grafico cuando se usa
+#'   \code{escala_refinada}.
+#' @param umbral_redundancia,max_intentos_redundancia,max_reescrituras_item,devolver_mejor
+#'   Parametros que se pasan a \code{\link{refinar_escala}} (ver su ayuda).
+#'   \code{umbral_redundancia = "compuerta"} toma el umbral efectivo de la
+#'   compuerta pre-aplicacion.
+#' @param cerrar_ciclo Logico. Si la escala trae \code{$compuerta}, recalcular
+#'   el eje 3 (simulacion de estructura) en cada ciclo sobre la escala que se
+#'   entrega (default \code{TRUE}).
+#' @param revertir_blindaje Logico. Si el blindaje de cierre empeora la
+#'   estructura medida, volver a la version previa al blindaje (default
+#'   \code{TRUE}).
+#' @param parar_si_no_mejora Logico. Cerrar el paso cuando se acumulan
+#'   \code{max_ciclos_secos} ciclos sin mejora (default \code{TRUE}).
+#' @param max_ciclos_secos Numero de ciclos seguidos sin mejora que detienen
+#'   el bucle (default 1).
+#' @param max_minutos Tope de tiempo en minutos; al superarlo no se abre otro
+#'   ciclo (default 25; \code{Inf} lo desactiva).
+#' @param aviso_prop_reescrita Proporcion de items reescritos a partir de la
+#'   cual se emite un aviso de que la escala ya es otra version (default 0.5).
+#' @param seed Semilla. Por defecto \code{NULL}: no se fija semilla y el
+#'   resultado puede variar entre corridas; pase un entero (p. ej.
+#'   \code{2026}) para reproducirlo. Se pasa tambien a
+#'   \code{\link{simular_estructura}} en el eje 3.
+#' @param verbose Logico. Imprime los hitos `[ESTRUCTURA n/3]`, la tabla
+#'   de la compuerta y el avance de los ciclos.
+#'
+#' @return Lista de clase \code{semilla_estructura} con:
+#' \itemize{
+#'   \item \code{escala_inicial}, \code{escala_final}: objetos \code{semilla}
+#'         de entrada y entregado (con la separabilidad medida).
+#'   \item \code{antes}, \code{despues}: resultados del ensemble en cada
+#'         momento (\code{despues} es \code{NULL} si no se refino).
+#'   \item \code{gate_antes}, \code{gate_despues}: data.frames de la
+#'         compuerta con columnas \code{indice}, \code{clave}, \code{valor},
+#'         \code{crudo}, \code{umbral}, \code{regla}, \code{bloquea} y
+#'         \code{cumple}.
+#'   \item \code{consenso_antes}, \code{consenso_despues}: data.frames por
+#'         item (\code{numero}, \code{dimension}, \code{item},
+#'         \code{consenso}).
+#'   \item \code{refinamiento}, \code{historial}, \code{cambiados}: salida del
+#'         primer refinamiento, historial de reescrituras y numeros de los
+#'         items cambiados.
+#'   \item \code{evolucion}: data.frame con la precision paso a paso (o
+#'         \code{NULL} si no se refino).
+#'   \item \code{refinado} (logico), \code{veredicto} (\code{"cumple"},
+#'         \code{"falla_sin_refinar"}, \code{"refinado_ok"},
+#'         \code{"refinado_incompleto"} o \code{"refinado_sin_mejora"}),
+#'         \code{parametros} (lista) y \code{minutos}.
+#'   \item Si hubo ciclos de refinamiento, ademas: \code{cambios_entregados},
+#'         \code{nota_circularidad}, \code{n_blindaje}, \code{ciclos},
+#'         \code{eje3}, \code{aviso_reescritura}, \code{motivo_parada} y
+#'         \code{mejor_ciclo}.
+#' }
+#'
+#' @examples
+#' # Solo medir y decidir (auto_refinar = FALSE): no llama a ninguna API.
+#' e <- estructura_por_consenso(semilla_demo, auto_refinar = FALSE,
+#'                              algoritmos = c("kmeans", "ward"),
+#'                              n_replicas = 2, seed = 2026, verbose = FALSE)
+#' e$veredicto
+#' e$gate_antes[, c("indice", "crudo", "cumple")]
+#'
+#' # Con correccion automatica: requiere una clave de API de OpenAI.
+#' \dontrun{
+#' e2 <- estructura_por_consenso(semilla_demo,
+#'                               api_key = Sys.getenv("OPENAI_API_KEY"),
+#'                               min_precision = 100, max_ciclos = 1)
+#' }
+#'
+#' @seealso \code{\link{precision_clasificacion}}, \code{\link{refinar_escala}},
+#'   \code{\link{plot_estructura_consenso}}
+#' @export
 estructura_por_consenso <- function(escala,
                                     api_key         = Sys.getenv("OPENAI_API_KEY"),
                                     algoritmos      = c("kmeans", "ward", "gmm"),
@@ -204,8 +309,14 @@ estructura_por_consenso <- function(escala,
                                     max_ciclos_secos     = 1L,
                                     max_minutos          = 25,
                                     aviso_prop_reescrita = 0.5,
-                                    seed            = 2026,
+                                    seed            = NULL,
                                     verbose         = TRUE) {
+
+  # Con seed = NULL se sortea UNA semilla para toda la corrida: las versiones
+  # que se comparan entre si se miden con los mismos numeros aleatorios (antes
+  # lo garantizaba la semilla 2024 fija dentro del clustering, que CRAN no
+  # admite). Queda en $parametros$seed para poder reproducir la corrida.
+  if (is.null(seed)) seed <- sample.int(.Machine$integer.max, 1L)
 
   # Marcas de avance para quien ejecute esto en un proceso aparte y lea el
   # stdout (la app lo hace con callr::r_bg, igual que con la compuerta). El
@@ -223,7 +334,7 @@ estructura_por_consenso <- function(escala,
   falla <- any(gate0$cumple %in% FALSE)
   if (verbose) {
     for (i in seq_len(nrow(gate0))) {
-      marca <- if (is.na(gate0$cumple[i])) "  ·" else if (gate0$cumple[i]) "  v" else "  x"
+      marca <- if (is.na(gate0$cumple[i])) "  \u00b7" else if (gate0$cumple[i]) "  v" else "  x"
       cat(sprintf("%s %-32s %-8s  (%s)\n", marca, gate0$indice[i],
                   gate0$crudo[i], gate0$regla[i]))
     }
@@ -662,6 +773,27 @@ estructura_por_consenso <- function(escala,
 # -----------------------------------------------------------------------------
 #  print()
 # -----------------------------------------------------------------------------
+#' @title Imprimir el resultado de la estructura por consenso
+#'
+#' @description Muestra el veredicto, el motivo de parada, la tabla de la
+#'   compuerta de estructura (antes y, si se refino, despues), los items
+#'   reescritos, los ciclos y el cambio en el eje 3.
+#'
+#' @param x Objeto de clase \code{semilla_estructura}, devuelto por
+#'   \code{\link{estructura_por_consenso}}.
+#' @param ... No se usa; se mantiene por compatibilidad con
+#'   \code{\link[base]{print}}.
+#'
+#' @return Devuelve \code{x} de forma invisible; se llama por su efecto
+#'   (imprimir en la consola).
+#'
+#' @examples
+#' e <- estructura_por_consenso(semilla_demo, auto_refinar = FALSE,
+#'                              algoritmos = c("kmeans", "ward"),
+#'                              n_replicas = 2, seed = 2026, verbose = FALSE)
+#' print(e)
+#'
+#' @export
 print.semilla_estructura <- function(x, ...) {
   cat("\n== Estructura por consenso ensemble ==\n")
   cat("  Veredicto: ", switch(x$veredicto,

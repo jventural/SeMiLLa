@@ -2,13 +2,33 @@
 % Please edit documentation in R/cache.R
 \name{info_cache}
 \alias{info_cache}
+\alias{print.semilla_cache_info}
 \title{Informacion del Cache}
 \usage{
 info_cache()
+
+\method{print}{semilla_cache_info}(x, ...)
+}
+\arguments{
+\item{x}{Objeto \code{semilla_cache_info}.}
+
+\item{...}{No se usa.}
 }
 \value{
-Lista invisible con: habilitado, dir, n_entradas, tamano_mb
+Lista de clase \code{semilla_cache_info} con cuatro elementos:
+\code{habilitado} (logico, si el cache esta activo), \code{dir} (ruta del
+directorio de cache o \code{NULL} si no hay ninguno configurado),
+\code{n_entradas} (entero, numero de archivos \code{.rds} guardados) y
+\code{tamano_mb} (numerico, tamano total de esas entradas en megabytes).
 }
 \description{
-Muestra estado y estadisticas del cache actual.
+Devuelve el estado y las estadisticas del cache actual. Al
+imprimirse (en consola, o con \code{capture.output()}) los muestra en
+cuatro lineas.
+}
+\examples{
+estado <- info_cache()
+estado$habilitado
+estado
+
 }

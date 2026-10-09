@@ -22,7 +22,7 @@ simular_estructura(
   umbral_fusion = 0.65,
   n_nucleos = NULL,
   api_key = Sys.getenv("OPENAI_API_KEY"),
-  seed = 2026,
+  seed = NULL,
   verbose = TRUE
 )
 }
@@ -88,18 +88,22 @@ no se aviso. Bajar a 0.60 tampoco vale: ahi el NPI pasaria de 7 factores a
 2, un aviso catastrofico y falso.}
 
 \item{n_nucleos}{Nucleos para paralelizar las replicas (v2.8.0). Default
-\code{NULL} = todos menos uno (v2.9.31; antes era 1)
-(apto para servidores compartidos como Connect Cloud). Con el mismo
-\code{seed}, el resultado es IDENTICO con 1 o con N nucleos (streams
-L'Ecuyer por replica); en una PC local use
-\code{parallel::detectCores() - 1}.}
+\code{NULL} = todos menos uno (v2.9.31; antes era 1), como maximo 2
+durante \code{R CMD check}. Use \code{1} en servidores compartidos
+como Connect Cloud. Con el mismo \code{seed}, el resultado es IDENTICO
+con 1 o con N nucleos (streams L'Ecuyer por replica).}
 
 \item{api_key}{Clave OpenAI (solo si hay que calificar deseabilidad).}
 
-\item{seed, verbose}{Semilla y salida por consola.}
+\item{seed}{Semilla de la simulacion (streams L'Ecuyer por replica
+derivados de ella). Por defecto \code{NULL}: no se fija semilla y el
+resultado puede variar entre corridas; pase un entero (p. ej.
+\code{2026}) para reproducirlo.}
+
+\item{verbose}{Logico; imprime el avance y el resumen por consola.}
 }
 \value{
-Lista que incluye \code{phi_pares} (matriz |Phi| simulada POR PAR
+Lista (devuelta de forma invisible) que incluye \code{phi_pares} (matriz |Phi| simulada POR PAR
 de dimensiones, escenario central) y \code{mapa_fusion} (grupos de
 dimensiones que se espera se FUNDAN en un factor empirico, con
 \code{k_esperado}; caso VP: 3 factores prosociales fundidos + Apertura
@@ -111,7 +115,10 @@ e inadmisibilidad), \code{carga_estandarizada_media} y la matriz
 \code{resumen} por replica del escenario central. Devuelve tambien los
 umbrales con los que se juzgo la corrida (\code{umbral_phi},
 \code{umbral_fusion}, \code{umbral_rmsea}), para que quien lea el resultado
-despues no tenga que repetirlos a mano y desincronizarlos.
+despues no tenga que repetirlos a mano y desincronizarlos. Tambien trae
+\code{veredicto_probabilidad} (veredicto que sale solo de
+\code{prob_limpia}) y \code{sensibilidad_phi} (data.frame por valor de
+\code{phi_teorico} cuando se pasa un rango; si no, \code{NULL}).
 }
 \description{
 Monte Carlo del PROCESO DE RESPUESTA (no de los embeddings). Cada respondiente
@@ -175,3 +182,11 @@ Por eso NO se implemento: la senal semantica existe entre escalas, pero no
 generaliza a una escala nueva.
 }
 
+\examples{
+# Sin API: se pasa la deseabilidad (aqui neutra) en lugar de calificarla.
+s <- simular_estructura(semilla_demo, deseabilidad = rep(0.5, 15),
+                        fuerza_deseabilidad = 0.3, n = 200, n_rep = 5,
+                        n_nucleos = 1, seed = 2026, verbose = FALSE)
+s$prob_limpia
+s$sensibilidad
+}

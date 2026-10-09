@@ -10,9 +10,17 @@ plot_fiabilidad(fiab)
 \item{fiab}{Objeto semilla_fiabilidad de fiabilidad_semantica()}
 }
 \value{
-Objeto ggplot2
+Objeto de clase \code{ggplot} (ggplot2): barras horizontales con
+el alpha semantico de cada dimension, coloreadas por su interpretacion
+(Pobre a Excelente) y rotuladas con el valor y el numero de items. Se
+dibuja al imprimirlo.
 }
 \description{
 Grafico de barras mostrando alpha semantico por dimension con
 interpretacion de niveles.
+}
+\examples{
+fiab <- fiabilidad_semantica(semilla_demo, verbose = FALSE)
+plot_fiabilidad(fiab)
+
 }

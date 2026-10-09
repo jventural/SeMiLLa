@@ -37,6 +37,20 @@
 #'        metadata para que la optimizacion/refinamiento mantengan el mismo nivel.
 #' @param max_palabras Numero maximo de palabras por item. Si NULL, se deriva del
 #'        nivel: minimo=10, basico=12, intermedio=18, avanzado=25.
+#' @param blindaje Logico. Si \code{TRUE} (default), tras generar los items se
+#'        aplican jueces LLM de contexto poblacional y de parafrasis que
+#'        reescriben los items que fallan, y al final del pipeline se repite
+#'        ese control sobre la escala final (cierre de blindaje; no se aplica
+#'        con \code{fuente = "usuario"}). Ver \code{\link{blindar_escala}}.
+#' @param contexto_prohibido Vector character opcional con terminos o patrones
+#'        (expresiones regulares) que los items no deben contener; se anaden a
+#'        la descripcion de la poblacion y los items que los contienen se
+#'        reescriben durante el blindaje. \code{NULL} por defecto.
+#' @param instrucciones_estilo Cadena opcional con instrucciones de estilo de
+#'        redaccion que se agregan al prompt de generacion y de reescritura.
+#'        \code{NULL} por defecto.
+#' @param modelo_jueces Modelo LLM usado por los jueces del blindaje
+#'        (default \code{"gpt-4.1-mini"}).
 #' @param archivo Para fuente="usuario": ruta a archivo .xlsx o .csv con los items
 #'        del usuario (columnas: dimension, definicion_dimension, codigo, item, y
 #'        opcionalmente constructo y definicion_constructo). Usa el mismo formato
@@ -54,8 +68,12 @@
 #'        Si TRUE, reemplaza items problematicos hasta alcanzar umbral de precision.
 #' @param max_iteraciones_refinar Maximo de iteraciones para refinamiento (default: 5)
 #' @param umbral_precision Precision minima aceptable 0-100 (default: 100)
-#' @param exportar_csv Exportar items a CSV (default: FALSE)
-#' @param archivo_salida Nombre del archivo CSV de salida
+#' @param exportar_csv Exportar items a CSV (default: FALSE). Si es
+#'        \code{TRUE}, hay que indicar \code{archivo_salida}.
+#' @param archivo_salida Ruta del archivo CSV de salida (default \code{NULL}).
+#'        Obligatoria cuando \code{exportar_csv = TRUE}; no se escribe nada en
+#'        el directorio de trabajo por defecto (use p. ej.
+#'        \code{file.path(tempdir(), "escala.csv")}).
 #' @param compuerta Ejecutar la COMPUERTA PRE-APLICACION al final del
 #'        pipeline (default: TRUE). Encadena \code{auditar_redundancia()}
 #'        (pares + facetas repetidas), \code{calificar_deseabilidad()} y
@@ -91,20 +109,35 @@
 #'        algun sesgo, reescribir iterativamente los items criticos y adoptar la
 #'        escala mejorada. Default \code{TRUE}; \code{FALSE} = solo diagnostico.
 #' @param seed Semilla para reproducibilidad (default: NULL). Usar un numero
-#'        entero para obtener resultados reproducibles en los analisis.
+#'        entero para obtener resultados reproducibles en los analisis; se
+#'        pasa tambien a la compuerta y a la prueba de estres. Con \code{NULL}
+#'        el resultado puede variar entre corridas.
 #' @param verbose Mostrar progreso en consola (default: TRUE)
 #'
-#' @return Objeto de clase 'semilla' con:
+#' @return Objeto de clase \code{c("semilla", "list")} con:
 #' \itemize{
-#'   \item \code{concepto}: Informacion del constructo analizado
-#'   \item \code{items}: Dataframe con los items generados
-#'   \item \code{embeddings}: Matriz de embeddings (si incluir_efa = TRUE)
-#'   \item \code{similitud}: Matriz de similitud coseno
-#'   \item \code{efa}: Resultados del EFA (si incluir_efa = TRUE)
-#'   \item \code{metadata}: Informacion del proceso
+#'   \item \code{concepto}: Informacion del constructo analizado (definicion y
+#'         dimensiones)
+#'   \item \code{items}: data.frame con los items (columnas como
+#'         \code{dimension} e \code{item})
+#'   \item \code{embeddings}: Matriz items x dimensiones del embedding
+#'   \item \code{similitud}: Matriz de similitud coseno entre items
+#'   \item \code{separabilidad} (y su alias \code{efa}): resultado de
+#'         \code{\link{precision_clasificacion}} (si \code{incluir_efa = TRUE};
+#'         si no, \code{NULL})
+#'   \item \code{metadata}: Informacion del proceso (idioma, poblacion,
+#'         modelo, seed, fuente, fecha, nivel de lectura)
+#'   \item \code{refinamiento}: historial del refinamiento (solo si
+#'         \code{refinar = TRUE})
+#'   \item \code{compuerta}: objeto \code{semilla_compuerta} (si
+#'         \code{compuerta = TRUE})
+#'   \item \code{optimizacion}, \code{estres}: resultados de la optimizacion
+#'         guiada por la compuerta y de la prueba de estres, cuando se
+#'         ejecutan
 #' }
 #'
 #' @examples
+#' # Requiere una clave de API de OpenAI (todas las fases llaman al LLM).
 #' \dontrun{
 #' # ===== MODO 1: CONOCIMIENTO DEL LLM (default) =====
 #' escala_llm <- semilla(
@@ -217,6 +250,12 @@ semilla <- function(concepto = NULL,
   # forzandose de forma explicita con TRUE.
   if (is.null(optimizar))        optimizar        <- (fuente != "usuario")
   if (is.null(optimizar_estres)) optimizar_estres <- (fuente != "usuario")
+
+  # Nada se escribe en el directorio de trabajo por defecto: si se pide el CSV,
+  # la ruta es obligatoria (se valida antes de gastar llamadas a la API).
+  if (isTRUE(exportar_csv) && is.null(archivo_salida))
+    stop("exportar_csv = TRUE requiere 'archivo_salida' (p. ej. ",
+         "file.path(tempdir(), \"escala.csv\")).", call. = FALSE)
 
   # Terminos vetados por el usuario: se inyectan UNA vez en la descripcion de
   # la poblacion para que fluyan a TODOS los prompts del pipeline (generacion,
@@ -474,10 +513,6 @@ semilla <- function(concepto = NULL,
       cat("Exportando resultados a archivo...\n\n")
     }
 
-    if (is.null(archivo_salida)) {
-      archivo_salida <- paste0("semilla_", gsub(" ", "_", concepto), ".csv")
-    }
-
     exportar_escala(
       x = list(items = resultado$items, concepto = resultado$concepto, metadata = resultado$metadata, efa = .separabilidad(resultado)),
       archivo = archivo_salida,
@@ -510,6 +545,7 @@ semilla <- function(concepto = NULL,
         resultado,
         api_key   = api_key,
         poblacion = poblacion,
+        seed      = seed,
         verbose   = verbose
       ),
       error = function(e) {
@@ -582,7 +618,7 @@ semilla <- function(concepto = NULL,
     est <- tryCatch(
       estres_escala(resultado, optimizar_estres = optimizar_estres,
                     modelo = modelo, poblacion = poblacion,
-                    api_key = api_key, seed = seed %||% 2026, verbose = verbose),
+                    api_key = api_key, seed = seed, verbose = verbose),
       error = function(e) {
         warning("La prueba de estres fallo (", conditionMessage(e),
                 "). Ejecutela manualmente con estres_escala().")
@@ -687,8 +723,15 @@ semilla <- function(concepto = NULL,
 
 
 #' @title Imprimir objeto SeMiLLa
+#' @description Muestra el constructo, las dimensiones con sus items, la
+#'   separabilidad semantica, el estado de la compuerta pre-aplicacion y los
+#'   metadatos de la generacion.
 #' @param x Objeto de clase semilla
-#' @param ... Argumentos adicionales
+#' @param ... Argumentos adicionales (no se usan)
+#' @return Devuelve \code{x} de forma invisible; se llama por su efecto
+#'   (imprimir en la consola).
+#' @examples
+#' print(semilla_demo)
 #' @export
 print.semilla <- function(x, ...) {
 

@@ -16,7 +16,8 @@
 #' CAT: genera N candidatos por dimension, calcula propiedades semanticas,
 #' filtra los mejores B por dimension.
 #'
-#' @param x Objeto semilla con dimensiones definidas (con o sin items).
+#' @param x Objeto semilla con dimensiones definidas (con o sin items). En el
+#'   metodo \code{print()}, un objeto de clase \code{semilla_banco_cat}.
 #' @param n_por_dimension Numero de items \emph{candidatos} a generar por
 #'   dimension (default: 30).
 #' @param n_finales Numero de items \emph{finales} por dimension tras
@@ -28,16 +29,25 @@
 #'   datos reales: 0.85 solo detectaba clones casi literales).
 #' @param formato_export Formato de exportacion: "mirt" (default) o "catR".
 #' @param verbose Mostrar progreso.
+#' @param ... No se usa.
 #'
 #' @return Lista de clase \code{semilla_banco_cat} con:
 #' \itemize{
 #'   \item \code{banco_completo}: data.frame con todos los items
-#'     candidatos, dimension, embedding, discriminacion predicha,
-#'     dificultad predicha y bandera de inclusion.
-#'   \item \code{banco_final}: subset filtrado.
-#'   \item \code{export_path}: ruta del archivo exportado para CAT.
-#'   \item \code{estadisticos}: resumen por dimension.
+#'     candidatos, su dimension, \code{discriminacion_pred},
+#'     \code{dificultad_pred} y la bandera \code{incluido}.
+#'   \item \code{banco_final}: subconjunto con los items incluidos.
+#'   \item \code{export_df}: data.frame para CAT con \code{item_id},
+#'     \code{item}, \code{dim} y los parametros iniciales \code{a}, \code{b}
+#'     y \code{c}. No se escribe nada en disco.
+#'   \item \code{estadisticos}: resumen por dimension (\code{Dimension},
+#'     \code{N_Final}, \code{Discriminacion_media}, \code{Dificultad_rango}).
+#'   \item \code{formato_export}, \code{n_por_dimension}, \code{n_finales}:
+#'     ajustes usados.
+#'   \item \code{embeddings}: matriz de embeddings de los candidatos.
 #' }
+#' El metodo \code{print()} devuelve \code{x} de forma invisible; se llama por
+#' su efecto.
 #'
 #' @details
 #' Discriminacion predicha = unicidad semantica (1 - max similitud con
@@ -48,9 +58,9 @@
 #' con \code{mirt} o \code{catR}; no sustituyen IRT real.
 #'
 #' @examples
+#' # Requiere clave de API de OpenAI
 #' \dontrun{
-#' base <- semilla("autoeficacia academica", n_items = 5)
-#' banco <- banco_cat(base,
+#' banco <- banco_cat(semilla_demo,
 #'                    n_por_dimension = 40,
 #'                    n_finales = 20,
 #'                    api_key = Sys.getenv("OPENAI_API_KEY"))
@@ -211,6 +221,7 @@ banco_cat <- function(x,
   resultado
 }
 
+#' @rdname banco_cat
 #' @export
 print.semilla_banco_cat <- function(x, ...) {
   cat("Banco de Items para CAT (SeMiLLa)\n")

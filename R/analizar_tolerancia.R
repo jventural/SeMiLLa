@@ -25,7 +25,8 @@
 #'
 #' @param x \code{data.frame} con columnas \code{item} (texto del enunciado) y
 #'   \code{dimension} (a que factor pertenece), u objeto \code{semilla}/lista con
-#'   \code{$items}.
+#'   \code{$items}. En el metodo \code{print()}, un objeto de clase
+#'   \code{semilla_tolerancia}.
 #' @param concepto Nombre del constructo que mide la escala (mejora la
 #'   calificacion de deseabilidad). Opcional.
 #' @param poblacion Poblacion objetivo, p. ej. \code{"adultos de poblacion
@@ -45,9 +46,14 @@
 #' @param n Respondientes sinteticos por replica (por defecto 300).
 #' @param n_rep Replicas Monte Carlo por celda de la prueba de estres (por
 #'   defecto 60).
-#' @param n_nucleos Nucleos a usar. Por defecto (\code{NULL}) todos menos uno.
-#' @param seed Semilla global (streams por replica derivados de ella; el resultado
-#'   es identico con 1 o N nucleos).
+#' @param n_rep_pronostico Replicas Monte Carlo del pronostico del paso 3
+#'   (\code{simular_estructura()}; por defecto 100, como hasta ahora).
+#' @param n_nucleos Nucleos a usar. Por defecto (\code{NULL}) todos menos uno
+#'   (como maximo 2 durante \code{R CMD check}).
+#' @param seed Semilla global (streams por replica derivados de ella; con un
+#'   valor dado el resultado es identico con 1 o N nucleos). Con \code{NULL}
+#'   (por defecto) no se fija semilla y el resultado puede variar entre
+#'   corridas.
 #' @param solo_pronostico Si \code{TRUE}, corre solo hasta el paso 3 (pronostico)
 #'   y omite la prueba de estres, que es la parte mas lenta.
 #' @param dl_juez,dl_adyacencia Canales adicionales de dependencia local de la
@@ -68,10 +74,24 @@
 #'   \code{deseabilidad}, \code{sd_entre}, \code{similitud}, \code{pares_ld},
 #'   \code{pronostico} (salida de \code{\link{simular_estructura}}), \code{estres}
 #'   (salida de \code{\link{estres_escala}}, o \code{NULL}) y \code{seed}. Tiene
-#'   metodo \code{print()} con un resumen legible y accionable.
+#'   metodo \code{print()} con un resumen legible y accionable. Se devuelve de
+#'   forma invisible. El metodo \code{print()} devuelve \code{x} de forma
+#'   invisible; se llama por su efecto.
 #' @seealso \code{\link{calificar_deseabilidad}}, \code{\link{obtener_embeddings}},
 #'   \code{\link{simular_estructura}}, \code{\link{estres_escala}}
 #' @examples
+#' \donttest{
+#' # Sin API: deseabilidad y similitud ya medidas; solo el pronostico
+#' des <- rep(c(0.70, 0.65, 0.30), each = 5)
+#' res <- analizar_tolerancia(semilla_demo, deseabilidad = des,
+#'                            similitud = semilla_demo$similitud,
+#'                            k_cat = 5, n = 150, n_rep_pronostico = 5,
+#'                            solo_pronostico = TRUE,
+#'                            n_nucleos = 1, seed = 123, verbose = FALSE)
+#' res
+#' }
+#'
+#' # Requiere clave de API de OpenAI (mide deseabilidad y embeddings)
 #' \dontrun{
 #' items <- data.frame(
 #'   item = c("Me siento capaz de resolver problemas dificiles",
@@ -80,7 +100,8 @@
 #'            "Me preocupo por cosas sin importancia"),
 #'   dimension = c("Autoeficacia", "Autoeficacia", "Ansiedad", "Ansiedad"))
 #' res <- analizar_tolerancia(items, concepto = "Autoeficacia y ansiedad",
-#'                            k_cat = 5)   # narra el proceso y devuelve el resumen
+#'                            api_key = Sys.getenv("OPENAI_API_KEY"),
+#'                            k_cat = 5, n_nucleos = 1)
 #' }
 #' @export
 analizar_tolerancia <- function(x, concepto = NULL, poblacion = NULL,
@@ -89,7 +110,8 @@ analizar_tolerancia <- function(x, concepto = NULL, poblacion = NULL,
                                 modelo = "gpt-4.1-mini",
                                 modelo_embedding = "text-embedding-3-small",
                                 k_cat = 5, n = 300, n_rep = 60,
-                                n_nucleos = NULL, seed = 2026,
+                                n_rep_pronostico = 100,
+                                n_nucleos = NULL, seed = NULL,
                                 solo_pronostico = FALSE,
                                 dl_juez = c("escenario", "off", "on"),
                                 dl_adyacencia = c("off", "escenario", "on"),
@@ -127,7 +149,7 @@ analizar_tolerancia <- function(x, concepto = NULL, poblacion = NULL,
     stop("Falta la clave del modelo de lenguaje (api_key). Pasa 'deseabilidad' y ",
          "'similitud' ya medidas, o define OPENAI_API_KEY.")
 
-  nuc <- if (is.null(n_nucleos)) max(1L, parallel::detectCores() - 1L) else as.integer(n_nucleos)
+  nuc <- if (is.null(n_nucleos)) .nucleos_por_defecto() else as.integer(n_nucleos)
   say <- function(...) if (isTRUE(verbose)) cat(...)
   hr  <- function(ch = "-") if (isTRUE(verbose)) cat(strrep(ch, 72), "\n")
 
@@ -188,7 +210,7 @@ analizar_tolerancia <- function(x, concepto = NULL, poblacion = NULL,
   say("  Se generan respuestas sinteticas bajo 3 escenarios de deseabilidad\n")
   say("  (debil/media/fuerte) y se ajusta el AFC en cada replica.\n")
   pron <- simular_estructura(xx, deseabilidad = deseabilidad, similitud = similitud,
-                             k_cat = k_cat, n = n,
+                             k_cat = k_cat, n = n, n_rep = n_rep_pronostico,
                              n_nucleos = nuc, seed = seed, verbose = FALSE)
   say(sprintf("  -> probabilidad de estructura limpia (escenario central) = %.2f\n",
               pron$prob_limpia))
@@ -229,11 +251,8 @@ analizar_tolerancia <- function(x, concepto = NULL, poblacion = NULL,
   invisible(res)
 }
 
-#' Imprime el resumen de un analisis de tolerancia
-#'
-#' @param x Objeto \code{semilla_tolerancia} de \code{\link{analizar_tolerancia}}.
-#' @param ... Ignorado.
-#' @return Devuelve \code{x} de forma invisible.
+#' @rdname analizar_tolerancia
+#' @param ... No se usa.
 #' @export
 print.semilla_tolerancia <- function(x, ...) {
   hr <- function(ch = "=") cat(strrep(ch, 72), "\n")

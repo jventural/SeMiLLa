@@ -25,12 +25,22 @@ comparar_escalas(
 \item{verbose}{Mostrar resultados en consola}
 }
 \value{
-Lista con:
+Lista de clase \code{c("semilla_comparacion", "list")} con:
 \itemize{
-\item \code{identicos}: Proporcion de items exactamente iguales
-\item \code{similares}: Proporcion de items con similitud >= umbral
-\item \code{concordancia}: Dataframe con comparacion item por item
-\item \code{resumen}: Texto resumen de la comparacion
+\item \code{n_escala1}, \code{n_escala2}: numero de items de cada escala.
+\item \code{n_comparados}: items comparados (el minimo de ambas).
+\item \code{identicos}, \code{n_identicos}: proporcion y numero de items
+con texto identico (sin distinguir mayusculas ni espacios extremos).
+\item \code{similares}, \code{n_similares}: proporcion y numero de items
+con similitud >= \code{umbral_similitud} (\code{NA} si
+\code{metodo = "exacto"}).
+\item \code{estado}: nivel de reproducibilidad ("PERFECTA", "MUY ALTA",
+"ALTA (SEMANTICA)", "MODERADA" o "BAJA").
+\item \code{mensaje}: texto que resume la comparacion.
+\item \code{concordancia}: data.frame item por item (\code{numero},
+\code{item_escala1}, \code{item_escala2}, \code{identico} y, si se
+pidio, \code{similitud} y \code{similar}).
+\item \code{umbral}: el umbral de similitud usado.
 }
 }
 \description{
@@ -39,18 +49,12 @@ Util para confirmar que el uso de la misma semilla produce items identicos
 o para analizar diferencias entre versiones.
 }
 \examples{
-\dontrun{
-# Generar dos escalas con la misma semilla
-escala1 <- semilla("autoeficacia", api_key, seed = 2024)
-escala2 <- semilla("autoeficacia", api_key, seed = 2024)
+# Una copia de la escala de demostracion con un item reescrito
+otra <- semilla_demo
+otra$items$item[3] <- "Persisto cuando un problema me resulta dificil"
 
-# Comparar
-comp <- comparar_escalas(escala1, escala2)
+comp <- comparar_escalas(semilla_demo, otra, verbose = FALSE)
 print(comp)
-
-# Comparar con semillas diferentes
-escala3 <- semilla("autoeficacia", api_key, seed = 12345)
-comp2 <- comparar_escalas(escala1, escala3)
-}
+comp$concordancia[3, ]
 
 }

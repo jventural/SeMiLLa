@@ -15,7 +15,8 @@
 #' y un reporte de equivalencia semantica (distancia coseno y z_drift)
 #' utilizable directamente con \code{detectar_dif_semantico()}.
 #'
-#' @param x Objeto semilla original (con o sin embeddings).
+#' @param x Objeto semilla original (con o sin embeddings). En el metodo
+#'   \code{print()}, un objeto de clase \code{semilla_transcultural}.
 #' @param idioma_destino Codigo de idioma destino: "es", "en", "pt", "fr",
 #'   "de", "it", "pl", etc.
 #' @param api_key API key de OpenAI.
@@ -35,15 +36,25 @@
 #'   \code{modelo_embedding} empieza por \code{"hf:"}). Por defecto
 #'   \code{NULL}: se reutiliza \code{api_key}.
 #' @param verbose Mostrar progreso.
+#' @param ... No se usa.
 #'
 #' @return Lista de clase \code{semilla_transcultural} con:
 #' \itemize{
 #'   \item \code{escala_origen}: objeto semilla original.
-#'   \item \code{escala_destino}: objeto semilla adaptado.
-#'   \item \code{equivalencia}: tabla con distancia coseno por item.
-#'   \item \code{items_problematicos}: items con baja equivalencia semantica.
-#'   \item \code{idioma_destino}, \code{cultura}.
+#'   \item \code{escala_destino}: objeto semilla adaptado (con embeddings y
+#'     similitud si se verifico la equivalencia).
+#'   \item \code{equivalencia}: tabla con distancia coseno por item (salida
+#'     \code{$distancias} de \code{\link{detectar_dif_semantico}}), o
+#'     \code{NULL} si no se verifico.
+#'   \item \code{items_problematicos}: items con baja equivalencia semantica,
+#'     o \code{NULL}.
+#'   \item \code{idioma_destino}, \code{cultura}, \code{modelo}: condiciones
+#'     de la adaptacion.
+#'   \item \code{modelo_embedding}: modelo de embeddings usado para la
+#'     equivalencia, o \code{NULL}.
 #' }
+#' El metodo \code{print()} devuelve \code{x} de forma invisible; se llama por
+#' su efecto.
 #'
 #' @details
 #' El prompt instruye al LLM a (1) traducir manteniendo la dimension
@@ -55,13 +66,15 @@
 #' antes del back-translation.
 #'
 #' @examples
+#' # Requiere clave de API de OpenAI
 #' \dontrun{
-#' escala_es <- semilla("autoeficacia academica", idioma = "es")
-#' escala_pl <- adaptar_transcultural(escala_es,
-#'                                    idioma_destino = "pl",
-#'                                    cultura = "estudiantes universitarios polacos",
-#'                                    api_key = Sys.getenv("OPENAI_API_KEY"))
-#' escala_pl$items_problematicos
+#' adapt <- adaptar_transcultural(semilla_demo,
+#'                                idioma_destino = "pl",
+#'                                api_key = Sys.getenv("OPENAI_API_KEY"),
+#'                                cultura = "estudiantes universitarios polacos",
+#'                                verificar_equivalencia = FALSE)
+#' adapt
+#' adapt$escala_destino$items
 #' }
 #'
 #' @references
@@ -221,6 +234,7 @@ adaptar_transcultural <- function(x,
   resultado
 }
 
+#' @rdname adaptar_transcultural
 #' @export
 print.semilla_transcultural <- function(x, ...) {
   cat("Adaptacion Transcultural SeMiLLa\n")

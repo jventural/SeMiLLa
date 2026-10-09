@@ -12,8 +12,10 @@ discriminacion_semantica(x, verbose = TRUE)
 \item{verbose}{Mostrar progreso}
 }
 \value{
-Dataframe con:
+data.frame (una fila por item, ordenado de mayor a menor
+\code{unicidad}) con:
 \itemize{
+\item \code{numero}: Posicion del item en la escala original
 \item \code{item}: Texto del item
 \item \code{dimension}: Dimension del item
 \item \code{similitud_media}: Similitud promedio con otros items de su dimension
@@ -52,16 +54,14 @@ casi-duplicados) que como ranking fino de discriminacion.
 }
 }
 \examples{
-\dontrun{
 # Calcular discriminacion semantica
-disc <- discriminacion_semantica(mi_escala)
+disc <- discriminacion_semantica(semilla_demo, verbose = FALSE)
 
-# Ver items con mayor discriminacion predicha
+# Items con mayor discriminacion predicha
 disc[disc$discriminacion_predicha == "alta", ]
 
-# Ordenar por unicidad
-disc[order(-disc$unicidad), ]
-}
+# Los mas redundantes (menor unicidad), p. ej. los items 1 y 2
+disc[order(disc$unicidad), c("numero", "unicidad")][1:3, ]
 
 }
 \references{

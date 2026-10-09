@@ -1,31 +1,47 @@
 #' @title Exportar Escala
 #'
 #' @description
-#' Exporta los items y la informacion de la escala a archivos CSV y TXT.
+#' Exporta los items a un archivo Excel (o CSV, si \pkg{openxlsx} no esta
+#' instalado) y, opcionalmente, un archivo de texto con la informacion de la
+#' escala (definicion, fundamentacion, dimensiones, referencias, estructura e
+#' instrucciones de aplicacion). No escribe nada si no se indica \code{archivo}.
 #'
-#' @param x Objeto semilla, semilla_items, o lista con estructura compatible
-#' @param archivo Nombre del archivo de salida (sin extension)
-#' @param formato Formato de exportacion: "csv", "excel", "ambos"
-#' @param incluir_info Incluir archivo de informacion
-#' @param verbose Mostrar progreso
+#' @param x Objeto \code{semilla}, \code{semilla_items} o lista con
+#'   estructura compatible (al menos \code{$items}; se usan tambien
+#'   \code{$concepto} y \code{$metadata} si existen).
+#' @param archivo Ruta del archivo de salida \strong{sin} extension. Es
+#'   obligatoria: no hay valor por defecto para no escribir en el directorio
+#'   de trabajo. Use, por ejemplo, \code{file.path(tempdir(), "escala")}.
+#' @param formato Formato de exportacion: \code{"csv"}, \code{"excel"} o
+#'   \code{"ambos"}. Se conserva por compatibilidad; en la version actual los
+#'   items se escriben siempre en \code{.xlsx} si \pkg{openxlsx} esta
+#'   disponible y en \code{.csv} si no lo esta.
+#' @param incluir_info Logico. Si \code{TRUE} (por defecto), escribe ademas
+#'   \code{<archivo>_info.txt} con la informacion de la escala.
+#' @param verbose Logico. Si \code{TRUE}, muestra la ruta de cada archivo
+#'   creado.
 #'
-#' @return Invisiblemente, la ruta de los archivos creados
+#' @return Vector de caracteres, invisible, con las rutas de los archivos
+#'   creados: el de items (\code{.xlsx} o \code{.csv}) y, si
+#'   \code{incluir_info = TRUE}, el \code{_info.txt}.
 #'
 #' @examples
-#' \dontrun{
-#' # Exportar a CSV
-#' exportar_escala(mi_escala, "mi_escala")
-#'
-#' # Exportar con informacion
-#' exportar_escala(mi_escala, "mi_escala", incluir_info = TRUE)
-#' }
+#' f <- file.path(tempdir(), "escala_demo")
+#' archivos <- exportar_escala(semilla_demo, archivo = f, verbose = FALSE)
+#' basename(archivos)
+#' unlink(archivos)
 #'
 #' @export
 exportar_escala <- function(x,
-                            archivo = "escala_semilla",
+                            archivo,
                             formato = "csv",
                             incluir_info = TRUE,
                             verbose = TRUE) {
+
+  if (missing(archivo) || is.null(archivo) || !nzchar(archivo)) {
+    stop("Indica 'archivo' (ruta sin extension), por ejemplo ",
+         "file.path(tempdir(), \"escala\").", call. = FALSE)
+  }
 
   # Extraer datos segun tipo
   if (inherits(x, "semilla") || inherits(x, "semilla_items")) {
@@ -188,15 +204,34 @@ exportar_escala <- function(x,
 #' @title Guardar Objeto SeMiLLa
 #'
 #' @description
-#' Guarda el objeto completo para uso posterior.
+#' Guarda el objeto completo en un archivo \code{.rds} para uso posterior
+#' (se recupera con \code{\link{cargar}}).
 #'
-#' @param semilla Objeto semilla
-#' @param archivo Nombre del archivo (sin extension .rds)
-#' @param verbose Mostrar progreso
+#' @param semilla Objeto \code{semilla} (o cualquier objeto de R) a guardar.
+#' @param archivo Ruta del archivo \strong{sin} la extension \code{.rds}.
+#'   Es obligatoria: no hay valor por defecto para no escribir en el
+#'   directorio de trabajo. Use, por ejemplo,
+#'   \code{file.path(tempdir(), "escala")}.
+#' @param verbose Logico. Si \code{TRUE} (por defecto), muestra la ruta del
+#'   archivo creado.
+#'
+#' @return Cadena de caracteres, invisible, con la ruta del archivo
+#'   \code{.rds} creado. Se llama por su efecto.
+#'
+#' @examples
+#' f <- file.path(tempdir(), "semilla_demo")
+#' ruta <- guardar(semilla_demo, f, verbose = FALSE)
+#' x <- cargar(ruta)
+#' identical(x$items, semilla_demo$items)
+#' unlink(ruta)
 #'
 #' @export
-guardar <- function(semilla, archivo = "semilla", verbose = TRUE) {
+guardar <- function(semilla, archivo, verbose = TRUE) {
 
+  if (missing(archivo) || is.null(archivo) || !nzchar(archivo)) {
+    stop("Indica 'archivo' (ruta sin extension .rds), por ejemplo ",
+         "file.path(tempdir(), \"escala\").", call. = FALSE)
+  }
   archivo_rds <- paste0(archivo, ".rds")
   saveRDS(semilla, archivo_rds)
 
@@ -211,11 +246,19 @@ guardar <- function(semilla, archivo = "semilla", verbose = TRUE) {
 #' @title Cargar Objeto SeMiLLa
 #'
 #' @description
-#' Carga un objeto SeMiLLa guardado previamente.
+#' Carga un objeto SeMiLLa guardado previamente con \code{\link{guardar}}.
 #'
-#' @param archivo Ruta al archivo .rds
+#' @param archivo Ruta al archivo \code{.rds}.
 #'
-#' @return Objeto semilla
+#' @return El objeto guardado en el archivo (normalmente de clase
+#'   \code{semilla}), tal como lo devuelve \code{readRDS()}.
+#'
+#' @examples
+#' f <- file.path(tempdir(), "semilla_demo")
+#' ruta <- guardar(semilla_demo, f, verbose = FALSE)
+#' x <- cargar(ruta)
+#' class(x)
+#' unlink(ruta)
 #'
 #' @export
 cargar <- function(archivo) {

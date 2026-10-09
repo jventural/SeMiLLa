@@ -9,8 +9,17 @@
 \arguments{
 \item{x}{Objeto de clase semilla}
 
-\item{...}{Argumentos adicionales}
+\item{...}{Argumentos adicionales (no se usan)}
+}
+\value{
+Devuelve \code{x} de forma invisible; se llama por su efecto
+(imprimir en la consola).
 }
 \description{
-Imprimir objeto SeMiLLa
+Muestra el constructo, las dimensiones con sus items, la
+separabilidad semantica, el estado de la compuerta pre-aplicacion y los
+metadatos de la generacion.
+}
+\examples{
+print(semilla_demo)
 }

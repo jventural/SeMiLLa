@@ -17,7 +17,7 @@ optimizar_para_campo(
   n_rep_intermedio = 40,
   modelo = "gpt-4.1-mini",
   poblacion = NULL,
-  seed = 2026,
+  seed = NULL,
   margen_mejora = 4,
   verbose = TRUE
 )
@@ -62,7 +62,9 @@ veredicto reportado.}
 \item{poblacion}{Poblacion objetivo; si NULL se toma de
 \code{x$metadata$poblacion}.}
 
-\item{seed}{Semilla de la simulacion.}
+\item{seed}{Entero o \code{NULL} (default). Semilla que se pasa a
+\code{compuerta_pre_aplicacion()} (simulacion y semilla de la API del LLM).
+Con \code{NULL} el resultado puede variar entre corridas.}
 
 \item{margen_mejora}{Puntos que una iteracion debe ganar, con el mismo
 veredicto, para sustituir a la mejor version guardada (default 4, el peso
@@ -137,8 +139,12 @@ muestra que indicador mejoro y cual empeoro respecto del punto de partida.
 }
 
 \examples{
+# Requiere una clave de API de OpenAI (variable OPENAI_API_KEY).
 \dontrun{
-esc <- semilla("personalidad moral", api_key = key)  # compuerta + optimiza
+esc <- semilla("personalidad moral",
+               api_key = Sys.getenv("OPENAI_API_KEY"))  # compuerta + optimiza
+esc <- optimizar_para_campo(esc, api_key = Sys.getenv("OPENAI_API_KEY"),
+                            max_iteraciones = 2)
 esc$optimizacion$historial
 esc$optimizacion$reemplazos[, c("item_viejo", "item_nuevo", "motivo")]
 }

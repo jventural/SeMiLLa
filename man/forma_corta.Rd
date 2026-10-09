@@ -9,7 +9,8 @@ forma_corta(
   n_items,
   por_dimension = TRUE,
   metodo = "centroide",
-  verbose = TRUE
+  verbose = TRUE,
+  seed = NULL
 )
 }
 \arguments{
@@ -22,15 +23,26 @@ forma_corta(
 \item{metodo}{Metodo de seleccion: "centroide" (default) o "diverso"}
 
 \item{verbose}{Mostrar progreso}
+
+\item{seed}{Semilla para K-means (entero) o \code{NULL} (default). Con
+\code{NULL} no se fija ninguna semilla y la seleccion puede variar entre
+corridas; pase un entero (p. ej. \code{42}) para resultados reproducibles.}
 }
 \value{
-Lista con:
+Lista de clase \code{c("semilla_forma_corta", "list")} con:
 \itemize{
-\item \code{items}: Dataframe con items seleccionados
-\item \code{indices}: Indices de los items seleccionados
-\item \code{clusters}: Asignacion de clusters
-\item \code{distancia_centroide}: Distancia de cada item a su centroide
+\item \code{items}: data.frame con los items seleccionados (las columnas
+del original mas \code{numero_original}, su posicion en la escala
+completa, y \code{numero} renumerado desde 1).
+\item \code{indices}: vector entero con las posiciones de los items
+seleccionados en la escala original.
+\item \code{n_original}: numero de items de la escala completa.
+\item \code{n_seleccionados}: numero de items retenidos.
+\item \code{metodo}, \code{por_dimension}: los argumentos usados.
 }
+Si \code{n_items} es mayor o igual que el total de items, devuelve (con un
+aviso) una lista simple con \code{items}, \code{indices = 1:n},
+\code{clusters = NULL} y \code{distancia_centroide = NULL}.
 }
 \description{
 Genera una version abreviada de la escala utilizando K-means clustering
@@ -68,16 +80,14 @@ Es decir: \code{forma_corta} es el \emph{default sin datos};
 }
 
 \examples{
-\dontrun{
-# Generar forma corta de 15 items
-corta <- forma_corta(mi_escala, n_items = 15)
+# Forma corta de 9 items (3 por dimension) de la escala de demostracion
+corta <- forma_corta(semilla_demo, n_items = 9, verbose = FALSE, seed = 1)
+corta$items[, c("numero_original", "dimension", "item")]
 
-# Ver items seleccionados
-corta$items
-
-# Forma corta proporcional por dimension
-corta <- forma_corta(mi_escala, n_items = 20, por_dimension = TRUE)
-}
+# Seleccion global, sin respetar las dimensiones
+corta_global <- forma_corta(semilla_demo, n_items = 6, por_dimension = FALSE,
+                            verbose = FALSE, seed = 1)
+corta_global$indices
 
 }
 \references{

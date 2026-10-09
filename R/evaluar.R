@@ -18,12 +18,20 @@
 #'   "gpt-4-turbo", "gpt-3.5-turbo", o cualquier modelo compatible
 #' @param verbose Mostrar progreso
 #'
-#' @return Lista con:
+#' @return Lista de clase \code{c("semilla_cv", "list")} con:
 #' \itemize{
-#'   \item \code{v_aiken}: V de Aiken para cada item y criterio
-#'   \item \code{v_aiken_escala}: V de Aiken promedio por criterio
-#'   \item \code{evaluaciones}: Matriz completa de evaluaciones
-#'   \item \code{recomendaciones}: Items que necesitan revision (V < 0.70 o IC_inf < 0.70)
+#'   \item \code{v_aiken}: data.frame con la V de Aiken de cada item en cada
+#'     criterio, con su intervalo de confianza.
+#'   \item \code{v_aiken_escala}: V de Aiken promedio por criterio y total
+#'     (\code{V_total}).
+#'   \item \code{evaluaciones}: lista con una matriz por criterio (items x
+#'     jueces) con las calificaciones 0-3 de cada juez simulado.
+#'   \item \code{recomendaciones}: data.frame con los items que necesitan
+#'     revision (V < 0.70 o IC_inf < 0.70).
+#'   \item \code{metadata}: lista con \code{n_items}, \code{n_jueces},
+#'     \code{criterios}, \code{confianza}, \code{modelo},
+#'     \code{modelos_usados}, \code{items_sin_evaluar},
+#'     \code{items_jueces_incompletos} y \code{fecha}.
 #' }
 #'
 #' @details
@@ -50,9 +58,10 @@
 #' - Limite inferior del IC >= 0.70
 #'
 #' @examples
+#' # Requiere una clave de API de OpenAI (consulta un LLM).
 #' \dontrun{
 #' # Evaluar validez de contenido
-#' cv <- validez_contenido(mi_escala, api_key = Sys.getenv("OPENAI_API_KEY"))
+#' cv <- validez_contenido(semilla_demo, api_key = Sys.getenv("OPENAI_API_KEY"))
 #'
 #' # Ver resultados
 #' print(cv)
@@ -287,12 +296,23 @@ validez_contenido <- function(x,
 #' @param metodo Metodo de calculo: "spearman_brown"
 #' @param verbose Mostrar progreso
 #'
-#' @return Lista con:
+#' @return Lista de clase \code{c("semilla_fiabilidad", "list")} con:
 #' \itemize{
-#'   \item \code{alpha_dimensiones}: Alpha semantico por dimension (principal)
-#'   \item \code{alpha_promedio}: Promedio ponderado de alphas por dimension
-#'   \item \code{similitud_intra}: Similitud promedio DENTRO de cada dimension
-#'   \item \code{similitud_inter}: Similitud promedio ENTRE dimensiones
+#'   \item \code{alpha_dimensiones}: data.frame con columnas \code{dimension},
+#'     \code{n_items}, \code{similitud_promedio} y \code{alpha_semantico}
+#'     (el resultado principal).
+#'   \item \code{alpha_promedio}: promedio de los alphas por dimension,
+#'     ponderado por el numero de items.
+#'   \item \code{similitud_intra}: similitud coseno promedio DENTRO de las
+#'     dimensiones.
+#'   \item \code{similitud_inter}: similitud coseno promedio ENTRE
+#'     dimensiones (\code{NA} si hay una sola).
+#'   \item \code{discriminacion}: \code{similitud_intra - similitud_inter}
+#'     (solo cuando hay dimensiones).
+#'   \item \code{advertencia}: texto, solo cuando no hay informacion de
+#'     dimensiones y se calcula un alpha unico.
+#'   \item \code{metadata}: lista con \code{metodo}, \code{n_items},
+#'     \code{n_dimensiones} y \code{fecha}.
 #' }
 #'
 #' @details
@@ -324,9 +344,8 @@ validez_contenido <- function(x,
 #' }
 #'
 #' @examples
-#' \dontrun{
-#' # Calcular fiabilidad semantica
-#' fiab <- fiabilidad_semantica(mi_escala)
+#' # Calcular fiabilidad semantica de la escala de demostracion
+#' fiab <- fiabilidad_semantica(semilla_demo, verbose = FALSE)
 #'
 #' # Ver resultados
 #' print(fiab)
@@ -336,7 +355,6 @@ validez_contenido <- function(x,
 #'
 #' # Promedio ponderado
 #' fiab$alpha_promedio
-#' }
 #'
 #' @references
 #' Wulff, D. U., & Mata, R. (2025). Semantic embeddings reveal and address
@@ -945,8 +963,27 @@ fiabilidad_semantica <- function(x,
 # =============================================================================
 
 #' @title Print Content Validity Results (V de Aiken)
+#' @description Muestra en consola el resumen de \code{validez_contenido()}.
 #' @param x Objeto semilla_cv
-#' @param ... Argumentos adicionales
+#' @param ... Argumentos adicionales (no se usan).
+#' @return Devuelve \code{x} de forma invisible; se llama por su efecto
+#'   (imprimir el resumen en consola).
+#' @examples
+#' # Objeto armado a mano con valores ilustrativos; uno real lo devuelve
+#' # validez_contenido(), que consulta a un LLM.
+#' cv <- structure(list(
+#'   v_aiken = data.frame(numero = 1:2, item = c("Item A", "Item B"),
+#'                        V_promedio = c(0.89, 0.61), IC_inf = c(0.72, 0.45),
+#'                        IC_sup = c(0.96, 0.75)),
+#'   v_aiken_escala = list(V_total = 0.75, relevancia = 0.78,
+#'                         representatividad = 0.72),
+#'   recomendaciones = data.frame(numero = 2, item = "Item B",
+#'                                V_promedio = 0.61, IC_inf = 0.45,
+#'                                IC_sup = 0.75),
+#'   metadata = list(criterios = c("relevancia", "representatividad"),
+#'                   n_items = 2, n_jueces = 10, confianza = 0.95)),
+#'   class = c("semilla_cv", "list"))
+#' print(cv)
 #' @export
 print.semilla_cv <- function(x, ...) {
   cat("\n")
@@ -998,8 +1035,14 @@ print.semilla_cv <- function(x, ...) {
 
 
 #' @title Print Semantic Reliability Results
+#' @description Muestra en consola el resumen de \code{fiabilidad_semantica()}.
 #' @param x Objeto semilla_fiabilidad
-#' @param ... Argumentos adicionales
+#' @param ... Argumentos adicionales (no se usan).
+#' @return Devuelve \code{x} de forma invisible; se llama por su efecto
+#'   (imprimir el resumen en consola).
+#' @examples
+#' fiab <- fiabilidad_semantica(semilla_demo, verbose = FALSE)
+#' print(fiab)
 #' @export
 print.semilla_fiabilidad <- function(x, ...) {
   cat("\n")
@@ -1073,14 +1116,24 @@ print.semilla_fiabilidad <- function(x, ...) {
 #' @param por_dimension Si TRUE, selecciona items proporcionalmente por dimension
 #' @param metodo Metodo de seleccion: "centroide" (default) o "diverso"
 #' @param verbose Mostrar progreso
+#' @param seed Semilla para K-means (entero) o \code{NULL} (default). Con
+#'   \code{NULL} no se fija ninguna semilla y la seleccion puede variar entre
+#'   corridas; pase un entero (p. ej. \code{42}) para resultados reproducibles.
 #'
-#' @return Lista con:
+#' @return Lista de clase \code{c("semilla_forma_corta", "list")} con:
 #' \itemize{
-#'   \item \code{items}: Dataframe con items seleccionados
-#'   \item \code{indices}: Indices de los items seleccionados
-#'   \item \code{clusters}: Asignacion de clusters
-#'   \item \code{distancia_centroide}: Distancia de cada item a su centroide
+#'   \item \code{items}: data.frame con los items seleccionados (las columnas
+#'     del original mas \code{numero_original}, su posicion en la escala
+#'     completa, y \code{numero} renumerado desde 1).
+#'   \item \code{indices}: vector entero con las posiciones de los items
+#'     seleccionados en la escala original.
+#'   \item \code{n_original}: numero de items de la escala completa.
+#'   \item \code{n_seleccionados}: numero de items retenidos.
+#'   \item \code{metodo}, \code{por_dimension}: los argumentos usados.
 #' }
+#' Si \code{n_items} es mayor o igual que el total de items, devuelve (con un
+#' aviso) una lista simple con \code{items}, \code{indices = 1:n},
+#' \code{clusters = NULL} y \code{distancia_centroide = NULL}.
 #'
 #' @details
 #' El algoritmo funciona asi:
@@ -1110,16 +1163,14 @@ print.semilla_fiabilidad <- function(x, ...) {
 #' @seealso \code{\link{forma_breve}}, \code{\link{discriminacion_semantica}}
 #'
 #' @examples
-#' \dontrun{
-#' # Generar forma corta de 15 items
-#' corta <- forma_corta(mi_escala, n_items = 15)
+#' # Forma corta de 9 items (3 por dimension) de la escala de demostracion
+#' corta <- forma_corta(semilla_demo, n_items = 9, verbose = FALSE, seed = 1)
+#' corta$items[, c("numero_original", "dimension", "item")]
 #'
-#' # Ver items seleccionados
-#' corta$items
-#'
-#' # Forma corta proporcional por dimension
-#' corta <- forma_corta(mi_escala, n_items = 20, por_dimension = TRUE)
-#' }
+#' # Seleccion global, sin respetar las dimensiones
+#' corta_global <- forma_corta(semilla_demo, n_items = 6, por_dimension = FALSE,
+#'                             verbose = FALSE, seed = 1)
+#' corta_global$indices
 #'
 #' @references
 #' Yang, Y., & Chiu, C. P. (2025). A transformer-based embedding approach to
@@ -1134,7 +1185,8 @@ forma_corta <- function(x,
                         n_items,
                         por_dimension = TRUE,
                         metodo = "centroide",
-                        verbose = TRUE) {
+                        verbose = TRUE,
+                        seed = NULL) {
 
   # Extraer embeddings y items
   if (inherits(x, "semilla") || inherits(x, "semilla_embeddings")) {
@@ -1216,7 +1268,7 @@ forma_corta <- function(x,
       } else {
         # K-means dentro de la dimension
         n_clusters <- min(n_sel, length(idx_dim))
-        set.seed(42)
+        if (!is.null(seed)) set.seed(seed)
         km <- kmeans(emb_dim, centers = n_clusters, nstart = 10)
 
         # Seleccionar item mas cercano a cada centroide
@@ -1251,7 +1303,7 @@ forma_corta <- function(x,
     # Seleccion global sin considerar dimensiones
     if (verbose) cat("  ", .color_flecha(), " Aplicando K-means global...\n", sep = "")
 
-    set.seed(42)
+    if (!is.null(seed)) set.seed(seed)
     km <- kmeans(embeddings, centers = n_items, nstart = 10)
 
     indices_seleccionados <- c()
@@ -1332,8 +1384,10 @@ forma_corta <- function(x,
 #' @param x Objeto semilla o semilla_embeddings
 #' @param verbose Mostrar progreso
 #'
-#' @return Dataframe con:
+#' @return data.frame (una fila por item, ordenado de mayor a menor
+#'   \code{unicidad}) con:
 #' \itemize{
+#'   \item \code{numero}: Posicion del item en la escala original
 #'   \item \code{item}: Texto del item
 #'   \item \code{dimension}: Dimension del item
 #'   \item \code{similitud_media}: Similitud promedio con otros items de su dimension
@@ -1367,16 +1421,14 @@ forma_corta <- function(x,
 #' }
 #'
 #' @examples
-#' \dontrun{
 #' # Calcular discriminacion semantica
-#' disc <- discriminacion_semantica(mi_escala)
+#' disc <- discriminacion_semantica(semilla_demo, verbose = FALSE)
 #'
-#' # Ver items con mayor discriminacion predicha
+#' # Items con mayor discriminacion predicha
 #' disc[disc$discriminacion_predicha == "alta", ]
 #'
-#' # Ordenar por unicidad
-#' disc[order(-disc$unicidad), ]
-#' }
+#' # Los mas redundantes (menor unicidad), p. ej. los items 1 y 2
+#' disc[order(disc$unicidad), c("numero", "unicidad")][1:3, ]
 #'
 #' @references
 #' Kilmen, S., & Bulut, O. (2025). Shortening Psychological Scales: Semantic
@@ -1493,13 +1545,25 @@ discriminacion_semantica <- function(x, verbose = TRUE) {
 #' @param x Objeto semilla con EFA realizado, o semilla_efa
 #' @param n_clusters Numero de clusters semanticos (NULL = igual a n_factores)
 #' @param verbose Mostrar progreso
+#' @param seed Semilla para K-means (entero) o \code{NULL} (default). Con
+#'   \code{NULL} no se fija ninguna semilla y los clusters pueden variar entre
+#'   corridas; pase un entero (p. ej. \code{42}) para resultados reproducibles.
 #'
-#' @return Lista con:
+#' @return Lista de clase \code{c("semilla_cargas_sem", "list")} con:
 #' \itemize{
-#'   \item \code{jaccard_matrix}: Matriz de indices Jaccard (clusters x factores)
-#'   \item \code{correspondencia}: Mejor correspondencia cluster-factor
-#'   \item \code{items_incoherentes}: Items donde cluster != factor
-#'   \item \code{jaccard_promedio}: Indice Jaccard promedio
+#'   \item \code{jaccard_matrix}: matriz de indices Jaccard (clusters x
+#'     factores).
+#'   \item \code{correspondencia}: data.frame con \code{cluster},
+#'     \code{factor_correspondiente}, \code{jaccard} y
+#'     \code{n_items_cluster}.
+#'   \item \code{items_incoherentes}: data.frame con los items cuyo cluster
+#'     no coincide con su factor (\code{numero}, \code{item},
+#'     \code{cluster_semantico}, \code{factor_esperado}, \code{factor_efa}).
+#'   \item \code{jaccard_promedio}: indice Jaccard promedio.
+#'   \item \code{cluster_asignacion}: vector con el cluster semantico de cada
+#'     item.
+#'   \item \code{metadata}: lista con \code{n_clusters}, \code{n_factores},
+#'     \code{n_items} y \code{n_incoherentes}.
 #' }
 #'
 #' @details
@@ -1518,16 +1582,23 @@ discriminacion_semantica <- function(x, verbose = TRUE) {
 #' se agrupan empiricamente en el EFA.
 #'
 #' @examples
-#' \dontrun{
-#' # Calcular cargas semanticas
-#' cs <- cargas_semanticas(mi_escala)
+#' # La escala de demostracion con una asignacion factorial (estructura
+#' # heredada de EFA: un factor por dimension teorica)
+#' esc <- semilla_demo
+#' esc$separabilidad <- list(
+#'   asignacion = data.frame(
+#'     item_num = seq_len(nrow(esc$items)),
+#'     factor_EFA = paste0("F", as.integer(factor(esc$items$dimension)))
+#'   ),
+#'   metadata = list(n_factores = 3)
+#' )
+#' cs <- cargas_semanticas(esc, verbose = FALSE, seed = 1)
 #'
 #' # Ver matriz de Jaccard
 #' cs$jaccard_matrix
 #'
 #' # Items incoherentes
 #' cs$items_incoherentes
-#' }
 #'
 #' @references
 #' Stanghellini, E., Perinelli, E., Lombardi, L., & Stella, M. (2024).
@@ -1538,7 +1609,8 @@ discriminacion_semantica <- function(x, verbose = TRUE) {
 #' @export
 cargas_semanticas <- function(x,
                                n_clusters = NULL,
-                               verbose = TRUE) {
+                               verbose = TRUE,
+                               seed = NULL) {
 
   # Extraer datos necesarios
   if (inherits(x, "semilla") || (is.list(x) && !is.null(x$embeddings) && !is.null(.separabilidad(x)))) {
@@ -1577,7 +1649,7 @@ cargas_semanticas <- function(x,
   # PASO 1: K-means sobre embeddings
   if (verbose) cat("  ", .color_flecha(), " Generando clusters semanticos...\n", sep = "")
 
-  set.seed(42)
+  if (!is.null(seed)) set.seed(seed)
   km <- kmeans(embeddings, centers = n_clusters, nstart = 25)
   cluster_semantico <- km$cluster
 
@@ -1707,11 +1779,20 @@ cargas_semanticas <- function(x,
 #'   "gpt-4-turbo", "gpt-3.5-turbo", o cualquier modelo compatible
 #' @param verbose Mostrar progreso
 #'
-#' @return Lista con:
+#' @return Lista de clase \code{c("semilla_calidad", "list")} con:
 #' \itemize{
-#'   \item \code{evaluacion}: Dataframe con puntuaciones por criterio
-#'   \item \code{items_problematicos}: Items que no cumplen criterios minimos
-#'   \item \code{recomendaciones}: Sugerencias de mejora por item
+#'   \item \code{evaluacion}: data.frame con una fila por item: \code{numero},
+#'     \code{item}, \code{dimension} (si existe), una columna 1-5 por
+#'     criterio, las banderas de reglas \code{longitud_ok},
+#'     \code{doble_negacion} y \code{palabras_absolutas}, y el
+#'     \code{promedio} de los criterios.
+#'   \item \code{items_problematicos}: las filas de \code{evaluacion} con
+#'     promedio < 3 o alguna regla violada.
+#'   \item \code{recomendaciones}: data.frame con \code{numero}, \code{item}
+#'     y la \code{recomendacion} de mejora sugerida por el LLM.
+#'   \item \code{resumen}: lista con \code{promedio_general},
+#'     \code{n_sin_evaluar}, \code{n_problematicos} y
+#'     \code{pct_problematicos}.
 #' }
 #'
 #' @details
@@ -1732,9 +1813,11 @@ cargas_semanticas <- function(x,
 #' }
 #'
 #' @examples
+#' # Requiere una clave de API de OpenAI (consulta un LLM).
 #' \dontrun{
 #' # Evaluar calidad de items
-#' calidad <- evaluar_calidad_items(mi_escala, api_key = Sys.getenv("OPENAI_API_KEY"))
+#' calidad <- auditar_redaccion_items(semilla_demo,
+#'                                    api_key = Sys.getenv("OPENAI_API_KEY"))
 #'
 #' # Ver items problematicos
 #' calidad$items_problematicos
@@ -1952,15 +2035,6 @@ auditar_redaccion_items <- function(x,
 #' NOTA: Estas son estimaciones basadas en propiedades semanticas.
 #' Para parametros IRT precisos, se requieren datos de respuesta reales.
 #'
-#' @examples
-#' \dontrun{
-#' # Predecir parametros IRT
-#' irt <- predecir_irt(mi_escala)
-#'
-#' # Ver items con mayor informacion estimada
-#' irt[order(-irt$informacion_estimada), ]
-#' }
-#'
 #' @references
 #' Yao, L. H., Jarvis, N., Zhan, T., Ghosh, S., Liu, L., & Jiang, T. (2025).
 #' JE-IRT: A Geometric Lens on LLM Abilities through Joint Embedding Item
@@ -1969,7 +2043,7 @@ auditar_redaccion_items <- function(x,
 #' Huang, J., et al. (2025). Learning Compact Representations of LLM Abilities
 #' via Item Response Theory. arXiv:2510.00844.
 #'
-#' @keywords internal
+#' @noRd
 predecir_irt <- function(x, verbose = TRUE) {
 
   # Extraer embeddings y similitud
@@ -2106,28 +2180,32 @@ predecir_irt <- function(x, verbose = TRUE) {
 #' @param umbral_similitud Umbral para considerar items similares (default: 0.90)
 #' @param verbose Mostrar resultados en consola
 #'
-#' @return Lista con:
+#' @return Lista de clase \code{c("semilla_comparacion", "list")} con:
 #' \itemize{
-#'   \item \code{identicos}: Proporcion de items exactamente iguales
-#'   \item \code{similares}: Proporcion de items con similitud >= umbral
-#'   \item \code{concordancia}: Dataframe con comparacion item por item
-#'   \item \code{resumen}: Texto resumen de la comparacion
+#'   \item \code{n_escala1}, \code{n_escala2}: numero de items de cada escala.
+#'   \item \code{n_comparados}: items comparados (el minimo de ambas).
+#'   \item \code{identicos}, \code{n_identicos}: proporcion y numero de items
+#'     con texto identico (sin distinguir mayusculas ni espacios extremos).
+#'   \item \code{similares}, \code{n_similares}: proporcion y numero de items
+#'     con similitud >= \code{umbral_similitud} (\code{NA} si
+#'     \code{metodo = "exacto"}).
+#'   \item \code{estado}: nivel de reproducibilidad ("PERFECTA", "MUY ALTA",
+#'     "ALTA (SEMANTICA)", "MODERADA" o "BAJA").
+#'   \item \code{mensaje}: texto que resume la comparacion.
+#'   \item \code{concordancia}: data.frame item por item (\code{numero},
+#'     \code{item_escala1}, \code{item_escala2}, \code{identico} y, si se
+#'     pidio, \code{similitud} y \code{similar}).
+#'   \item \code{umbral}: el umbral de similitud usado.
 #' }
 #'
 #' @examples
-#' \dontrun{
-#' # Generar dos escalas con la misma semilla
-#' escala1 <- semilla("autoeficacia", api_key, seed = 2024)
-#' escala2 <- semilla("autoeficacia", api_key, seed = 2024)
+#' # Una copia de la escala de demostracion con un item reescrito
+#' otra <- semilla_demo
+#' otra$items$item[3] <- "Persisto cuando un problema me resulta dificil"
 #'
-#' # Comparar
-#' comp <- comparar_escalas(escala1, escala2)
+#' comp <- comparar_escalas(semilla_demo, otra, verbose = FALSE)
 #' print(comp)
-#'
-#' # Comparar con semillas diferentes
-#' escala3 <- semilla("autoeficacia", api_key, seed = 12345)
-#' comp2 <- comparar_escalas(escala1, escala3)
-#' }
+#' comp$concordancia[3, ]
 #'
 #' @export
 comparar_escalas <- function(escala1,
@@ -2304,6 +2382,22 @@ comparar_escalas <- function(escala1,
 }
 
 
+#' @title Imprimir una Comparacion de Escalas
+#'
+#' @description Muestra en consola el resumen de \code{comparar_escalas()}.
+#'
+#' @param x Objeto de clase \code{semilla_comparacion}.
+#' @param ... Argumentos adicionales (no se usan).
+#'
+#' @return Devuelve \code{x} de forma invisible; se llama por su efecto
+#'   (imprimir el resumen en consola).
+#'
+#' @examples
+#' otra <- semilla_demo
+#' otra$items$item[3] <- "Persisto cuando un problema me resulta dificil"
+#' comp <- comparar_escalas(semilla_demo, otra, verbose = FALSE)
+#' print(comp)
+#'
 #' @export
 print.semilla_comparacion <- function(x, ...) {
   cat("\n")
@@ -2451,16 +2545,22 @@ print.semilla_comparacion <- function(x, ...) {
 #'   \item \code{similitud_inter}: Vector de similitudes entre dimensiones
 #'   \item \code{mediana_intra}: Mediana de similitud intra-dimension
 #'   \item \code{mediana_inter}: Mediana de similitud inter-dimension
+#'   \item \code{media_intra}, \code{media_inter}: Medias de ambas similitudes
 #'   \item \code{diferencia_separabilidad}: Diferencia entre medianas (> 0.15 es bueno)
-#'   \item \code{coherencia_por_dimension}: Estadisticas por dimension
-#'   \item \code{items_baja_coherencia}: Items con coherencia < umbral
+#'   \item \code{evaluacion}: Etiqueta de la separabilidad ("Excelente",
+#'     "Buena", "Aceptable" o "Baja")
+#'   \item \code{coherencia_por_dimension}: data.frame con estadisticas por dimension
+#'   \item \code{items_baja_coherencia}: data.frame con los items cuya
+#'     similitud media con su dimension es menor que el umbral
+#'   \item \code{datos_por_item}: data.frame con la similitud media de cada
+#'     item con su dimension
+#'   \item \code{umbral}: El umbral usado
 #' }
 #'
 #' @examples
-#' \dontrun{
-#' coh <- analizar_coherencia(mi_escala)
-#' print(coh$diferencia_separabilidad)
-#' }
+#' coh <- analizar_coherencia(semilla_demo, verbose = FALSE)
+#' coh$diferencia_separabilidad
+#' coh$coherencia_por_dimension
 #'
 #' @export
 analizar_coherencia <- function(x, umbral_coherencia_min = 0.50, verbose = TRUE) {
@@ -2683,6 +2783,13 @@ analizar_coherencia <- function(x, umbral_coherencia_min = 0.50, verbose = TRUE)
 #'   Voss et al., 2026). Las replicas usan submuestras aleatorias del 90 por ciento
 #'   de los items para evaluar robustez. Solo aplica con \code{metodo = "ensemble"}.
 #' @param verbose Mostrar progreso en consola (default: TRUE)
+#' @param seed Semilla base (entero) o \code{NULL} (default). Con un entero,
+#'   la particion de referencia usa \code{seed} y la replica \code{r} usa
+#'   \code{seed + r} (tanto para el submuestreo como para el clusterizador),
+#'   de modo que el resultado es reproducible; \code{seed = 2024} reproduce
+#'   el comportamiento de versiones anteriores. Con \code{NULL} no se fija
+#'   ninguna semilla y K-means, el submuestreo de replicas y los algoritmos
+#'   estocasticos pueden variar entre corridas.
 #'
 #' @return Lista de clase 'semilla_precision' con:
 #' \itemize{
@@ -2696,18 +2803,27 @@ analizar_coherencia <- function(x, umbral_coherencia_min = 0.50, verbose = TRUE)
 #'   \item \code{silhouette_por_item}: Silhouette de cada item (negativos = mal ubicados)
 #'   \item \code{silhouette_por_cluster}: Silhouette promedio por cluster
 #'   \item \code{items_silhouette_negativo}: Items con silhouette negativo (revisar)
+#'   \item \code{evaluacion_precision}, \code{evaluacion_ari},
+#'     \code{evaluacion_silhouette}: Etiquetas interpretativas de cada indice
+#'   \item \code{n_clusters}, \code{metodo}: Argumentos usados
+#'   \item \code{consenso}: data.frame con la proporcion de particiones en
+#'     que cada item cae en el cluster de su dimension (solo con
+#'     \code{metodo = "ensemble"}; \code{NULL} en otro caso)
+#'   \item \code{clusters_componentes}: Lista, por algoritmo, de las
+#'     particiones de cada replica (solo con \code{metodo = "ensemble"})
 #' }
 #'
 #' @examples
-#' \dontrun{
-#' prec <- precision_clasificacion(mi_escala)
-#' print(prec$precision_global)
-#' print(prec$precision_por_dimension)
+#' prec <- precision_clasificacion(semilla_demo, verbose = FALSE, seed = 1)
+#' prec$precision_global
+#' prec$precision_por_dimension
 #'
-#' # Consenso ensemble (Voss et al., 2026)
-#' prec_ens <- precision_clasificacion(mi_escala, metodo = "ensemble")
+#' # Consenso ensemble (Voss et al., 2026), version ligera
+#' prec_ens <- precision_clasificacion(semilla_demo, metodo = "ensemble",
+#'                                     algoritmos = c("kmeans", "ward"),
+#'                                     n_replicas = 3, verbose = FALSE,
+#'                                     seed = 1)
 #' prec_ens$consenso  # frecuencia con la que cada item agrupa con su dimension
-#' }
 #'
 #' @references
 #' Voss, N. M., Wu, F. Y., Javalagi, A. A., & Kell, H. J. (2026).
@@ -2719,7 +2835,8 @@ analizar_coherencia <- function(x, umbral_coherencia_min = 0.50, verbose = TRUE)
 precision_clasificacion <- function(x, n_clusters = NULL, metodo = "kmeans",
                                     algoritmos = c("kmeans", "ward", "gmm"),
                                     n_replicas = 10,
-                                    verbose = TRUE) {
+                                    verbose = TRUE,
+                                    seed = NULL) {
 
   # Validar entrada
   if (!inherits(x, "semilla")) {
@@ -2772,11 +2889,11 @@ precision_clasificacion <- function(x, n_clusters = NULL, metodo = "kmeans",
   # Helper: ejecutar un clusterizador concreto
   # idx_subset: indices de items a usar (para replicas con submuestreo).
   #             NULL = todos los items.
-  .clusterizar <- function(metodo_local, idx_subset = NULL, seed = 2024) {
+  .clusterizar <- function(metodo_local, idx_subset = NULL, seed_local = seed) {
     Xemb <- if (is.null(idx_subset)) embeddings else embeddings[idx_subset, , drop = FALSE]
     Rsim <- if (is.null(idx_subset)) matriz_sim
             else matriz_sim[idx_subset, idx_subset, drop = FALSE]
-    set.seed(seed)
+    if (!is.null(seed_local)) set.seed(seed_local)
     out <- tryCatch({
       if (metodo_local == "kmeans") {
         kmeans(Xemb, centers = n_clusters, nstart = 25)$cluster
@@ -2851,7 +2968,7 @@ precision_clasificacion <- function(x, n_clusters = NULL, metodo = "kmeans",
 
     n_items <- nrow(items_df)
     # Particion de referencia: kmeans con todos los items (para alinear etiquetas)
-    ref_full <- .clusterizar("kmeans", idx_subset = NULL, seed = 2024)
+    ref_full <- .clusterizar("kmeans", idx_subset = NULL, seed_local = seed)
 
     # Generar las particiones (algoritmo x replica)
     particiones <- list()      # cada particion: vector de clusters armonizados,
@@ -2872,10 +2989,11 @@ precision_clasificacion <- function(x, n_clusters = NULL, metodo = "kmeans",
         if (n_replicas == 1 || r == 1) {
           idx <- seq_len(n_items)
         } else {
-          set.seed(2024 + r)
+          if (!is.null(seed)) set.seed(seed + r)
           idx <- sort(sample(seq_len(n_items), size = round(0.9 * n_items)))
         }
-        cl_part <- .clusterizar(alg, idx_subset = idx, seed = 2024 + r)
+        cl_part <- .clusterizar(alg, idx_subset = idx,
+                                seed_local = if (is.null(seed)) NULL else seed + r)
         if (is.null(cl_part)) next
         # Armonizar contra la particion de referencia (mapeo greedy)
         cl_arm <- .alinear_labels(cl_part, ref_full[idx])
@@ -3193,7 +3311,6 @@ precision_clasificacion <- function(x, n_clusters = NULL, metodo = "kmeans",
 #' exportar_items_problematicos(prec, "analisis_items")
 #' }
 #'
-#' @export
 #' @noRd
 exportar_items_problematicos <- function(x, archivo, incluir_todos = TRUE) {
 

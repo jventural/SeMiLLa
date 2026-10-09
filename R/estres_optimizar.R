@@ -12,6 +12,7 @@
 
 # Instruccion de reescritura segun el sesgo que hace colapsar al item.
 #' @keywords internal
+#' @noRd
 .instruccion_anti_sesgo <- function(sesgo) {
   switch(as.character(sesgo),
     "deseabilidad" = paste0(
@@ -42,14 +43,16 @@
 
 # Loop de optimizacion. Devuelve un objeto semilla_estres (diagnostico final de
 # la MEJOR escala) con $optimizacion (historial) y $escala_final (la escala
-# mejorada, para seguir usandola).
+# mejorada, para seguir usandola). `seed` llega del llamador (estres_escala())
+# y se pasa tal cual; con NULL no se fija semilla y el resultado puede variar.
 #' @keywords internal
+#' @noRd
 .optimizar_por_estres <- function(x, res0, params_estres,
                                   max_iteraciones = 5L, n_reescribir = NULL,
                                   n_rep_intermedio = 30L, n_rep_final = 60L,
                                   umbral_redundancia = 0.70,
                                   modelo = "gpt-4.1-mini", poblacion = NULL,
-                                  api_key = "", seed = 2026, verbose = TRUE) {
+                                  api_key = "", seed = NULL, verbose = TRUE) {
 
   p <- nrow(x$items)
   if (is.null(n_reescribir)) n_reescribir <- max(1L, min(5L, ceiling(p * 0.15)))

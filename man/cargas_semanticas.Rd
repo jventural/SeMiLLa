@@ -4,7 +4,7 @@
 \alias{cargas_semanticas}
 \title{Cargas Semanticas (Semantic Loadings)}
 \usage{
-cargas_semanticas(x, n_clusters = NULL, verbose = TRUE)
+cargas_semanticas(x, n_clusters = NULL, verbose = TRUE, seed = NULL)
 }
 \arguments{
 \item{x}{Objeto semilla con EFA realizado, o semilla_efa}
@@ -12,14 +12,27 @@ cargas_semanticas(x, n_clusters = NULL, verbose = TRUE)
 \item{n_clusters}{Numero de clusters semanticos (NULL = igual a n_factores)}
 
 \item{verbose}{Mostrar progreso}
+
+\item{seed}{Semilla para K-means (entero) o \code{NULL} (default). Con
+\code{NULL} no se fija ninguna semilla y los clusters pueden variar entre
+corridas; pase un entero (p. ej. \code{42}) para resultados reproducibles.}
 }
 \value{
-Lista con:
+Lista de clase \code{c("semilla_cargas_sem", "list")} con:
 \itemize{
-\item \code{jaccard_matrix}: Matriz de indices Jaccard (clusters x factores)
-\item \code{correspondencia}: Mejor correspondencia cluster-factor
-\item \code{items_incoherentes}: Items donde cluster != factor
-\item \code{jaccard_promedio}: Indice Jaccard promedio
+\item \code{jaccard_matrix}: matriz de indices Jaccard (clusters x
+factores).
+\item \code{correspondencia}: data.frame con \code{cluster},
+\code{factor_correspondiente}, \code{jaccard} y
+\code{n_items_cluster}.
+\item \code{items_incoherentes}: data.frame con los items cuyo cluster
+no coincide con su factor (\code{numero}, \code{item},
+\code{cluster_semantico}, \code{factor_esperado}, \code{factor_efa}).
+\item \code{jaccard_promedio}: indice Jaccard promedio.
+\item \code{cluster_asignacion}: vector con el cluster semantico de cada
+item.
+\item \code{metadata}: lista con \code{n_clusters}, \code{n_factores},
+\code{n_items} y \code{n_incoherentes}.
 }
 }
 \description{
@@ -46,16 +59,23 @@ Valores altos indican que los items agrupados semanticamente tambien
 se agrupan empiricamente en el EFA.
 }
 \examples{
-\dontrun{
-# Calcular cargas semanticas
-cs <- cargas_semanticas(mi_escala)
+# La escala de demostracion con una asignacion factorial (estructura
+# heredada de EFA: un factor por dimension teorica)
+esc <- semilla_demo
+esc$separabilidad <- list(
+  asignacion = data.frame(
+    item_num = seq_len(nrow(esc$items)),
+    factor_EFA = paste0("F", as.integer(factor(esc$items$dimension)))
+  ),
+  metadata = list(n_factores = 3)
+)
+cs <- cargas_semanticas(esc, verbose = FALSE, seed = 1)
 
 # Ver matriz de Jaccard
 cs$jaccard_matrix
 
 # Items incoherentes
 cs$items_incoherentes
-}
 
 }
 \references{

@@ -69,7 +69,8 @@
 #' @param max_iter_refinamiento Maximo de iteraciones de refinamiento por
 #'   trial antes de aceptar (default 10).
 #' @param idioma "es" o "en" (afecta solo etiquetas de instrucciones).
-#' @param seed Semilla para reproducibilidad.
+#' @param seed Semilla para reproducibilidad. Con \code{NULL} (por defecto) no
+#'   se fija ninguna semilla y los estimulos pueden variar entre corridas.
 #' @param verbose Mostrar progreso.
 #'
 #' @return Objeto \code{semilla_test_cognitivo} con:
@@ -84,23 +85,24 @@
 #'   \item \code{trials_resumen}: un row por trial con la lista de
 #'         estimulos a memorizar (clave).
 #'   \item \code{validacion_procedural}: data.frame con metricas de
-#'         calidad (% letras unicas, % balance V/F, plausibilidad).
+#'         calidad (porcentaje de letras unicas, balance V/F, plausibilidad).
 #'   \item \code{cluster_summary}: tabla nivel_teorico x cluster.
 #'   \item \code{metadata}.
 #' }
+#' El metodo \code{print()} devuelve \code{x} de forma invisible; se llama
+#' por su efecto.
 #'
 #' @examples
-#' \dontrun{
 #' tc <- generar_test_cognitivo(
 #'   paradigma          = "ospan",
-#'   niveles_dificultad = c(3, 4, 5, 6, 7),
-#'   n_trials_por_nivel = 3,
+#'   niveles_dificultad = c(3, 4, 5),
+#'   n_trials_por_nivel = 2,
 #'   complejidad_operacion = "media",
 #'   estimulo_memoria   = "letras",
-#'   seed = 2026
+#'   seed = 2026,
+#'   verbose = FALSE
 #' )
 #' print(tc)
-#' }
 #'
 #' @export
 generar_test_cognitivo <- function(
@@ -113,7 +115,7 @@ generar_test_cognitivo <- function(
   cluster_dificultad    = TRUE,
   max_iter_refinamiento = 10L,
   idioma                = c("es", "en"),
-  seed                  = 2026,
+  seed                  = NULL,
   verbose               = TRUE
 ) {
 
@@ -485,6 +487,9 @@ generar_test_cognitivo <- function(
 # Print method
 # =============================================================================
 
+#' @rdname generar_test_cognitivo
+#' @param x Objeto de clase \code{semilla_test_cognitivo}.
+#' @param ... No se usa.
 #' @export
 print.semilla_test_cognitivo <- function(x, ...) {
   cat("\n")

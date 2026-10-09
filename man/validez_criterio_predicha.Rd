@@ -2,6 +2,7 @@
 % Please edit documentation in R/criterio.R
 \name{validez_criterio_predicha}
 \alias{validez_criterio_predicha}
+\alias{print.semilla_criterio}
 \title{Validez de Criterio Predicha desde Embeddings}
 \usage{
 validez_criterio_predicha(
@@ -13,6 +14,8 @@ validez_criterio_predicha(
   folds = 10,
   verbose = TRUE
 )
+
+\method{print}{semilla_criterio}(x, ...)
 }
 \arguments{
 \item{x}{Objeto semilla con embeddings calculados.}
@@ -33,16 +36,33 @@ detecta segun la naturaleza de \code{criterio}.}
 
 \item{folds}{Numero de folds para CV (default: 10).}
 
-\item{verbose}{Mostrar progreso.}
+\item{verbose}{Si \code{TRUE}, imprime en consola el progreso y el
+resumen.}
+
+\item{...}{No se usa.}
 }
 \value{
 Lista de clase \code{semilla_criterio} con:
 \itemize{
-\item \code{r_cv}: correlacion (o AUC) validada por CV.
-\item \code{coeficientes}: peso por item.
-\item \code{items_clave}: items con mayor contribucion absoluta.
-\item \code{r2_cv}, \code{lambda_optimo}, \code{tipo}.
+\item \code{r_cv}: correlacion (o AUC, si el criterio es binario)
+entre lo predicho y el criterio.
+\item \code{r2_cv}: cuadrado de \code{r_cv} (aproximado).
+\item \code{coeficientes}: vector numerico de pesos (uno por dimension
+del embedding en la modalidad item-level; uno por item en la
+modalidad sujeto-level).
+\item \code{items_clave}: \code{data.frame} con \code{Codigo},
+\code{Item}, \code{Dimension} y \code{Contribucion} (item-level) o
+\code{Peso} (sujeto-level), ordenado de mayor a menor contribucion
+absoluta.
+\item \code{lambda_optimo}: penalizacion elegida (0.1 fijo sin
+\code{glmnet}).
+\item \code{alpha}: mezcla elastic-net usada.
+\item \code{tipo}: \code{"lineal"} o \code{"logistico"}.
+\item \code{modo}: \code{"item_level"} o \code{"sujeto_level"}.
+\item \code{glmnet_disponible}: \code{TRUE} si se uso \code{glmnet}.
 }
+El metodo \code{print()} devuelve \code{x} de forma invisible; se llama
+por su efecto.
 }
 \description{
 Estima validez de criterio \emph{a priori} ajustando un modelo de
@@ -63,16 +83,22 @@ lineales sofisticados. Se ajustan modelos elastic-net via \code{glmnet}
 implementada en base R.
 }
 \examples{
-\dontrun{
-# Modalidad item-level (rating de expertos sobre cada item)
-valoraciones <- data.frame(numero = 1:n, relevancia = runif(n, 0, 1))
-vc <- validez_criterio_predicha(mi_escala, criterio = valoraciones)
+set.seed(1)
+n <- nrow(semilla_demo$items)
 
-# Modalidad sujeto-level (respuestas + criterio empirico)
-vc <- validez_criterio_predicha(mi_escala,
-                                criterio = rendimiento,
-                                respuestas = matriz_respuestas)
-}
+# Modalidad item-level (rating de expertos sobre cada item)
+valoraciones <- data.frame(numero = seq_len(n), relevancia = runif(n))
+vc <- validez_criterio_predicha(semilla_demo, criterio = valoraciones,
+                                folds = 5, verbose = FALSE)
+vc
+
+# Modalidad sujeto-level (respuestas simuladas + criterio empirico)
+respuestas <- matrix(sample(1:5, 100 * n, replace = TRUE), ncol = n)
+rendimiento <- rowSums(respuestas) + rnorm(100, sd = 5)
+vc2 <- validez_criterio_predicha(semilla_demo, criterio = rendimiento,
+                                 respuestas = respuestas, folds = 5,
+                                 verbose = FALSE)
+head(vc2$items_clave)
 
 }
 \references{

@@ -2,6 +2,7 @@
 % Please edit documentation in R/redundancia.R
 \name{auditar_redundancia}
 \alias{auditar_redundancia}
+\alias{print.semilla_redundancia}
 \title{Auditoria multi-indice de redundancia de items}
 \usage{
 auditar_redundancia(
@@ -12,6 +13,8 @@ auditar_redundancia(
   umbral_faceta = "auto",
   min_items_faceta = 3L
 )
+
+\method{print}{semilla_redundancia}(x, ...)
 }
 \arguments{
 \item{x}{Objeto \code{semilla} o \code{semilla_embeddings} (debe contener la
@@ -20,7 +23,7 @@ matriz \code{$similitud} y el data.frame \code{$items} con la columna
 
 \item{umbral_sem}{Umbral de similitud coseno para marcar pares redundantes.
 Default \code{"auto"}: cuantil .95 de la distribucion de similitudes de
-la propia escala, acotado a \link{0.70, 0.85}. La calibracion con dos
+la propia escala, acotado a \verb{[0.62, 0.70]}. La calibracion con dos
 escalas reales (bateria policial, n=280) mostro que ningun umbral FIJO
 sirve: en PM (linea base de similitud baja, media=.49) las parafrasis
 daninas vivian en .56-.78 y el antiguo 0.85 capturo 0 de 8; en ACO
@@ -38,7 +41,7 @@ del cual se dispara la alerta de homogeneidad sintactica (por defecto 0.30).}
 
 \item{umbral_faceta}{Similitud media intra-cluster a partir de la cual un
 grupo de items se considera una FACETA REPETIDA. Default \code{"auto"}:
-cuantil .75 de las similitudes de la escala, acotado a \link{0.55, 0.70}.
+cuantil .75 de las similitudes de la escala, acotado a \verb{[0.55, 0.70]}.
 El analisis por pares no ve este patron: tres o mas items sobre la
 misma conducta pueden pasar el filtro de a pares y aun asi formar un
 bloque de dependencia local que rompe el ajuste (RMSEA) e infla la
@@ -46,6 +49,8 @@ fiabilidad. Puede fijarse un numero manualmente.}
 
 \item{min_items_faceta}{Numero minimo de items de un cluster para reportarlo
 como faceta repetida (por defecto 3).}
+
+\item{...}{No se usa.}
 }
 \value{
 Objeto de clase \code{semilla_redundancia} (lista) con:
@@ -62,7 +67,10 @@ items), con la recomendacion de conservar 1-2 por cluster.
 \item \code{diversidad_lexica}: lista con \code{ttr_global} y \code{ttr_item}.
 \item \code{resumen}: data.frame por item (codigo, sim_max, ttr, prefijo).
 \item \code{alerta}: mensaje de texto con el veredicto.
+\item \code{parametros}: lista con los umbrales efectivamente usados.
 }
+El metodo \code{print()} devuelve \code{x} de forma invisible; se llama por
+su efecto.
 }
 \description{
 Amplia \code{\link{analizar_redundancia}} con un conjunto de indices que
@@ -96,12 +104,11 @@ aplicar la escala.
 }
 
 \examples{
-\dontrun{
-esc <- semilla("celos en relaciones de pareja", api_key = Sys.getenv("OPENAI_API_KEY"))
-aud <- auditar_redundancia(esc)
+# semilla_demo trae embeddings sinteticos: no requiere clave de API.
+aud <- auditar_redundancia(semilla_demo)
 print(aud)
+aud$pares_redundantes
 aud$homogeneidad_sintactica$alerta
-}
 
 }
 \seealso{

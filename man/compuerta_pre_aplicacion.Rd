@@ -17,7 +17,7 @@ compuerta_pre_aplicacion(
   n_banda = 4,
   modelo = "gpt-4.1-mini",
   n_nucleos = NULL,
-  seed = 2026,
+  seed = NULL,
   verbose = TRUE,
   ...
 )
@@ -43,6 +43,9 @@ Default \code{"auto"} (adaptativo).}
 \item{n}{Tamano muestral simulado (default 300).}
 
 \item{n_rep}{Replicas por escenario de la simulacion (default 100).}
+
+\item{n_pasadas}{Numero de pasadas del juez de deseabilidad (eje 2) que se
+promedian; se pasa a \code{\link{calificar_deseabilidad}} (default 4).}
 
 \item{n_pasadas_gemelos}{Numero de consultas al juez de parafrasis-gemelas
 (eje 1); un par se acepta si sale en la mayoria de ellas. Una sola llamada
@@ -74,7 +77,9 @@ con 22. Use 1 para volver al comportamiento secuencial.}
 2.9.15, tambien la opcion \code{SeMiLLa.seed} que \code{.llamar_openai()}
 envia a la API. Ojo: el seed de OpenAI es best-effort y no garantiza
 reproducibilidad; quien la aporta es la votacion del eje 1 y las
-\code{n_pasadas} del eje 2.}
+\code{n_pasadas} del eje 2. Por defecto \code{NULL}: no se fija ninguna
+semilla y el resultado puede variar entre corridas; pase un entero
+(p. ej. \code{2026}) para reproducir la simulacion.}
 
 \item{verbose}{Mostrar el detalle de cada paso.}
 
@@ -82,19 +87,31 @@ reproducibilidad; quien la aporta es la votacion del eje 1 y las
 (p. ej. \code{umbral_ld}, \code{carga_propia}, \code{k_cat}).}
 }
 \value{
-Objeto de clase \code{semilla_compuerta} (lista) con:
+Objeto de clase \code{semilla_compuerta} (lista), devuelto de forma
+invisible (se imprime si \code{verbose = TRUE}), con:
 \itemize{
-\item \code{semaforo}: data.frame (paso, estado ok/advertencia/riesgo,
-detalle).
-\item \code{veredicto}: uno de los tres veredictos globales.
+\item \code{escenario}: condicion prevista de la escala (cadena que se
+muestra al usuario); \code{escenario_fusion} (dimensiones que
+podrian no separarse, o \code{NULL}), \code{escenario_detalle},
+\code{avisos_diseno} y \code{calidad_redaccion}: textos de apoyo.
+\item \code{semaforo}: data.frame con columnas \code{paso}
+(redaccion, deseabilidad, estructura_simulada, asignacion),
+\code{estado} (ok/advertencia/riesgo) y \code{detalle}.
+\item \code{veredicto}: uno de los cuatro veredictos globales.
 \item \code{acciones}: vector de acciones recomendadas (vacio si lista).
-\item \code{redaccion}, \code{deseabilidad}, \code{estructura}: los
-objetos completos de cada auditoria para inspeccion.
+\item \code{redaccion}, \code{asignacion}, \code{deseabilidad},
+\code{estructura}: los objetos completos de cada auditoria para
+inspeccion (\code{NULL} o un error si el paso no pudo correr).
 \item \code{mapa_fusion} y \code{estructura_alternativa}: cuando la
 simulacion anticipa que algunas dimensiones se fundiran, el mapa
 de que dimensiones colapsan entre si y la HIPOTESIS B
 pre-registrable (factores esperables con sus items), para ir a
 campo con ambos modelos declarados y contrastarlos como rivales.
+\item \code{banda_estructura}: lista con las probabilidades re-simuladas
+(\code{probs}, \code{mediana}, \code{min}, \code{max},
+\code{n_rep_banda}), o \code{NULL}.
+\item \code{parametros}: lista con los umbrales, \code{n}, \code{n_rep},
+\code{n_banda} y la fecha.
 }
 }
 \description{
@@ -137,12 +154,11 @@ Desde v2.7.0 \code{\link{semilla}} ejecuta esta compuerta automaticamente
 al final del pipeline (desactivable con \code{compuerta = FALSE}).
 }
 \examples{
+# Requiere una clave de API de OpenAI (jueces LLM y embeddings).
 \dontrun{
-esc <- semilla("gratitud", api_key = key)   # ya incluye la compuerta
-esc$compuerta                                # veredicto integrado
-
-# O de forma manual sobre una escala existente:
-g <- compuerta_pre_aplicacion(esc, api_key = key)
+g <- compuerta_pre_aplicacion(semilla_demo,
+                              api_key = Sys.getenv("OPENAI_API_KEY"),
+                              n_rep = 20, n_nucleos = 1, seed = 2026)
 g$semaforo
 g$acciones
 }

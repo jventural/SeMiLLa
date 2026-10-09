@@ -17,7 +17,10 @@ clase \code{semilla_criterio}).}
 r (o el AUC) validado por CV.}
 }
 \value{
-Objeto ggplot2.
+Objeto de clase \code{ggplot} (ggplot2): un baston por item con su
+peso (o contribucion) en el modelo, coloreado por signo y con los pesos
+cero como puntos sobre el eje; el titulo informa el r (o AUC) validado
+por CV. Se dibuja al imprimirlo.
 }
 \description{
 Grafico de bastones (\emph{lollipop}) con el peso de cada item en el modelo
@@ -41,11 +44,16 @@ umbrales}: el grafico no pinta ninguna linea de corte porque el liston
 depende del uso previsto de la escala y lo fija quien la aplica.
 }
 \examples{
-\dontrun{
-crit <- validez_criterio_predicha(esc, criterio = puntajes,
-                                  respuestas = respuestas_piloto)
-plot_criterio(crit)
-plot_criterio(crit, top_n = 15)
+if (requireNamespace("glmnet", quietly = TRUE)) {
+  # Criterio a nivel de item: una valoracion de relevancia por item
+  val <- data.frame(numero = 1:15,
+                    relevancia = c(0.90, 0.85, 0.70, 0.60, 0.75, 0.80, 0.65,
+                                   0.90, 0.55, 0.70, 0.60, 0.85, 0.50,
+                                   0.75, 0.80))
+  crit <- validez_criterio_predicha(semilla_demo, criterio = val,
+                                    folds = 5, verbose = FALSE)
+  plot_criterio(crit)
+  plot_criterio(crit, top_n = 8)
 }
 
 }

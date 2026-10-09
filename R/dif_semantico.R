@@ -23,17 +23,29 @@
 #'   misma posicion = mismo item) o "codigo" (empareja por columna codigo).
 #' @param umbral_z Z-score absoluto para marcar DIF severo (default: 2.0;
 #'   equivale a los items mas tipicos al 95 por ciento).
-#' @param verbose Mostrar progreso.
+#' @param verbose Si \code{TRUE}, imprime en consola el resumen del
+#'   tamizaje.
 #'
 #' @return Lista de clase \code{semilla_dif} con:
 #' \itemize{
-#'   \item \code{distancias}: distancia coseno por item entre versiones.
-#'   \item \code{drift_global}: desplazamiento medio del constructo (esperado).
-#'   \item \code{z_drift}: distancia centrada y estandarizada por item.
-#'   \item \code{items_dif}: items con z_drift > umbral_z.
-#'   \item \code{recomendaciones}: items que requieren panel de expertos
-#'     o que deben re-traducirse antes de aplicar.
+#'   \item \code{distancias}: \code{data.frame} con \code{Codigo},
+#'     \code{Item_X}, \code{Item_Y}, \code{Distancia_Coseno}, \code{Z_Drift}
+#'     y \code{Riesgo_DIF} (\code{"alto"}, \code{"moderado"} o
+#'     \code{"bajo"}) por item.
+#'   \item \code{drift_global}: mediana de la distancia coseno
+#'     (desplazamiento esperado del constructo).
+#'   \item \code{mad_drift}: desviacion absoluta mediana de las distancias
+#'     (o su DE si la MAD es cero).
+#'   \item \code{z_drift}: vector con nombre de la distancia centrada y
+#'     estandarizada de cada item.
+#'   \item \code{items_dif}: filas de \code{distancias} con
+#'     \code{|Z_Drift| > umbral_z}.
+#'   \item \code{umbral_z}: umbral usado.
+#'   \item \code{recomendaciones}: texto con los items que requieren panel de
+#'     expertos o re-traduccion antes de aplicar.
 #' }
+#' El metodo \code{print()} devuelve \code{x} de forma invisible; se llama
+#' por su efecto.
 #'
 #' @details
 #' SeMiLLa parte de la idea de Belzak (2023) de evaluar simultaneamente
@@ -44,11 +56,26 @@
 #' priorizarse en el analisis empirico posterior con \code{regDIF}.
 #'
 #' @examples
-#' \dontrun{
-#' escala_es <- semilla("autoeficacia academica", idioma = "es")
-#' escala_en <- semilla("academic self-efficacy", idioma = "en")
-#' dif <- detectar_dif_semantico(escala_es, escala_en)
+#' # Version comparada simulada: los mismos items con un leve desplazamiento
+#' # y el item 5 muy desplazado
+#' set.seed(1)
+#' emb_y <- semilla_demo$embeddings +
+#'   matrix(rnorm(length(semilla_demo$embeddings), sd = 0.02),
+#'          nrow = nrow(semilla_demo$embeddings))
+#' emb_y[5, ] <- emb_y[5, ] + rnorm(ncol(emb_y), sd = 0.3)
+#' version_y <- list(items = semilla_demo$items, embeddings = emb_y)
+#'
+#' dif <- detectar_dif_semantico(semilla_demo, version_y, verbose = FALSE)
+#' dif
 #' dif$items_dif
+#'
+#' # Con dos escalas reales generadas por un LLM (requiere clave de API)
+#' \dontrun{
+#' escala_es <- semilla("autoeficacia academica", idioma = "es",
+#'                      api_key = Sys.getenv("OPENAI_API_KEY"))
+#' escala_en <- semilla("academic self-efficacy", idioma = "en",
+#'                      api_key = Sys.getenv("OPENAI_API_KEY"))
+#' dif <- detectar_dif_semantico(escala_es, escala_en)
 #' }
 #'
 #' @references
@@ -186,6 +213,8 @@ detectar_dif_semantico <- function(x, y,
   resultado
 }
 
+#' @rdname detectar_dif_semantico
+#' @param ... No se usa.
 #' @export
 print.semilla_dif <- function(x, ...) {
   cat("DIF Semantico SeMiLLa\n")

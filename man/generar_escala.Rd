@@ -82,13 +82,39 @@ los items. Si NULL (default), se decide segun \code{tipo_escala_respuesta}.}
 \item{incluir_inversos}{Logico. Incluir items redactados en sentido inverso
 (default: TRUE).}
 
-\item{seed}{Semilla para reproducibilidad. Cuando se especifica, se usa
-temperature=0 en el LLM para mayor consistencia}
+\item{blindaje}{Logico. Si \code{TRUE} (default), tras generar los items se
+aplican jueces LLM de contexto poblacional y de parafrasis que reescriben
+los items que fallan.}
+
+\item{contexto_prohibido}{Vector character opcional con terminos o patrones
+(expresiones regulares) que los items no deben contener; los que los
+contienen se reescriben durante el blindaje. \code{NULL} por defecto.}
+
+\item{instrucciones_estilo}{Cadena opcional con instrucciones de estilo de
+redaccion que se agregan al prompt de generacion y de reescritura.
+\code{NULL} por defecto.}
+
+\item{modelo_jueces}{Modelo LLM usado por los jueces del blindaje
+(default \code{"gpt-4.1-mini"}).}
+
+\item{seed}{Entero o \code{NULL} (default). Si se especifica, se fija la
+semilla de R y se usa temperature = 0 y la semilla de la API del LLM
+(opciones que se restauran al salir) para mayor consistencia. Con
+\code{NULL} el resultado puede variar entre corridas.}
 
 \item{verbose}{Mostrar progreso}
 }
 \value{
-Objeto de clase 'semilla_items' con items generados
+Objeto de clase \code{semilla_items} (lista) con:
+\itemize{
+\item \code{items}: data.frame con columnas \code{numero},
+\code{dimension}, \code{caracteristica} e \code{item}.
+\item \code{concepto}: lista con la definicion del constructo, sus
+dimensiones y caracteristicas (y referencias en el modo cientifico).
+\item \code{metadata}: lista con los parametros de la generacion
+(idioma, poblacion, modelo, numero de items, reglas linguisticas,
+reporte del blindaje, fecha).
+}
 }
 \description{
 Genera items psicometricos a partir de un constructo psicologico.
@@ -125,6 +151,7 @@ bibliograficas reales para fundamentar teoricamente la escala.
 Requiere conexion a internet y puede tomar mas tiempo.
 }
 \examples{
+# Requiere una clave de API de OpenAI (variable OPENAI_API_KEY).
 \dontrun{
 # ===== MODO 1: CONOCIMIENTO DEL LLM =====
 # El modelo usa su base de conocimiento para conceptualizar

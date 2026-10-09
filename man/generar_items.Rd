@@ -30,7 +30,12 @@ la funcion subyacente que se invoca segun \code{tipo}:
 }}
 }
 \value{
-Objeto del tipo correspondiente.
+El objeto que devuelve la funcion subyacente: \code{semilla_items}
+(\code{"likert"}), \code{semilla_historias} (\code{"historias"}),
+\code{semilla_guttman} (\code{"guttman"}), \code{semilla_prueba_objetiva}
+(\code{"objetiva"}), \code{semilla_test_cognitivo} (\code{"cognitivo"}) o
+\code{semilla_forcedchoice} (\code{"forced_choice"}). Su estructura se
+describe en la ayuda de cada una de esas funciones.
 }
 \description{
 Dispatcher unificado para crear items en cualquiera de los seis formatos
@@ -39,6 +44,7 @@ soportados por SeMiLLa. Sustituye las seis funciones especializadas
 siguen disponibles como alias por retrocompatibilidad.
 }
 \examples{
+# Requiere una clave de API de OpenAI (variable OPENAI_API_KEY).
 \dontrun{
 # Likert clasico
 esc <- generar_items(tipo = "likert",

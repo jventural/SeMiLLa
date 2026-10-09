@@ -9,8 +9,29 @@
 \arguments{
 \item{x}{Objeto semilla_cv}
 
-\item{...}{Argumentos adicionales}
+\item{...}{Argumentos adicionales (no se usan).}
+}
+\value{
+Devuelve \code{x} de forma invisible; se llama por su efecto
+(imprimir el resumen en consola).
 }
 \description{
-Print Content Validity Results (V de Aiken)
+Muestra en consola el resumen de \code{validez_contenido()}.
+}
+\examples{
+# Objeto armado a mano con valores ilustrativos; uno real lo devuelve
+# validez_contenido(), que consulta a un LLM.
+cv <- structure(list(
+  v_aiken = data.frame(numero = 1:2, item = c("Item A", "Item B"),
+                       V_promedio = c(0.89, 0.61), IC_inf = c(0.72, 0.45),
+                       IC_sup = c(0.96, 0.75)),
+  v_aiken_escala = list(V_total = 0.75, relevancia = 0.78,
+                        representatividad = 0.72),
+  recomendaciones = data.frame(numero = 2, item = "Item B",
+                               V_promedio = 0.61, IC_inf = 0.45,
+                               IC_sup = 0.75),
+  metadata = list(criterios = c("relevancia", "representatividad"),
+                  n_items = 2, n_jueces = 10, confianza = 0.95)),
+  class = c("semilla_cv", "list"))
+print(cv)
 }

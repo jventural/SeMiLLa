@@ -9,10 +9,10 @@ omega_semantico(x, verbose = TRUE)
 \arguments{
 \item{x}{Objeto \code{semilla} o lista con \code{similitud} e \code{items}}
 
-\item{verbose}{Mostrar progreso}
+\item{verbose}{Si \code{TRUE}, imprime en consola el resumen por dimension.}
 }
 \value{
-data.frame con columnas:
+\code{data.frame} con una fila por dimension y columnas:
 \itemize{
 \item dimension: nombre de la dimension
 \item n_items: numero de items
@@ -31,12 +31,11 @@ alpha, esta funcion da una comparacion homogenea.
 Para k>=3 items se usa \code{psych::fa(nfactors=1, fm="minres")} sobre la
 submatriz de similitud. Para k=2 se usa \code{sqrt(|r|)} como aproximacion.
 Las cargas se truncan a \code{[0,1]} antes de la formula de McDonald.
+
+Si los items comparten plantilla sintactica, el resultado lleva el
+atributo \code{alerta_homogeneidad} y se emite un \code{warning}.
 }
 \examples{
-\dontrun{
-escala <- semilla(fuente = "usuario", archivo = "items.xlsx",
-                  api_key = Sys.getenv("OPENAI_API_KEY"))
-omega_semantico(escala)
-}
+omega_semantico(semilla_demo, verbose = FALSE)
 
 }

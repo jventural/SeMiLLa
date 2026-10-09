@@ -24,7 +24,8 @@
 #' la matriz de cargas inicial obtenida por descomposicion espectral de la
 #' matriz de similitud coseno entre items.
 #'
-#' @param x Objeto semilla con embeddings calculados.
+#' @param x Objeto semilla con embeddings calculados. En el metodo
+#'   \code{print()}, un objeto de clase \code{semilla_efa_reg}.
 #' @param n_factores Numero de factores a extraer. Si \code{NULL}, usa el
 #'   numero de dimensiones teoricas.
 #' @param penalizacion Tipo de penalizacion: "elasticnet" (default,
@@ -41,23 +42,33 @@
 #'   independientes); "filas" (solo medias por fila).
 #' @param umbral_carga Cargas absolutas por debajo de este umbral se
 #'   reportan como cero (default: 0.10).
-#' @param ejecutar Lógico. Si \code{FALSE} (default) la función se omite y
-#'   devuelve \code{NULL}: el EFA regularizado es un diagnóstico OPCIONAL de
-#'   robustez, NO el análisis que define la estructura de la escala (eso lo
-#'   hace \code{precision_clasificacion(metodo = "ensemble")}). Pásalo
-#'   explícitamente a \code{TRUE} para correrlo.
+#' @param ejecutar Logico. Si \code{FALSE} (default) la funcion se omite y
+#'   devuelve \code{NULL}: el EFA regularizado es un diagnostico OPCIONAL de
+#'   robustez, NO el analisis que define la estructura de la escala (eso lo
+#'   hace \code{precision_clasificacion(metodo = "ensemble")}). Pasalo
+#'   explicitamente a \code{TRUE} para correrlo.
 #' @param verbose Mostrar progreso.
+#' @param ... No se usa.
 #'
-#' @return Lista de clase \code{semilla_efa_reg} con:
+#' @return Con \code{ejecutar = FALSE}, \code{NULL} de forma invisible. Si no,
+#'   lista de clase \code{semilla_efa_reg} con:
 #' \itemize{
 #'   \item \code{cargas}: matriz de cargas regularizada (items x factores).
 #'   \item \code{cargas_cruzadas}: numero de cargas cruzadas != 0 por item.
-#'   \item \code{varianza_explicada}: por factor y total.
-#'   \item \code{lambda_elegido}: penalizacion final.
+#'   \item \code{varianza_explicada}: lista con \code{por_factor} y
+#'     \code{total}.
+#'   \item \code{lambda_elegido}: penalizacion final; \code{alpha},
+#'     \code{penalizacion} y \code{centrado}: los ajustes usados.
 #'   \item \code{indeterminacion}: indice de sparsity (proporcion de cargas
 #'     encogidas a cero por debajo del umbral).
 #'   \item \code{asignacion}: factor dominante por item.
+#'   \item \code{factores_usados} y \code{colapso}: cuantos factores reciben
+#'     algun item y si la solucion es degenerada.
+#'   \item \code{items} y \code{n_factores}: los items analizados y el numero
+#'     de factores extraidos.
 #' }
+#' El metodo \code{print()} devuelve \code{x} de forma invisible; se llama por
+#' su efecto.
 #'
 #' @details
 #' Pese al nombre, no es un analisis factorial de respuestas: las "cargas"
@@ -74,11 +85,13 @@
 #' encogida hacia cero por la penalizacion.
 #'
 #' @examples
-#' \dontrun{
-#' efa_reg <- efa_regularizado(mi_escala, penalizacion = "lasso")
-#' efa_reg$cargas
-#' efa_reg$varianza_explicada
-#' }
+#' # Obsoleta: emite siempre un aviso (aqui se silencia)
+#' efa_reg <- suppressWarnings(
+#'   efa_regularizado(semilla_demo, penalizacion = "lasso",
+#'                    ejecutar = TRUE, verbose = FALSE))
+#' efa_reg
+#' round(efa_reg$cargas[1:5, ], 2)
+#' efa_reg$varianza_explicada$total
 #'
 #' @references
 #' Goretzko, D. (2023). Regularized exploratory factor analysis as an
@@ -100,7 +113,7 @@ efa_regularizado <- function(x,
   # (precision_clasificacion), no este EFA. Off por defecto.
   if (!isTRUE(ejecutar)) {
     if (verbose) message("efa_regularizado() omitido (ejecutar = FALSE). ",
-                         "Es un diagnóstico opcional; usa ejecutar = TRUE para correrlo.")
+                         "Es un diagn\u00f3stico opcional; usa ejecutar = TRUE para correrlo.")
     return(invisible(NULL))
   }
 
@@ -267,6 +280,7 @@ efa_regularizado <- function(x,
   resultado
 }
 
+#' @rdname efa_regularizado
 #' @export
 print.semilla_efa_reg <- function(x, ...) {
   cat("EFA Regularizado SeMiLLa\n")

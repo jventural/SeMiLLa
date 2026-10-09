@@ -14,7 +14,9 @@ plot_cargas(x, ordenar = TRUE, umbral_carga = 0.4)
 \item{umbral_carga}{Umbral para resaltar cargas significativas}
 }
 \value{
-Objeto ggplot2
+Objeto de clase \code{ggplot} (ggplot2): barras horizontales con
+la carga de cada item, un panel por factor y una linea en
+\code{umbral_carga}. Se dibuja al imprimirlo.
 }
 \description{
 \strong{Obsoleta desde 2.10.0.} Muestra las cargas de un objeto
@@ -22,4 +24,15 @@ Objeto ggplot2
 (su estructura es un clustering de embeddings) y la funcion se detiene con
 un mensaje; para la estructura semantica use \code{\link{plot_sankey}} o
 \code{\link{plot_precision}}.
+}
+\examples{
+# Un objeto 'semilla_efa' heredado, construido a mano
+efa <- structure(list(asignacion = data.frame(
+  item_num   = 1:6,
+  item       = semilla_demo$items$item[c(1, 3, 4, 6, 7, 8)],
+  factor_EFA = rep(c("F1", "F2"), each = 3),
+  carga      = c(0.72, 0.55, 0.38, 0.81, 0.64, 0.47)
+)), class = "semilla_efa")
+plot_cargas(efa)
+
 }

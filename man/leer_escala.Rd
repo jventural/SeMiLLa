@@ -12,16 +12,23 @@ leer_escala(archivo, hoja = 1)
 \item{hoja}{Para archivos Excel, nombre o numero de la hoja (default: 1)}
 }
 \value{
-Lista con tres elementos listos para usar en \code{validar_escala()}:
+Lista con tres elementos (los que acepta
+\code{semilla(fuente = "usuario", dimensiones = ...)}):
 \itemize{
-\item \code{nombre}: Nombre del constructo (extraido de la primera dimension)
-\item \code{definicion}: Definicion operacional del constructo
-\item \code{dimensiones}: Lista estructurada con dimensiones e items
+\item \code{nombre}: cadena con el nombre del constructo (columna
+\code{constructo} o, si falta, el nombre del archivo).
+\item \code{definicion}: cadena con la definicion operacional del
+constructo.
+\item \code{dimensiones}: lista nombrada, un elemento por dimension,
+cada uno con \code{definicion} (cadena) e \code{items} (vector de
+caracteres con los textos, nombrado con los codigos).
 }
+El resumen de lo leido se emite con \code{message()} (se silencia con
+\code{suppressMessages()}).
 }
 \description{
 Lee una escala existente desde un archivo Excel (.xlsx) o CSV y la transforma
-al formato requerido por \code{validar_escala()}. Esto facilita enormemente el
+al formato que acepta \code{semilla(fuente = "usuario")}. Esto facilita enormemente el
 ingreso de datos para usuarios no familiarizados con la sintaxis de R.
 }
 \details{
@@ -42,24 +49,16 @@ Opcionalmente puede incluir:
 Puedes generar una plantilla de ejemplo con \code{crear_plantilla_escala()}.
 }
 \examples{
-\dontrun{
-# Leer escala desde Excel
-escala_data <- leer_escala("mi_escala.xlsx")
-
-# Usar directamente en validar_escala
-resultado <- validar_escala(
-  nombre = escala_data$nombre,
-  definicion = escala_data$definicion,
-  dimensiones = escala_data$dimensiones,
-  api_key = Sys.getenv("OPENAI_API_KEY")
-)
-
-# O de forma mas compacta con do.call
-escala_data <- leer_escala("mi_escala.xlsx")
-resultado <- do.call(validar_escala, c(escala_data, list(api_key = mi_api_key)))
-}
+# Crear una plantilla CSV en un directorio temporal y leerla
+f <- file.path(tempdir(), "plantilla_escala.csv")
+suppressMessages(crear_plantilla_escala(f))
+escala_data <- leer_escala(f)
+escala_data$nombre
+names(escala_data$dimensiones)
+escala_data$dimensiones[[1]]$items
+unlink(f)
 
 }
 \seealso{
-\code{validar_escala()}, \code{\link{crear_plantilla_escala}}
+\code{\link{crear_plantilla_escala}}, \code{\link{semilla}}
 }

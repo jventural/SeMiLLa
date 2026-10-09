@@ -21,7 +21,7 @@
 #'   \code{item}).
 #' @param umbral_sem Umbral de similitud coseno para marcar pares redundantes.
 #'   Default \code{"auto"}: cuantil .95 de la distribucion de similitudes de
-#'   la propia escala, acotado a [0.70, 0.85]. La calibracion con dos
+#'   la propia escala, acotado a `[0.62, 0.70]`. La calibracion con dos
 #'   escalas reales (bateria policial, n=280) mostro que ningun umbral FIJO
 #'   sirve: en PM (linea base de similitud baja, media=.49) las parafrasis
 #'   daninas vivian en .56-.78 y el antiguo 0.85 capturo 0 de 8; en ACO
@@ -36,7 +36,7 @@
 #'   del cual se dispara la alerta de homogeneidad sintactica (por defecto 0.30).
 #' @param umbral_faceta Similitud media intra-cluster a partir de la cual un
 #'   grupo de items se considera una FACETA REPETIDA. Default \code{"auto"}:
-#'   cuantil .75 de las similitudes de la escala, acotado a [0.55, 0.70].
+#'   cuantil .75 de las similitudes de la escala, acotado a `[0.55, 0.70]`.
 #'   El analisis por pares no ve este patron: tres o mas items sobre la
 #'   misma conducta pueden pasar el filtro de a pares y aun asi formar un
 #'   bloque de dependencia local que rompe el ajuste (RMSEA) e infla la
@@ -58,7 +58,10 @@
 #'   \item \code{diversidad_lexica}: lista con \code{ttr_global} y \code{ttr_item}.
 #'   \item \code{resumen}: data.frame por item (codigo, sim_max, ttr, prefijo).
 #'   \item \code{alerta}: mensaje de texto con el veredicto.
+#'   \item \code{parametros}: lista con los umbrales efectivamente usados.
 #' }
+#' El metodo \code{print()} devuelve \code{x} de forma invisible; se llama por
+#' su efecto.
 #'
 #' @section Limite de la similitud semantica:
 #' La similitud de embeddings NO captura la correlacion empirica inducida por
@@ -78,12 +81,11 @@
 #' semanticos pierden validez y la escala requiere revision de la redaccion.
 #'
 #' @examples
-#' \dontrun{
-#' esc <- semilla("celos en relaciones de pareja", api_key = Sys.getenv("OPENAI_API_KEY"))
-#' aud <- auditar_redundancia(esc)
+#' # semilla_demo trae embeddings sinteticos: no requiere clave de API.
+#' aud <- auditar_redundancia(semilla_demo)
 #' print(aud)
+#' aud$pares_redundantes
 #' aud$homogeneidad_sintactica$alerta
-#' }
 #'
 #' @seealso \code{\link{analizar_redundancia}}
 #' @export
@@ -300,7 +302,7 @@ auditar_redundancia <- function(x, umbral_sem = "auto", n_gram = 2,
   partes <- partes[nzchar(partes)]
   if (length(partes) == 0) return(character(0))
   t <- tolower(paste(partes, collapse = " "))
-  t <- chartr("áéíóúüñ", "aeiouun", t)
+  t <- chartr("\u00E1\u00E9\u00ED\u00F3\u00FA\u00FC\u00F1", "aeiouun", t)
   t <- gsub("[^[:alnum:][:space:]]", " ", t)
   w <- strsplit(trimws(t), "\\s+")[[1]]
   unique(w[nzchar(w) & nchar(w) > 3 & !(w %in% stop_es)])
@@ -332,7 +334,7 @@ auditar_redundancia <- function(x, umbral_sem = "auto", n_gram = 2,
                "no", "si", "mas", "muy", "ya", "hay", "he", "ha", "son")
   .tok_contenido <- function(t) {
     t <- tolower(t)
-    t <- chartr("áéíóúüñ",
+    t <- chartr("\u00E1\u00E9\u00ED\u00F3\u00FA\u00FC\u00F1",
                 "aeiouun", t)
     t <- gsub("[^[:alnum:][:space:]]", " ", t)
     w <- strsplit(trimws(t), "\\s+")[[1]]
@@ -424,10 +426,8 @@ auditar_redundancia <- function(x, umbral_sem = "auto", n_gram = 2,
   do.call(rbind, filas)
 }
 
-#' @title Imprimir auditoria de redundancia
-#' @param x Objeto \code{semilla_redundancia}.
-#' @param ... Ignorado.
-#' @return El objeto \code{x} de forma invisible.
+#' @rdname auditar_redundancia
+#' @param ... No se usa.
 #' @export
 print.semilla_redundancia <- function(x, ...) {
   ok_color <- exists(".color_verde", mode = "function")

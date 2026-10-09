@@ -78,7 +78,9 @@
 #' @param modelo Modelo LLM para los reemplazos y la deseabilidad.
 #' @param poblacion Poblacion objetivo; si NULL se toma de
 #'   \code{x$metadata$poblacion}.
-#' @param seed Semilla de la simulacion.
+#' @param seed Entero o \code{NULL} (default). Semilla que se pasa a
+#'   \code{compuerta_pre_aplicacion()} (simulacion y semilla de la API del LLM).
+#'   Con \code{NULL} el resultado puede variar entre corridas.
 #' @param margen_mejora Puntos que una iteracion debe ganar, con el mismo
 #'   veredicto, para sustituir a la mejor version guardada (default 4, el peso
 #'   de un gemelo confirmado). Subir de veredicto basta siempre. Es una
@@ -111,8 +113,12 @@
 #' muestra que indicador mejoro y cual empeoro respecto del punto de partida.
 #'
 #' @examples
+#' # Requiere una clave de API de OpenAI (variable OPENAI_API_KEY).
 #' \dontrun{
-#' esc <- semilla("personalidad moral", api_key = key)  # compuerta + optimiza
+#' esc <- semilla("personalidad moral",
+#'                api_key = Sys.getenv("OPENAI_API_KEY"))  # compuerta + optimiza
+#' esc <- optimizar_para_campo(esc, api_key = Sys.getenv("OPENAI_API_KEY"),
+#'                             max_iteraciones = 2)
 #' esc$optimizacion$historial
 #' esc$optimizacion$reemplazos[, c("item_viejo", "item_nuevo", "motivo")]
 #' }
@@ -133,11 +139,16 @@ optimizar_para_campo <- function(x,
                                  n_rep_intermedio      = 40,
                                  modelo                = "gpt-4.1-mini",
                                  poblacion             = NULL,
-                                 seed                  = 2026,
+                                 seed                  = NULL,
                                  margen_mejora         = 4,
                                  verbose               = TRUE) {
 
   veredicto_objetivo <- match.arg(veredicto_objetivo)
+  # Con seed = NULL se sortea UNA semilla para toda la corrida: las versiones
+  # que se comparan entre si se miden con los mismos numeros aleatorios (antes
+  # lo garantizaba un default fijo, 2026, que CRAN no admite). Se devuelve en
+  # el resultado para poder reproducir la corrida.
+  if (is.null(seed)) seed <- sample.int(.Machine$integer.max, 1L)
   items_entrada <- x$items
   if (is.null(x$items) || is.null(x$items$item))
     stop("'x' debe contener $items con la columna 'item'.")
@@ -412,7 +423,8 @@ optimizar_para_campo <- function(x,
     reemplazos = reemplazos,
     # 2.10.0: lo que de verdad cambio entre la escala de entrada y la entregada
     cambios_entregados = .diferencias_items(items_entrada, x$items),
-    margen_mejora = margen_mejora
+    margen_mejora = margen_mejora,
+    seed = seed
   )
 
   if (verbose) {
@@ -464,7 +476,7 @@ optimizar_para_campo <- function(x,
 #' @keywords internal
 .tipo_dimension <- function(nombre, definicion = "") {
   t <- tolower(paste(nombre, definicion))
-  t <- chartr("áéíóúüñ",
+  t <- chartr("\u00E1\u00E9\u00ED\u00F3\u00FA\u00FC\u00F1",
               "aeiouun", t)
   if (grepl("cognitiv|creenc|juicio|pienso|piensa|belief|opinion", t)) return("cognitiva")
   if (grepl("afectiv|emocion|sentimient|siento|siente|feel", t))       return("afectiva")
@@ -515,8 +527,26 @@ optimizar_para_campo <- function(x,
 #' (por ejemplo antes y despues del refinamiento).
 #'
 #' @param g0,g1 Objetos \code{semilla_compuerta} (antes y despues).
-#' @return \code{data.frame} con indicador, antes, despues y sentido del cambio
-#'   (\code{"mejora"}, \code{"empeora"}, \code{"igual"} o \code{"cambio"}).
+#' @return \code{data.frame} con una fila por indicador (\code{gemelos},
+#'   \code{facetas}, \code{pares}, \code{desea_intra}, \code{desea_entre},
+#'   \code{prob_limpia}, \code{phi}) y las columnas \code{indicador},
+#'   \code{antes}, \code{despues} (valores numericos) y \code{cambio}, con el
+#'   sentido del cambio: \code{"mejora"}, \code{"empeora"}, \code{"igual"},
+#'   \code{"cambio"} (indicador sin direccion deseable) o una raya si falta
+#'   alguno de los dos valores.
+#' @examples
+#' # Dos compuertas minimas construidas a mano (sin API)
+#' g0 <- structure(list(
+#'   redaccion = list(pares_redundantes = data.frame(i = 1:3, j = 4:6)),
+#'   deseabilidad = list(sd_intra_dim = 0.40, sd_entre_dim = 0.10),
+#'   estructura = list(prob_limpia = 0.55, phi_med = 0.60)),
+#'   class = "semilla_compuerta")
+#' g1 <- structure(list(
+#'   redaccion = list(pares_redundantes = data.frame(i = 1, j = 4)),
+#'   deseabilidad = list(sd_intra_dim = 0.25, sd_entre_dim = 0.12),
+#'   estructura = list(prob_limpia = 0.80, phi_med = 0.50)),
+#'   class = "semilla_compuerta")
+#' balance_optimizacion(g0, g1)
 #' @seealso \code{\link{compuerta_pre_aplicacion}}, \code{\link{optimizar_para_campo}}
 #' @export
 balance_optimizacion <- function(g0, g1) .balance_optimizacion(g0, g1)
@@ -546,7 +576,7 @@ balance_optimizacion <- function(g0, g1) .balance_optimizacion(g0, g1)
               desea_intra = 0.005, desea_entre = 0.005,
               prob_limpia = 0.005, phi = 0.005)
   cambio <- vapply(names(a), function(k) {
-    if (is.na(a[[k]]) || is.na(b[[k]])) return("—")
+    if (is.na(a[[k]]) || is.na(b[[k]])) return("\u2014")
     d <- b[[k]] - a[[k]]
     if (abs(d) < (minimo[[k]] %||% 1e-8)) return("igual")
     if (bueno[[k]] == 0) return("cambio")
@@ -686,7 +716,7 @@ balance_optimizacion <- function(g0, g1) .balance_optimizacion(g0, g1)
                "del", "al", "su", "sus", "por", "con", "para", "como")
   .tok <- function(t) {
     t <- tolower(t)
-    t <- chartr("áéíóúüñ",
+    t <- chartr("\u00E1\u00E9\u00ED\u00F3\u00FA\u00FC\u00F1",
                 "aeiouun", t)
     t <- gsub("[^[:alnum:][:space:]]", " ", t)
     w <- strsplit(trimws(t), "\\s+")[[1]]
@@ -1051,7 +1081,7 @@ balance_optimizacion <- function(g0, g1) .balance_optimizacion(g0, g1)
     }
     # Rechazar si reintroduce una formula vetada. Las vetadas de tipo
     # 'empezar con "palabra"' se chequean contra el INICIO del candidato.
-    cand_norm <- chartr("áéíóúüñ",
+    cand_norm <- chartr("\u00E1\u00E9\u00ED\u00F3\u00FA\u00FC\u00F1",
                         "aeiouun", tolower(candidato))
     reintroduce <- FALSE
     for (f in conductas_prohibidas) {

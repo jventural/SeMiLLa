@@ -12,8 +12,15 @@ plot_forma_corta(fc, escala_original = NULL)
 \item{escala_original}{Objeto semilla original (opcional)}
 }
 \value{
-Objeto ggplot2
+Objeto de clase \code{ggplot} (ggplot2): barras agrupadas con el
+numero de items por dimension en la escala original y en la forma corta.
+Se dibuja al imprimirlo.
 }
 \description{
 Compara la distribucion de items entre escala original y forma corta.
+}
+\examples{
+corta <- forma_corta(semilla_demo, n_items = 9, verbose = FALSE, seed = 1)
+plot_forma_corta(corta, escala_original = semilla_demo)
+
 }

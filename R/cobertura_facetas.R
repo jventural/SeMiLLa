@@ -41,28 +41,44 @@
 #'   \code{$concepto$caracteristicas} (lista con nombre por dimension).
 #' @param min_items Numero minimo de items por faceta para considerarla
 #'   cubierta (por defecto 1).
-#' @param verbose Imprimir el resumen.
+#' @param verbose Logico. Si \code{TRUE}, imprime el resumen.
+#' @param x Objeto de clase \code{semilla_cobertura}.
+#' @param ... No se usa.
 #'
 #' @return Objeto de clase \code{semilla_cobertura} (lista) con:
 #' \itemize{
 #'   \item \code{tabla}: data.frame con una fila por faceta declarada
-#'     (dimension, faceta, n_items, cubierta).
+#'     (\code{dimension}, \code{faceta}, \code{n_items}, \code{cubierta},
+#'     \code{metodo} de cruce: \code{"exacto"}, \code{"contencion"} o
+#'     \code{"solape"}).
 #'   \item \code{huerfanas}: subconjunto de \code{tabla} con las facetas sin
 #'     items suficientes.
 #'   \item \code{sin_declarar}: etiquetas de \code{caracteristica} presentes en
 #'     los items que NO figuran entre las declaradas (sintoma de que el LLM
 #'     invento una faceta al reemplazar).
-#'   \item \code{n_declaradas}, \code{n_cubiertas}, \code{prop_cubierta}.
+#'   \item \code{equilibrio}: data.frame por dimension con \code{n_facetas},
+#'     \code{n_items}, \code{reparto}, \code{max_prop} (proporcion de items
+#'     de la faceta mas cargada) y \code{concentrada} (\code{max_prop > 0.50}).
+#'   \item \code{n_concentradas}: numero de dimensiones concentradas.
+#'   \item \code{n_declaradas}, \code{n_cubiertas}, \code{prop_cubierta}:
+#'     conteos y proporcion de facetas cubiertas.
 #'   \item \code{disponible}: FALSE si la escala no trae caracteristicas
 #'     declaradas, en cuyo caso la auditoria no se puede hacer y NO debe
 #'     interpretarse como que todo esta bien.
+#'   \item \code{motivo}: por que no se pudo auditar (\code{NA} si se pudo).
 #' }
+#' El metodo \code{print()} devuelve \code{x} de forma invisible; se llama por
+#' su efecto.
 #'
 #' @examples
-#' \dontrun{
-#' cob <- auditar_cobertura_facetas(escala)
+#' esc <- semilla_demo
+#' # Facetas declaradas por dimension (la de Ansiedad incluye una sin items)
+#' esc$concepto$caracteristicas <- list(
+#'   Autoeficacia = c("confianza ante tareas", "persistencia"),
+#'   Organizacion = c("planificacion", "gestion del tiempo"),
+#'   Ansiedad     = c("bloqueo", "evitacion", "rumiacion nocturna"))
+#' cob <- auditar_cobertura_facetas(esc)
 #' cob$huerfanas   # las facetas que se quedaron sin items
-#' }
 #'
 #' @export
 auditar_cobertura_facetas <- function(escala, min_items = 1L, verbose = TRUE) {
@@ -237,6 +253,7 @@ auditar_cobertura_facetas <- function(escala, min_items = 1L, verbose = TRUE) {
   gsub("\\s+", " ", trimws(y))
 }
 
+#' @rdname auditar_cobertura_facetas
 #' @export
 print.semilla_cobertura <- function(x, ...) {
   cat("\n", strrep("=", 60), "\n", sep = "")
@@ -289,12 +306,26 @@ print.semilla_cobertura <- function(x, ...) {
 #' Cruza la cobertura de dos escalas (por ejemplo, antes y despues de refinar)
 #' y devuelve una tabla con lo que se gano y lo que se perdio, faceta a faceta.
 #'
-#' @param antes,despues Objetos \code{semilla}.
+#' @param antes,despues Objetos \code{semilla} con
+#'   \code{$concepto$caracteristicas} declaradas.
 #' @param min_items Minimo de items para dar una faceta por cubierta.
 #'
-#' @return data.frame con dimension, faceta, n_antes, n_despues y estado
-#'   (\code{"se perdio"}, \code{"nueva"}, \code{"baja"}, \code{"sube"},
-#'   \code{"igual"}).
+#' @return \code{data.frame} con una fila por faceta y las columnas
+#'   \code{dimension}, \code{faceta}, \code{n_items_antes},
+#'   \code{n_items_despues} y \code{estado} (\code{"se perdio"},
+#'   \code{"nueva"}, \code{"baja"}, \code{"sube"} o \code{"igual"}),
+#'   ordenado con las perdidas primero. Devuelve \code{NULL} si alguna de las
+#'   dos escalas no permite auditar la cobertura.
+#'
+#' @examples
+#' antes <- semilla_demo
+#' antes$concepto$caracteristicas <- list(
+#'   Autoeficacia = c("confianza ante tareas", "persistencia"),
+#'   Organizacion = c("planificacion", "gestion del tiempo"),
+#'   Ansiedad     = c("bloqueo", "evitacion"))
+#' despues <- antes
+#' despues$items <- despues$items[-15, ]   # se retira el item de evitacion
+#' comparar_cobertura_facetas(antes, despues)
 #'
 #' @export
 comparar_cobertura_facetas <- function(antes, despues, min_items = 1L) {

@@ -9,8 +9,16 @@
 \arguments{
 \item{x}{Objeto semilla_fiabilidad}
 
-\item{...}{Argumentos adicionales}
+\item{...}{Argumentos adicionales (no se usan).}
+}
+\value{
+Devuelve \code{x} de forma invisible; se llama por su efecto
+(imprimir el resumen en consola).
 }
 \description{
-Print Semantic Reliability Results
+Muestra en consola el resumen de \code{fiabilidad_semantica()}.
+}
+\examples{
+fiab <- fiabilidad_semantica(semilla_demo, verbose = FALSE)
+print(fiab)
 }

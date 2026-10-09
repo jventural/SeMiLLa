@@ -16,8 +16,13 @@
 #' estimacion de fiabilidad poblacional.
 #'
 #' @inheritParams omega_semantico
-#' @return Igual que \code{\link{omega_semantico}}.
+#' @return Igual que \code{\link{omega_semantico}}: \code{data.frame} con una
+#'   fila por dimension y las columnas \code{dimension}, \code{n_items},
+#'   \code{omega_semantico}, \code{alpha_semantico}, \code{lambda_promedio} y
+#'   \code{heterogeneidad}.
 #' @seealso \code{\link{omega_semantico}}, \code{\link{auditar_redundancia}}
+#' @examples
+#' coherencia_dimensional(semilla_demo, verbose = FALSE)
 #' @export
 coherencia_dimensional <- function(x, verbose = TRUE) {
   omega_semantico(x, verbose = verbose)
@@ -31,8 +36,14 @@ coherencia_dimensional <- function(x, verbose = TRUE) {
 #' un proxy pre-empirico de consistencia, no fiabilidad poblacional.
 #'
 #' @inheritParams fiabilidad_semantica
-#' @return Igual que \code{\link{fiabilidad_semantica}}.
+#' @return Igual que \code{\link{fiabilidad_semantica}}: objeto de clase
+#'   \code{semilla_fiabilidad} con \code{alpha_dimensiones} (alfa semantico por
+#'   dimension), \code{alpha_promedio}, \code{similitud_intra},
+#'   \code{similitud_inter}, \code{discriminacion} y \code{metadata}.
 #' @seealso \code{\link{fiabilidad_semantica}}, \code{\link{auditar_redundancia}}
+#' @examples
+#' h <- homogeneidad_semantica(semilla_demo, verbose = FALSE)
+#' h$alpha_dimensiones
 #' @export
 homogeneidad_semantica <- function(x, metodo = "spearman_brown", verbose = TRUE) {
   fiabilidad_semantica(x, metodo = metodo, verbose = verbose)

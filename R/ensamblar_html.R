@@ -36,17 +36,36 @@
 #' @param idioma "es" o "en". Si NULL, se toma del objeto.
 #' @param verbose Mostrar progreso.
 #'
-#' @return (Invisible) vector con las rutas de los dos HTML generados.
+#' @return De forma invisible, un vector \code{character} de longitud 2 con
+#'   las rutas de los archivos escritos: \code{<archivo>_docente.html} y
+#'   \code{<archivo>_alumno.html}. Se llama sobre todo por su efecto (escribir
+#'   los dos HTML en disco).
 #'
 #' @examples
-#' \dontrun{
-#' ensamblar_prueba_html(
-#'   p,
-#'   archivo = "salida/prueba_psicometria"
-#' )
-#' # -> salida/prueba_psicometria_docente.html
-#' # -> salida/prueba_psicometria_alumno.html
-#' }
+#' # Prueba objetiva minima construida a mano (sin llamar a ningun LLM)
+#' p <- structure(list(
+#'   dominio = "estadistica basica",
+#'   idioma  = "es",
+#'   items = data.frame(
+#'     n_item = 1:2, formato = "opcion_multiple",
+#'     tema = c("Media", "Mediana"), nivel_bloom = "Recordar",
+#'     enunciado = c("La media aritmetica se obtiene...",
+#'                   "La mediana es el valor que..."),
+#'     instruccion_extra = NA_character_, stringsAsFactors = FALSE),
+#'   opciones = data.frame(
+#'     n_item = rep(1:2, each = 3),
+#'     texto_opcion = c("sumando y dividiendo entre n", "ordenando",
+#'                      "contando", "deja la mitad debajo", "mas se repite",
+#'                      "es el mayor"),
+#'     es_correcta = c(TRUE, FALSE, FALSE, TRUE, FALSE, FALSE),
+#'     stringsAsFactors = FALSE),
+#'   emparejamientos = data.frame(), contextos = data.frame()),
+#'   class = c("semilla_prueba_objetiva", "list"))
+#'
+#' base <- file.path(tempdir(), "prueba_demo")
+#' rutas <- ensamblar_prueba_html(p, archivo = base, verbose = FALSE)
+#' file.exists(rutas)
+#' unlink(rutas)
 #'
 #' @seealso \code{\link{ensamblar_prueba_objetiva}} (version DOCX),
 #'   \code{\link{verificar_clave}}
@@ -91,10 +110,10 @@ ensamblar_prueba_html <- function(
     sub_rol <- if (con_clave) {
       if (is.null(subtitulo)) {
         if (idioma == "en") "Teacher version (with answer key)"
-        else "Versión docente (con clave de respuestas)"
-      } else paste0(subtitulo, " — ",
+        else "Versi\u00f3n docente (con clave de respuestas)"
+      } else paste0(subtitulo, " \u2014 ",
                     if (idioma == "en") "Teacher version" else
-                      "Versión docente")
+                      "Versi\u00f3n docente")
     } else subtitulo
 
     html <- .construir_html_objetivas(
@@ -244,12 +263,12 @@ ensamblar_prueba_html <- function(
   meta <- character(0)
   if (!is.null(autor)) meta <- c(meta, esc(autor))
   if (!is.null(version) && nzchar(as.character(version))) {
-    et <- if (idioma == "en") "Version " else "Versión "
+    et <- if (idioma == "en") "Version " else "Versi\u00f3n "
     meta <- c(meta, paste0(et, esc(version)))
   }
   if (length(meta) > 0) {
     html <- c(html, paste0("<p class='meta'>",
-                           paste(meta, collapse = " · "), "</p>"))
+                           paste(meta, collapse = " \u00b7 "), "</p>"))
   }
 
   # Datos del participante
@@ -293,9 +312,9 @@ ensamblar_prueba_html <- function(
                  esc(v_i$respuesta_llm[1]),
                  "' instead of the declared key. Review this item.")
         } else {
-          paste0("&#9888; El examinado LLM respondió '",
+          paste0("&#9888; El examinado LLM respondi\u00f3 '",
                  esc(v_i$respuesta_llm[1]),
-                 "' y no la clave declarada. Revise este ítem.")
+                 "' y no la clave declarada. Revise este \u00edtem.")
         }
         html <- c(html, paste0("<p class='alerta-verificacion'>", et, "</p>"))
       }
@@ -333,8 +352,8 @@ ensamblar_prueba_html <- function(
       if (nrow(e_i) > 0) {
         # Mismo barajado que el ensamblador DOCX (semilla por item)
         if (!incluir_clave) {
-          set.seed(n)
-          orden <- sample(seq_len(nrow(e_i)))
+          # Barajado reproducible por item, sin usar el generador aleatorio
+          orden <- .barajado_fijo(nrow(e_i), n)
           respuestas_vis <- e_i$respuesta[orden]
         } else {
           respuestas_vis <- e_i$respuesta
@@ -350,9 +369,9 @@ ensamblar_prueba_html <- function(
         }
         html <- c(html, "</table>")
         if (incluir_clave) {
-          clave_txt <- paste(seq_len(nrow(e_i)), "↔",
+          clave_txt <- paste(seq_len(nrow(e_i)), "\u2194",
                              letters[seq_len(nrow(e_i))],
-                             collapse = "  ·  ")
+                             collapse = "  \u00b7  ")
           html <- c(html, paste0("<p class='correcta'>",
                                  if (idioma == "en") "Key: " else "Clave: ",
                                  clave_txt, "</p>"))

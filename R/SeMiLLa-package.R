@@ -20,5 +20,8 @@ utils::globalVariables(c(
   "informacion_estimada", "interpretacion", "item_label", "item_num", "label",
   "n_items", "name", "numero", "similitud", "similitud_media", "status",
   "stratum", "unicidad", "weight", "x", "x1", "x2", "xend", "y", "y1", "y2",
-  "y_destino", "y_pos", "yend"
+  "y_destino", "y_pos", "yend",
+  # plot.semilla_estres() y plot_criterio()
+  "dosis", "dosis_quiebre", "etiqueta", "prob_ic_inf", "prob_ic_sup",
+  "prob_limpia", "signo", "valor"
 ))

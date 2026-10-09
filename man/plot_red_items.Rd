@@ -16,16 +16,19 @@ plot_red_items(x, umbral = 0.5, colorear_por = "dimension", layout = "fr")
 \item{layout}{Algoritmo de layout: "fr", "kk", "circle", "star"}
 }
 \value{
-Objeto ggplot2
+Objeto de clase \code{ggplot} (ggplot2): la red de items (nodos
+numerados y coloreados por dimension; aristas entre pares con
+similitud >= \code{umbral}, con transparencia segun el peso). Se dibuja
+al imprimirlo. Requiere el paquete 'igraph'.
 }
 \description{
 Visualiza los items como una red donde las conexiones representan
 similitud semantica por encima de un umbral.
 }
 \examples{
-\dontrun{
-# Red con umbral 0.6
-plot_red_items(mi_escala, umbral = 0.6)
+if (requireNamespace("igraph", quietly = TRUE)) {
+  # Red con umbral 0.6
+  plot_red_items(semilla_demo, umbral = 0.6, layout = "circle")
 }
 
 }

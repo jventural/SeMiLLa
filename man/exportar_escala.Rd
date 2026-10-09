@@ -6,36 +6,47 @@
 \usage{
 exportar_escala(
   x,
-  archivo = "escala_semilla",
+  archivo,
   formato = "csv",
   incluir_info = TRUE,
   verbose = TRUE
 )
 }
 \arguments{
-\item{x}{Objeto semilla, semilla_items, o lista con estructura compatible}
+\item{x}{Objeto \code{semilla}, \code{semilla_items} o lista con
+estructura compatible (al menos \code{$items}; se usan tambien
+\code{$concepto} y \code{$metadata} si existen).}
 
-\item{archivo}{Nombre del archivo de salida (sin extension)}
+\item{archivo}{Ruta del archivo de salida \strong{sin} extension. Es
+obligatoria: no hay valor por defecto para no escribir en el directorio
+de trabajo. Use, por ejemplo, \code{file.path(tempdir(), "escala")}.}
 
-\item{formato}{Formato de exportacion: "csv", "excel", "ambos"}
+\item{formato}{Formato de exportacion: \code{"csv"}, \code{"excel"} o
+\code{"ambos"}. Se conserva por compatibilidad; en la version actual los
+items se escriben siempre en \code{.xlsx} si \pkg{openxlsx} esta
+disponible y en \code{.csv} si no lo esta.}
 
-\item{incluir_info}{Incluir archivo de informacion}
+\item{incluir_info}{Logico. Si \code{TRUE} (por defecto), escribe ademas
+\code{<archivo>_info.txt} con la informacion de la escala.}
 
-\item{verbose}{Mostrar progreso}
+\item{verbose}{Logico. Si \code{TRUE}, muestra la ruta de cada archivo
+creado.}
 }
 \value{
-Invisiblemente, la ruta de los archivos creados
+Vector de caracteres, invisible, con las rutas de los archivos
+creados: el de items (\code{.xlsx} o \code{.csv}) y, si
+\code{incluir_info = TRUE}, el \code{_info.txt}.
 }
 \description{
-Exporta los items y la informacion de la escala a archivos CSV y TXT.
+Exporta los items a un archivo Excel (o CSV, si \pkg{openxlsx} no esta
+instalado) y, opcionalmente, un archivo de texto con la informacion de la
+escala (definicion, fundamentacion, dimensiones, referencias, estructura e
+instrucciones de aplicacion). No escribe nada si no se indica \code{archivo}.
 }
 \examples{
-\dontrun{
-# Exportar a CSV
-exportar_escala(mi_escala, "mi_escala")
-
-# Exportar con informacion
-exportar_escala(mi_escala, "mi_escala", incluir_info = TRUE)
-}
+f <- file.path(tempdir(), "escala_demo")
+archivos <- exportar_escala(semilla_demo, archivo = f, verbose = FALSE)
+basename(archivos)
+unlink(archivos)
 
 }

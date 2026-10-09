@@ -2,6 +2,7 @@
 % Please edit documentation in R/verificar_clave.R
 \name{verificar_clave}
 \alias{verificar_clave}
+\alias{print.semilla_verificacion_clave}
 \title{Verificar la clave de una prueba objetiva con un LLM independiente}
 \usage{
 verificar_clave(
@@ -9,9 +10,11 @@ verificar_clave(
   api_key,
   modelo = "gpt-4.1-mini-2025-04-14",
   n_resoluciones = 1L,
-  seed = 2026,
+  seed = NULL,
   verbose = TRUE
 )
+
+\method{print}{semilla_verificacion_clave}(x, ...)
 }
 \arguments{
 \item{escala_o}{Objeto \code{semilla_prueba_objetiva} devuelto por
@@ -27,9 +30,16 @@ items, para que la verificacion no herede los mismos sesgos.}
 \item{n_resoluciones}{Numero de veces que se resuelve cada item
 (default 1). Con valores > 1 se aplica voto mayoritario.}
 
-\item{seed}{Semilla para reproducibilidad.}
+\item{seed}{Semilla que se envia al LLM (opcion \code{SeMiLLa.seed}, que se
+restaura al salir). Con \code{NULL} (por defecto) no se fija ninguna
+semilla y las respuestas del examinado pueden variar entre corridas.}
 
 \item{verbose}{Mostrar progreso.}
+
+\item{x}{Objeto de clase \code{semilla_verificacion_clave} (el elemento
+\code{$verificacion} del resultado).}
+
+\item{...}{No se usa.}
 }
 \value{
 El mismo objeto \code{semilla_prueba_objetiva} con dos agregados:
@@ -43,6 +53,8 @@ El mismo objeto \code{semilla_prueba_objetiva} con dos agregados:
 \code{fecha}, \code{n_verificados}, \code{n_coincidencias},
 \code{tasa_coincidencia} y \code{n_discrepancias}.
 }
+El metodo \code{print()} de \code{semilla_verificacion_clave} devuelve
+\code{x} de forma invisible; se llama por su efecto.
 }
 \description{
 Somete cada item de un objeto \code{semilla_prueba_objetiva} a un LLM que
@@ -62,15 +74,20 @@ respuesta final se decide por voto mayoritario, lo que reduce falsos
 desacuerdos por variabilidad del LLM.
 }
 \examples{
+# Requiere clave de API (genera y resuelve los items con un LLM).
 \dontrun{
+tabla <- data.frame(tema = c("Fiabilidad", "Validez"),
+                    nivel_bloom = c("Comprender", "Aplicar"),
+                    formato = c("usual", "verdadero_falso"),
+                    n_items = c(2, 2))
 p <- generar_prueba_objetiva(
   dominio = "psicometria introductoria",
-  api_key = api_key,
+  api_key = Sys.getenv("OPENAI_API_KEY"),
   tabla_especificacion = tabla
 )
-p <- verificar_clave(p, api_key = api_key)
-p$verificacion                      # detalle item por item
-subset(p$verificacion, !coincide)   # solo discrepancias
+p <- verificar_clave(p, api_key = Sys.getenv("OPENAI_API_KEY"))
+p$verificacion
+subset(p$verificacion, !coincide)
 }
 
 }

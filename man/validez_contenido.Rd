@@ -33,12 +33,20 @@ redaccion se evalua por separado con \code{auditar_redaccion_items()}.}
 \item{verbose}{Mostrar progreso}
 }
 \value{
-Lista con:
+Lista de clase \code{c("semilla_cv", "list")} con:
 \itemize{
-\item \code{v_aiken}: V de Aiken para cada item y criterio
-\item \code{v_aiken_escala}: V de Aiken promedio por criterio
-\item \code{evaluaciones}: Matriz completa de evaluaciones
-\item \code{recomendaciones}: Items que necesitan revision (V < 0.70 o IC_inf < 0.70)
+\item \code{v_aiken}: data.frame con la V de Aiken de cada item en cada
+criterio, con su intervalo de confianza.
+\item \code{v_aiken_escala}: V de Aiken promedio por criterio y total
+(\code{V_total}).
+\item \code{evaluaciones}: lista con una matriz por criterio (items x
+jueces) con las calificaciones 0-3 de cada juez simulado.
+\item \code{recomendaciones}: data.frame con los items que necesitan
+revision (V < 0.70 o IC_inf < 0.70).
+\item \code{metadata}: lista con \code{n_items}, \code{n_jueces},
+\code{criterios}, \code{confianza}, \code{modelo},
+\code{modelos_usados}, \code{items_sin_evaluar},
+\code{items_jueces_incompletos} y \code{fecha}.
 }
 }
 \description{
@@ -74,9 +82,10 @@ Criterios de aceptacion (Napitupulu et al., 2018; Charter, 2003):
 }
 }
 \examples{
+# Requiere una clave de API de OpenAI (consulta un LLM).
 \dontrun{
 # Evaluar validez de contenido
-cv <- validez_contenido(mi_escala, api_key = Sys.getenv("OPENAI_API_KEY"))
+cv <- validez_contenido(semilla_demo, api_key = Sys.getenv("OPENAI_API_KEY"))
 
 # Ver resultados
 print(cv)

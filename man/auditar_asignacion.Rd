@@ -2,14 +2,18 @@
 % Please edit documentation in R/asignacion.R
 \name{auditar_asignacion}
 \alias{auditar_asignacion}
+\alias{print.semilla_asignacion}
 \title{Auditar la asignacion de cada item a su dimension}
 \usage{
 auditar_asignacion(x, dimension = NULL, umbral_margen = -0.05, verbose = TRUE)
+
+\method{print}{semilla_asignacion}(x, ...)
 }
 \arguments{
 \item{x}{Objeto \code{semilla} (o lista) con \code{$items$dimension} y
 \code{$similitud}. Tambien acepta una matriz de similitud directa, en cuyo
-caso hay que pasar \code{dimension}.}
+caso hay que pasar \code{dimension}. En el metodo \code{print()}, un
+objeto de clase \code{semilla_asignacion}.}
 
 \item{dimension}{Vector de dimensiones, si \code{x} es una matriz.}
 
@@ -19,17 +23,24 @@ negativo pero por encima del umbral se devuelven como \code{frontera}.
 Calibrado con \code{text-embedding-3-small}: ver el encabezado del archivo.}
 
 \item{verbose}{Si \code{TRUE}, imprime el resumen.}
+
+\item{...}{No se usa.}
 }
 \value{
-Lista de clase \code{semilla_asignacion} con:
-\item{items}{data.frame por item: sim_propia, sim_ajena, dim_mas_cercana,
-margen, mal_asignado}
+Lista de clase \code{semilla_asignacion}, devuelta de forma
+invisible, con:
+\item{items}{data.frame por item: \code{item}, \code{dimension},
+\code{sim_propia}, \code{sim_ajena}, \code{dim_mas_cercana},
+\code{margen}, \code{mal_asignado} y \code{frontera}}
 \item{mal_asignados}{data.frame solo con los items senalados}
 \item{n_mal_asignados}{entero}
 \item{frontera}{items con margen negativo pero por encima del umbral}
 \item{n_frontera}{entero}
 \item{umbral_margen}{el umbral usado}
 \item{alerta}{"ok" o "riesgo"}
+Con una sola dimension, \code{items} y \code{mal_asignados} son
+\code{NULL}. El metodo \code{print()} devuelve \code{x} de forma
+invisible; se llama por su efecto.
 }
 \description{
 Comprueba, para cada item, si se parece mas a los items de su propia
@@ -38,6 +49,17 @@ en la dimension equivocada.
 
 A diferencia de los tres ejes de \code{\link{compuerta_pre_aplicacion}}, este
 control NO simula nada y NO consulta al LLM: lee la matriz de similitud.
+}
+\examples{
+aud <- auditar_asignacion(semilla_demo, verbose = FALSE)
+aud
+aud$items[, c("dimension", "margen", "mal_asignado")]
+
+# Tambien con una matriz de similitud y un vector de dimensiones
+auditar_asignacion(semilla_demo$similitud,
+                   dimension = semilla_demo$items$dimension,
+                   verbose = FALSE)$alerta
+
 }
 \seealso{
 \code{\link{compuerta_pre_aplicacion}}

@@ -15,7 +15,7 @@ prompts_historieta(
   idioma_prompts = c("en", "es"),
   idioma_bocadillos = c("es", "en"),
   modelo = "gpt-4.1-mini-2025-04-14",
-  seed = 2026,
+  seed = NULL,
   archivo = NULL,
   verbose = TRUE,
   safe_mode = TRUE,
@@ -50,10 +50,14 @@ aparece DENTRO de los bocadillos en la imagen.}
 \item{modelo}{Modelo OpenAI para segmentacion narrativa
 (default \code{"gpt-4.1-mini-2025-04-14"}).}
 
-\item{seed}{Semilla para reproducibilidad.}
+\item{seed}{Semilla que se envia a la API del LLM (best-effort; la opcion
+\code{SeMiLLa.seed} se restaura al salir). Por defecto \code{NULL}: sin
+semilla, el resultado puede variar entre corridas.}
 
-\item{archivo}{Ruta SIN extension. Si se pasa, escribe Excel con prompts
-y instrucciones de uso.}
+\item{archivo}{Ruta SIN extension (default \code{NULL}: no se escribe
+nada). Si se pasa, escribe un Excel (\code{.xlsx}, requiere
+\pkg{openxlsx}) con los prompts, la informacion de la corrida y las
+instrucciones de uso.}
 
 \item{verbose}{Mostrar progreso.}
 
@@ -71,15 +75,17 @@ v1).}
 \code{"consumo"}). Si es \code{NULL} (default), se auto-detecta a partir de los
 factores y textos de las historias. Solo tiene efecto si \code{safe_mode = TRUE}.}
 
-\item{intent_clinico}{Lógico. Si es \code{TRUE} inserta un bloque "Intent /
+\item{intent_clinico}{Logico. Si es \code{TRUE} inserta un bloque "Intent /
 Intencion" al inicio del prompt declarando uso clinico/educativo y la
 lista explicita de elementos visuales prohibidos. \code{NULL} (default) =
 autodetectar: \code{TRUE} cuando se detecto al menos un tema sensible.}
 }
 \value{
-Data.frame con clase \code{semilla_prompts_historieta} y columnas:
-\code{factor}, \code{historia_texto}, \code{n_panels}, \code{prompt}. Cada fila es una
-historia con su prompt de historieta completo.
+Data.frame con clase
+\code{c("semilla_prompts_historieta", "data.frame")} y columnas: \code{factor},
+\code{historia_texto}, \code{n_panels}, \code{paneles_json} (paneles devueltos por el
+LLM, en JSON) y \code{prompt}. Cada fila es una historia con su prompt de
+historieta completo.
 }
 \description{
 Para cada historia de un objeto \code{semilla_historias}, construye un prompt de
@@ -94,16 +100,23 @@ Solo cobra LLM: el LLM segmenta la historia en paneles. Las imagenes
 finales las genera el USUARIO copiando los prompts en Gemini/ChatGPT/etc.
 }
 \examples{
+# Requiere una clave de API de OpenAI (el LLM segmenta cada historia).
 \dontrun{
+escala_h <- generar_escala_historias(
+  concepto = "violencia en el enamoramiento",
+  api_key  = Sys.getenv("OPENAI_API_KEY"),
+  factores = c("Control", "Desvalorizacion"))
+f <- file.path(tempdir(), "historietas")
 h <- prompts_historieta(
-  escala_h        = mi_escala_h,
-  api_key         = api_key,
+  escala_h        = escala_h,
+  api_key         = Sys.getenv("OPENAI_API_KEY"),
   n_panels        = 6,
   paleta          = "color",
   idioma_prompts  = "en",
-  archivo         = "historietas_EPNA"
+  archivo         = f
 )
 cat(h$prompt[1])  # primer prompt listo para pegar en Gemini
+unlink(paste0(f, ".xlsx"))
 }
 
 }

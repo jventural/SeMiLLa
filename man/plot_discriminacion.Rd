@@ -10,9 +10,17 @@ plot_discriminacion(disc)
 \item{disc}{Resultado de discriminacion_semantica()}
 }
 \value{
-Objeto ggplot2
+Objeto de clase \code{ggplot} (ggplot2): un punto por item
+(similitud media frente a unicidad) coloreado por la discriminacion
+predicha, con lineas en 0.30 y 0.50 y etiquetas para los items extremos.
+Se dibuja al imprimirlo.
 }
 \description{
 Scatter plot de unicidad vs similitud media, coloreado por categoria
 de discriminacion predicha.
+}
+\examples{
+disc <- discriminacion_semantica(semilla_demo, verbose = FALSE)
+plot_discriminacion(disc)
+
 }

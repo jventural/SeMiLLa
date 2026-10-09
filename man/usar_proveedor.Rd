@@ -17,11 +17,15 @@ usar_proveedor(
 \item{base_url}{URL base del endpoint (solo requerido con
 \code{proveedor = "personalizado"}; en los demas casos se ignora).}
 
-\item{verbose}{Mostrar confirmacion.}
+\item{verbose}{Si \code{TRUE}, imprime en consola la confirmacion del
+proveedor activo.}
 }
 \value{
-(Invisible) la base_url activa, o \code{NULL} si el proveedor es
-OpenAI.
+Cadena de caracteres (invisible) con la \code{base_url} activa, o
+\code{NULL} si el proveedor es OpenAI. Como efecto, fija la opcion
+\code{SeMiLLa.base_url} para el resto de la sesion; ese es el proposito de
+la funcion, y \code{usar_proveedor("openai")} la devuelve a su estado
+por defecto.
 }
 \description{
 Fija (para toda la sesion) la URL base del endpoint de chat que usaran las
@@ -53,6 +57,15 @@ OpenAI, usa modelos de embeddings locales (\code{modelos_embeddings_libres()}).
 }
 
 \examples{
+# Solo fija una opcion de la sesion (no llama a ninguna API)
+url <- usar_proveedor("groq", verbose = FALSE)
+url
+getOption("SeMiLLa.base_url")
+# Volver al estado por defecto
+usar_proveedor("openai", verbose = FALSE)
+
+# Lo siguiente requiere una clave de API del proveedor (llama a un LLM).
+# 'tabla' es una tabla de especificaciones (ver ?generar_prueba_objetiva).
 \dontrun{
 # Generar la prueba con Llama 3.3 via Groq
 usar_proveedor("groq")

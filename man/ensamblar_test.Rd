@@ -2,6 +2,8 @@
 % Please edit documentation in R/ensamblar.R
 \name{ensamblar_test}
 \alias{ensamblar_test}
+\alias{print.semilla_test_multi}
+\alias{print.semilla_test}
 \title{Ensamblar el test listo para aplicar}
 \usage{
 ensamblar_test(
@@ -32,6 +34,10 @@ ensamblar_test(
   seed = NULL,
   verbose = TRUE
 )
+
+\method{print}{semilla_test_multi}(x, ...)
+
+\method{print}{semilla_test}(x, ...)
 }
 \arguments{
 \item{escala}{Objeto \code{semilla}, \code{semilla_items} o data.frame con
@@ -103,19 +109,40 @@ puntuarse de forma inversa.}
 \item{respuesta_imagen}{Configuracion opcional de respuesta basada en
 imagenes. NULL por defecto.}
 
-\item{seed}{Semilla aleatoria (solo para orden = "aleatorio").}
+\item{seed}{Entero o \code{NULL} (default). Semilla aleatoria, solo para
+\code{orden = "aleatorio"}. Con \code{NULL} el orden aleatorio puede
+variar entre corridas.}
 
 \item{verbose}{Mostrar progreso.}
+
+\item{x}{Objeto \code{semilla_test} o \code{semilla_test_multi} (metodos
+\code{print}).}
+
+\item{...}{Argumentos adicionales (ignorados por los metodos \code{print}).}
 }
 \value{
-Objeto \code{semilla_test} con:
+Con \code{forma = "larga"} o \code{"corta"}, un objeto
+\code{semilla_test} (lista) con:
 \itemize{
-\item \code{nombre_test}, \code{subtitulo}, \code{autor}, \code{version}
-\item \code{instrucciones}, \code{datos_demograficos}, \code{anclajes}
-\item \code{items_presentacion}: data.frame con los items ordenados
-\item \code{texto_md}: cadena de markdown ensamblada
-\item \code{archivos}: rutas generadas (si aplica)
+\item \code{forma}: \code{"larga"} o \code{"corta"}.
+\item \code{nombre_test}, \code{subtitulo}, \code{autor}, \code{version},
+\code{idioma}: datos de portada.
+\item \code{instrucciones}: texto de instrucciones.
+\item \code{datos_demograficos}: campos demograficos solicitados.
+\item \code{anclajes}: vector nombrado con las opciones de respuesta;
+\code{tipo_escala} y \code{n_puntos} las describen.
+\item \code{orden}: orden de presentacion usado.
+\item \code{items_presentacion}: data.frame con los items en el orden de
+presentacion (columna \code{numero_presentacion}).
+\item \code{items_inversos}: items a puntuar de forma inversa.
+\item \code{texto_md}: cadena con el test completo en Markdown.
+\item \code{archivos}: vector character con las rutas escritas
+(vacio si \code{archivo = NULL}).
 }
+Con \code{forma = "ambas"}, un objeto \code{semilla_test_multi}: lista con
+\code{larga} y \code{corta}, cada una un \code{semilla_test}.
+Los metodos \code{print} devuelven \code{x} de forma invisible; se llaman
+por su efecto (resumen en consola).
 }
 \description{
 Construye un cuestionario completo listo para administrar a partir de un
@@ -128,21 +155,21 @@ Soporta tres ordenes de presentacion (original, intercalado,
 aleatorio) y exporta a Markdown, DOCX, HTML y TXT.
 }
 \examples{
-\dontrun{
+# Sin 'archivo' no se escribe nada en disco
 test <- ensamblar_test(
-  escala           = mi_escala,
-  escala_respuesta = esc_llm,
-  nombre_test      = "Escala de Estilos de Apego Parental (EEAP)",
-  autor            = "Dr. J. Ventura-Leon",
-  archivo          = "EEAP_v1",
-  formato          = c("md", "docx")
+  escala      = semilla_demo,
+  nombre_test = "Escala de demostracion",
+  autor       = "Equipo de investigacion",
+  verbose     = FALSE
 )
-
-# Ver el test en consola
 print(test)
+head(test$items_presentacion[, c("numero_presentacion", "item")])
 
-# Acceder al texto markdown
-cat(test$texto_md)
-}
+# Exportar a Markdown en un directorio temporal
+f <- file.path(tempdir(), "test_demo")
+test_md <- ensamblar_test(semilla_demo, archivo = f, formato = "md",
+                          verbose = FALSE)
+test_md$archivos
+unlink(test_md$archivos)
 
 }

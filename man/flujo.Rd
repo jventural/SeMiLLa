@@ -7,13 +7,16 @@
 flujo(tipo = "texto", archivo = NULL)
 }
 \arguments{
-\item{tipo}{"texto" (default, ASCII en consola) o "grafico"
-(genera diagrama con DiagrammeR/ggplot2)}
+\item{tipo}{\code{"texto"} (por defecto: el flujo en ASCII, emitido como
+mensaje) o \code{"grafico"} (diagrama con ggplot2).}
 
-\item{archivo}{Si tipo = "grafico", nombre del archivo PNG (sin extension)}
+\item{archivo}{Solo con \code{tipo = "grafico"}: ruta del archivo PNG
+\strong{sin} extension. Si es \code{NULL} (por defecto), el diagrama se
+dibuja en el dispositivo grafico activo y no se escribe nada en disco.}
 }
 \value{
-Invisiblemente NULL (texto) u objeto ggplot (grafico).
+\code{NULL} de forma invisible; se llama por su efecto (mostrar el
+flujo como mensaje, dibujar el diagrama o guardarlo en \code{archivo}).
 }
 \description{
 Muestra el flujo de trabajo del paquete (Manual de Usuario v2.0,
@@ -22,9 +25,9 @@ orden recomendado de uso de las funciones, desde la configuracion
 inicial hasta el entregable final administrable.
 }
 \examples{
-\dontrun{
-flujo()                                    # texto ASCII en consola
-flujo(tipo = "grafico", archivo = "wf")    # PNG en disco
-}
+flujo()
+f <- file.path(tempdir(), "flujo_semilla")
+flujo(tipo = "grafico", archivo = f)
+unlink(paste0(f, ".png"))
 
 }

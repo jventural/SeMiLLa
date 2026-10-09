@@ -2,6 +2,7 @@
 % Please edit documentation in R/analizar_tolerancia.R
 \name{analizar_tolerancia}
 \alias{analizar_tolerancia}
+\alias{print.semilla_tolerancia}
 \title{Analisis de tolerancia de una escala: prueba de estres pre-empirica en un comando}
 \usage{
 analizar_tolerancia(
@@ -16,8 +17,9 @@ analizar_tolerancia(
   k_cat = 5,
   n = 300,
   n_rep = 60,
+  n_rep_pronostico = 100,
   n_nucleos = NULL,
-  seed = 2026,
+  seed = NULL,
   solo_pronostico = FALSE,
   dl_juez = c("escenario", "off", "on"),
   dl_adyacencia = c("off", "escenario", "on"),
@@ -28,11 +30,14 @@ analizar_tolerancia(
   optimizar_estres = FALSE,
   verbose = TRUE
 )
+
+\method{print}{semilla_tolerancia}(x, ...)
 }
 \arguments{
 \item{x}{\code{data.frame} con columnas \code{item} (texto del enunciado) y
 \code{dimension} (a que factor pertenece), u objeto \code{semilla}/lista con
-\code{$items}.}
+\code{$items}. En el metodo \code{print()}, un objeto de clase
+\code{semilla_tolerancia}.}
 
 \item{concepto}{Nombre del constructo que mide la escala (mejora la
 calificacion de deseabilidad). Opcional.}
@@ -63,10 +68,16 @@ embeddings (es decir, si no se entregan como argumentos).}
 \item{n_rep}{Replicas Monte Carlo por celda de la prueba de estres (por
 defecto 60).}
 
-\item{n_nucleos}{Nucleos a usar. Por defecto (\code{NULL}) todos menos uno.}
+\item{n_rep_pronostico}{Replicas Monte Carlo del pronostico del paso 3
+(\code{simular_estructura()}; por defecto 100, como hasta ahora).}
 
-\item{seed}{Semilla global (streams por replica derivados de ella; el resultado
-es identico con 1 o N nucleos).}
+\item{n_nucleos}{Nucleos a usar. Por defecto (\code{NULL}) todos menos uno
+(como maximo 2 durante \code{R CMD check}).}
+
+\item{seed}{Semilla global (streams por replica derivados de ella; con un
+valor dado el resultado es identico con 1 o N nucleos). Con \code{NULL}
+(por defecto) no se fija semilla y el resultado puede variar entre
+corridas.}
 
 \item{solo_pronostico}{Si \code{TRUE}, corre solo hasta el paso 3 (pronostico)
 y omite la prueba de estres, que es la parte mas lenta.}
@@ -88,13 +99,17 @@ reescriba iterativamente los items mas fragiles (consume API). Por defecto
 
 \item{verbose}{Si \code{TRUE} (por defecto) narra el proceso paso a paso y
 explica como leer el resultado.}
+
+\item{...}{No se usa.}
 }
 \value{
 Objeto \code{semilla_tolerancia} (lista) con: \code{escala} (metadatos),
 \code{deseabilidad}, \code{sd_entre}, \code{similitud}, \code{pares_ld},
 \code{pronostico} (salida de \code{\link{simular_estructura}}), \code{estres}
 (salida de \code{\link{estres_escala}}, o \code{NULL}) y \code{seed}. Tiene
-metodo \code{print()} con un resumen legible y accionable.
+metodo \code{print()} con un resumen legible y accionable. Se devuelve de
+forma invisible. El metodo \code{print()} devuelve \code{x} de forma
+invisible; se llama por su efecto.
 }
 \description{
 Envoltura de alto nivel que ejecuta, en una sola llamada, el metodo completo de
@@ -116,6 +131,18 @@ riesgo INDUCIDO POR EL FRASEO; no es un aval de validez ni sustituye al estudio
 de campo.
 }
 \examples{
+\donttest{
+# Sin API: deseabilidad y similitud ya medidas; solo el pronostico
+des <- rep(c(0.70, 0.65, 0.30), each = 5)
+res <- analizar_tolerancia(semilla_demo, deseabilidad = des,
+                           similitud = semilla_demo$similitud,
+                           k_cat = 5, n = 150, n_rep_pronostico = 5,
+                           solo_pronostico = TRUE,
+                           n_nucleos = 1, seed = 123, verbose = FALSE)
+res
+}
+
+# Requiere clave de API de OpenAI (mide deseabilidad y embeddings)
 \dontrun{
 items <- data.frame(
   item = c("Me siento capaz de resolver problemas dificiles",
@@ -124,7 +151,8 @@ items <- data.frame(
            "Me preocupo por cosas sin importancia"),
   dimension = c("Autoeficacia", "Autoeficacia", "Ansiedad", "Ansiedad"))
 res <- analizar_tolerancia(items, concepto = "Autoeficacia y ansiedad",
-                           k_cat = 5)   # narra el proceso y devuelve el resumen
+                           api_key = Sys.getenv("OPENAI_API_KEY"),
+                           k_cat = 5, n_nucleos = 1)
 }
 }
 \seealso{

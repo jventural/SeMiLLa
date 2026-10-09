@@ -64,6 +64,8 @@
 #'   Default \code{"auto"} (adaptativo).
 #' @param n Tamano muestral simulado (default 300).
 #' @param n_rep Replicas por escenario de la simulacion (default 100).
+#' @param n_pasadas Numero de pasadas del juez de deseabilidad (eje 2) que se
+#'   promedian; se pasa a \code{\link{calificar_deseabilidad}} (default 4).
 #' @param n_banda Numero de vectores de deseabilidad con los que se re-simula
 #'   para estimar la BANDA de incertidumbre del eje 3 (default 4; 0 desactiva).
 #'   No cuesta llamadas al LLM: los vectores se remuestrean de las pasadas que
@@ -90,33 +92,46 @@
 #'   2.9.15, tambien la opcion \code{SeMiLLa.seed} que \code{.llamar_openai()}
 #'   envia a la API. Ojo: el seed de OpenAI es best-effort y no garantiza
 #'   reproducibilidad; quien la aporta es la votacion del eje 1 y las
-#'   \code{n_pasadas} del eje 2.
+#'   \code{n_pasadas} del eje 2. Por defecto \code{NULL}: no se fija ninguna
+#'   semilla y el resultado puede variar entre corridas; pase un entero
+#'   (p. ej. \code{2026}) para reproducir la simulacion.
 #' @param verbose Mostrar el detalle de cada paso.
 #' @param ... Argumentos adicionales para \code{\link{simular_estructura}}
 #'   (p. ej. \code{umbral_ld}, \code{carga_propia}, \code{k_cat}).
 #'
-#' @return Objeto de clase \code{semilla_compuerta} (lista) con:
+#' @return Objeto de clase \code{semilla_compuerta} (lista), devuelto de forma
+#'   invisible (se imprime si \code{verbose = TRUE}), con:
 #' \itemize{
-#'   \item \code{semaforo}: data.frame (paso, estado ok/advertencia/riesgo,
-#'         detalle).
-#'   \item \code{veredicto}: uno de los tres veredictos globales.
+#'   \item \code{escenario}: condicion prevista de la escala (cadena que se
+#'         muestra al usuario); \code{escenario_fusion} (dimensiones que
+#'         podrian no separarse, o \code{NULL}), \code{escenario_detalle},
+#'         \code{avisos_diseno} y \code{calidad_redaccion}: textos de apoyo.
+#'   \item \code{semaforo}: data.frame con columnas \code{paso}
+#'         (redaccion, deseabilidad, estructura_simulada, asignacion),
+#'         \code{estado} (ok/advertencia/riesgo) y \code{detalle}.
+#'   \item \code{veredicto}: uno de los cuatro veredictos globales.
 #'   \item \code{acciones}: vector de acciones recomendadas (vacio si lista).
-#'   \item \code{redaccion}, \code{deseabilidad}, \code{estructura}: los
-#'         objetos completos de cada auditoria para inspeccion.
+#'   \item \code{redaccion}, \code{asignacion}, \code{deseabilidad},
+#'         \code{estructura}: los objetos completos de cada auditoria para
+#'         inspeccion (\code{NULL} o un error si el paso no pudo correr).
 #'   \item \code{mapa_fusion} y \code{estructura_alternativa}: cuando la
 #'         simulacion anticipa que algunas dimensiones se fundiran, el mapa
 #'         de que dimensiones colapsan entre si y la HIPOTESIS B
 #'         pre-registrable (factores esperables con sus items), para ir a
 #'         campo con ambos modelos declarados y contrastarlos como rivales.
+#'   \item \code{banda_estructura}: lista con las probabilidades re-simuladas
+#'         (\code{probs}, \code{mediana}, \code{min}, \code{max},
+#'         \code{n_rep_banda}), o \code{NULL}.
+#'   \item \code{parametros}: lista con los umbrales, \code{n}, \code{n_rep},
+#'         \code{n_banda} y la fecha.
 #' }
 #'
 #' @examples
+#' # Requiere una clave de API de OpenAI (jueces LLM y embeddings).
 #' \dontrun{
-#' esc <- semilla("gratitud", api_key = key)   # ya incluye la compuerta
-#' esc$compuerta                                # veredicto integrado
-#'
-#' # O de forma manual sobre una escala existente:
-#' g <- compuerta_pre_aplicacion(esc, api_key = key)
+#' g <- compuerta_pre_aplicacion(semilla_demo,
+#'                               api_key = Sys.getenv("OPENAI_API_KEY"),
+#'                               n_rep = 20, n_nucleos = 1, seed = 2026)
 #' g$semaforo
 #' g$acciones
 #' }
@@ -137,7 +152,7 @@ compuerta_pre_aplicacion <- function(x,
                                      n_banda       = 4,
                                      modelo        = "gpt-4.1-mini",
                                      n_nucleos     = NULL,
-                                     seed          = 2026,
+                                     seed          = NULL,
                                      verbose       = TRUE,
                                      ...) {
 
@@ -483,7 +498,7 @@ compuerta_pre_aplicacion <- function(x,
                        " vectores del juez...)\n", sep = "")
       n_rep_b <- max(10L, round(n_rep / 3))
       probs_b <- vapply(seq_len(n_banda), function(b) {
-        set.seed((seed %||% 2026) + 1000L + b)
+        if (!is.null(seed)) set.seed(seed + 1000L + b)
         cols <- sample.int(ncol(pas), ncol(pas), replace = TRUE)
         v <- rowMeans(pas[, cols, drop = FALSE], na.rm = TRUE)
         v[!is.finite(v)] <- 0.5
@@ -768,7 +783,7 @@ compuerta_pre_aplicacion <- function(x,
     grupos_f <- Filter(function(g) length(g) > 1, mapa$grupos)
     escenario <- sprintf("SE ESPERAN %d FACTOR(ES), NO %d", mapa$k_esperado, K_teor)
     escenario_fusion <- paste(vapply(grupos_f, function(g)
-      paste(g, collapse = " + "), character(1)), collapse = " · ")
+      paste(g, collapse = " + "), character(1)), collapse = " \u00b7 ")
     # 2.9.36: se declara de que depende. La fusion se decide con el phi, y el
     # phi es el SUPUESTO de entrada devuelto con ruido, no una lectura de la
     # escala. Medido el 22-ago-2026 sobre 99 configuraciones: el phi simulado
@@ -879,12 +894,39 @@ compuerta_pre_aplicacion <- function(x,
 # Print method
 # =============================================================================
 
+#' @title Imprimir el resultado de la compuerta pre-aplicacion
+#'
+#' @description Muestra el semaforo por paso, la estructura alternativa
+#'   esperable (si la hay), el escenario previsto, los pares de dimensiones
+#'   ordenados por phi simulado y las acciones recomendadas.
+#'
+#' @param x Objeto de clase \code{semilla_compuerta}, devuelto por
+#'   \code{\link{compuerta_pre_aplicacion}}.
+#' @param ... No se usa; se mantiene por compatibilidad con
+#'   \code{\link[base]{print}}.
+#'
+#' @return Devuelve \code{x} de forma invisible; se llama por su efecto
+#'   (imprimir en la consola).
+#'
+#' @examples
+#' g <- structure(list(
+#'   semaforo = data.frame(
+#'     paso    = c("redaccion", "deseabilidad", "estructura_simulada"),
+#'     estado  = c("ok", "advertencia", "ok"),
+#'     detalle = c("sin pares gemelos", "deseabilidad uniforme",
+#'                 "P(limpia) = .85"),
+#'     stringsAsFactors = FALSE),
+#'   veredicto = "APLICAR CON CAUTELA",
+#'   acciones  = "Vigilar la separabilidad de dimensiones."),
+#'   class = c("semilla_compuerta", "list"))
+#' print(g)
+#'
 #' @export
 print.semilla_compuerta <- function(x, ...) {
   marca <- function(estado) switch(estado,
     "ok"          = .color_check(),
     "advertencia" = .color_warning(),
-    "riesgo"      = if (.soporta_colores()) "\033[31m✖\033[0m" else "[X]",
+    "riesgo"      = if (.soporta_colores()) paste0("\033[31m", "\u2716", "\033[0m") else "[X]",
     "?")
   cat("\n")
   cat("===========================================================\n")

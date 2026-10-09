@@ -7,16 +7,31 @@
 comparar_cobertura_facetas(antes, despues, min_items = 1L)
 }
 \arguments{
-\item{antes, despues}{Objetos \code{semilla}.}
+\item{antes, despues}{Objetos \code{semilla} con
+\code{$concepto$caracteristicas} declaradas.}
 
 \item{min_items}{Minimo de items para dar una faceta por cubierta.}
 }
 \value{
-data.frame con dimension, faceta, n_antes, n_despues y estado
-(\code{"se perdio"}, \code{"nueva"}, \code{"baja"}, \code{"sube"},
-\code{"igual"}).
+\code{data.frame} con una fila por faceta y las columnas
+\code{dimension}, \code{faceta}, \code{n_items_antes},
+\code{n_items_despues} y \code{estado} (\code{"se perdio"},
+\code{"nueva"}, \code{"baja"}, \code{"sube"} o \code{"igual"}),
+ordenado con las perdidas primero. Devuelve \code{NULL} si alguna de las
+dos escalas no permite auditar la cobertura.
 }
 \description{
 Cruza la cobertura de dos escalas (por ejemplo, antes y despues de refinar)
 y devuelve una tabla con lo que se gano y lo que se perdio, faceta a faceta.
+}
+\examples{
+antes <- semilla_demo
+antes$concepto$caracteristicas <- list(
+  Autoeficacia = c("confianza ante tareas", "persistencia"),
+  Organizacion = c("planificacion", "gestion del tiempo"),
+  Ansiedad     = c("bloqueo", "evitacion"))
+despues <- antes
+despues$items <- despues$items[-15, ]   # se retira el item de evitacion
+comparar_cobertura_facetas(antes, despues)
+
 }

@@ -17,14 +17,54 @@
 #' @param incluir_datos Incluir bloque demografico.
 #' @param datos_solicitados Vector de campos demograficos.
 #' @param instrucciones Texto custom; si NULL, autogenerado.
-#' @param archivo Ruta SIN extension. Se generaran:
-#'   \code{<archivo>_aplicable.docx} y \code{<archivo>_clave.docx}.
-#' @param formato Vector con: "md", "docx".
-#' @param idioma "es" o "en".
+#' @param archivo Ruta SIN extension (default \code{NULL}: no se escribe
+#'   ningun archivo y solo se devuelve el texto Markdown). Si se pasa, se
+#'   generan `<archivo>_aplicable` y `<archivo>_clave` en los
+#'   formatos pedidos.
+#' @param formato Vector con: "md", "docx" (este ultimo requiere
+#'   \pkg{officer} y \pkg{flextable}, o \pkg{rmarkdown}). Solo se usa si se
+#'   indica \code{archivo}.
+#' @param idioma "es" o "en". Si es \code{NULL} (default) se toma del objeto.
 #' @param verbose Mostrar progreso.
 #'
-#' @return Lista con dos elementos: \code{aplicable} y \code{clave}, cada
-#'   uno de clase \code{semilla_test_objetivo}.
+#' @return Lista de clase \code{c("semilla_test_objetivo_multi", "list")} con
+#'   dos elementos, \code{aplicable} y \code{clave}, cada uno de clase
+#'   \code{semilla_test_objetivo}: una lista con \code{nombre_test},
+#'   \code{texto_md} (la prueba en Markdown) y \code{archivos} (rutas
+#'   escritas; vacio si \code{archivo = NULL}).
+#'
+#' @examples
+#' p <- structure(list(
+#'   dominio = "psicometria introductoria",
+#'   items = data.frame(
+#'     n_item = 1:2, tema = c("Fiabilidad", "Validez"),
+#'     nivel_bloom = "Comprender", formato = "usual",
+#'     enunciado = c("Que estima el coeficiente alfa?",
+#'                   "Que evidencia aporta un analisis factorial confirmatorio?"),
+#'     instruccion_extra = NA_character_, stringsAsFactors = FALSE),
+#'   opciones = data.frame(
+#'     n_item = rep(1:2, each = 3), n_opcion = rep(1:3, 2),
+#'     etiqueta = rep(letters[1:3], 2),
+#'     texto_opcion = c("La consistencia interna de las puntuaciones",
+#'                      "La validez de criterio", "La dificultad del item",
+#'                      "Estructura interna", "Contenido",
+#'                      "Relacion con otras variables"),
+#'     es_correcta = c(TRUE, FALSE, FALSE, TRUE, FALSE, FALSE),
+#'     stringsAsFactors = FALSE),
+#'   emparejamientos = data.frame(), contextos = data.frame(),
+#'   idioma = "es", metadata = list(n_items = 2)),
+#'   class = c("semilla_prueba_objetiva", "list"))
+#'
+#' # Sin archivo: solo devuelve el Markdown
+#' pr <- ensamblar_prueba_objetiva(p, verbose = FALSE)
+#' cat(pr$clave$texto_md)
+#'
+#' # Con archivo en un directorio temporal (solo Markdown)
+#' f <- file.path(tempdir(), "prueba")
+#' pr2 <- ensamblar_prueba_objetiva(p, archivo = f, formato = "md",
+#'                                  verbose = FALSE)
+#' pr2
+#' unlink(c(pr2$aplicable$archivos, pr2$clave$archivos))
 #'
 #' @export
 ensamblar_prueba_objetiva <- function(
@@ -238,8 +278,8 @@ ensamblar_prueba_objetiva <- function(
       if (nrow(e_i) > 0) {
         # Desordenar respuestas para versión aplicable; en clave mostrar correspondencia
         if (!incluir_clave) {
-          set.seed(n)
-          orden <- sample(seq_len(nrow(e_i)))
+          # Barajado reproducible por item, sin usar el generador aleatorio
+          orden <- .barajado_fijo(nrow(e_i), n)
           respuestas_vis <- e_i$respuesta[orden]
         } else {
           respuestas_vis <- e_i$respuesta
@@ -514,8 +554,8 @@ ensamblar_prueba_objetiva <- function(
       e_i <- empar[empar$n_item == n, ]
       if (nrow(e_i) > 0) {
         if (!isTRUE(d$incluir_clave)) {
-          set.seed(n)
-          orden <- sample(seq_len(nrow(e_i)))
+          # Mismo barajado que el .md, sin alterar el RNG del usuario
+          orden <- .barajado_fijo(nrow(e_i), n)
           respuestas_vis <- e_i$respuesta[orden]
         } else {
           respuestas_vis <- e_i$respuesta
@@ -658,6 +698,34 @@ ensamblar_prueba_objetiva <- function(
 }
 
 
+#' @title Imprimir una prueba objetiva ensamblada
+#'
+#' @description Lista los archivos generados por
+#'   \code{\link{ensamblar_prueba_objetiva}}: los de la version aplicable y
+#'   los de la version con clave (o solo el nombre de la prueba, para una de
+#'   las dos versiones).
+#'
+#' @param x Objeto de clase \code{semilla_test_objetivo_multi} o
+#'   \code{semilla_test_objetivo}.
+#' @param ... No se usa; se mantiene por compatibilidad con
+#'   \code{\link[base]{print}}.
+#'
+#' @return Devuelve \code{x} de forma invisible; se llama por su efecto
+#'   (imprimir en la consola).
+#'
+#' @examples
+#' x <- structure(list(
+#'   aplicable = structure(list(nombre_test = "Prueba", texto_md = "",
+#'                              archivos = "prueba_aplicable.md"),
+#'                         class = c("semilla_test_objetivo", "list")),
+#'   clave = structure(list(nombre_test = "Prueba", texto_md = "",
+#'                          archivos = "prueba_clave.md"),
+#'                     class = c("semilla_test_objetivo", "list"))),
+#'   class = c("semilla_test_objetivo_multi", "list"))
+#' print(x)
+#' print(x$aplicable)
+#'
+#' @rdname semilla_test_objetivo-metodos
 #' @export
 print.semilla_test_objetivo_multi <- function(x, ...) {
   cat("\n")
@@ -672,6 +740,7 @@ print.semilla_test_objetivo_multi <- function(x, ...) {
   invisible(x)
 }
 
+#' @rdname semilla_test_objetivo-metodos
 #' @export
 print.semilla_test_objetivo <- function(x, ...) {
   cat("Test objetivo: ", x$nombre_test, "\n", sep = "")

@@ -7,8 +7,26 @@
 limpiar_cache(confirmar = TRUE)
 }
 \arguments{
-\item{confirmar}{Si TRUE (default), pide confirmacion}
+\item{confirmar}{Logico. Si \code{TRUE} (por defecto) y la sesion es
+interactiva, pide confirmacion (Enter) antes de borrar. En sesiones no
+interactivas se borra sin preguntar.}
+}
+\value{
+Numero entero de entradas eliminadas, de forma invisible, o
+\code{NULL} invisible si no hay directorio configurado o ya esta vacio.
+Se llama por su efecto.
 }
 \description{
-Elimina todas las entradas del cache actual.
+Elimina todas las entradas (\code{.rds}) del directorio de
+cache configurado en la opcion \code{SeMiLLa.cache_dir}.
+}
+\examples{
+old <- options(SeMiLLa.cache_dir = NULL, SeMiLLa.cache_enabled = NULL)
+d <- file.path(tempdir(), "semilla_cache_demo")
+habilitar_cache(d, verbose = FALSE)
+saveRDS(1:3, file.path(d, "demo.rds"))
+limpiar_cache(confirmar = FALSE)
+options(old)
+unlink(d, recursive = TRUE)
+
 }

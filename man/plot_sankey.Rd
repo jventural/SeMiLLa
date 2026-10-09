@@ -12,7 +12,11 @@ plot_sankey(x, titulo = NULL)
 \item{titulo}{Titulo del grafico (default: auto)}
 }
 \value{
-Objeto ggplot2
+Objeto de clase \code{ggplot} (ggplot2): un diagrama alluvial con
+el flujo de items de cada dimension teorica a su cluster, coloreado
+segun la clasificacion sea correcta o no. Si 'ggalluvial' no esta
+instalado devuelve, con un mensaje, un grafico de barras equivalente.
+Se dibuja al imprimirlo.
 }
 \description{
 Genera un diagrama de flujo (alluvial) mostrando como los items de cada dimension
@@ -20,9 +24,7 @@ teorica se asignan a los clusters semanticos. Los flujos se colorean segun si
 la clasificacion fue correcta (verde) o incorrecta (rojo).
 }
 \examples{
-\dontrun{
-prec <- precision_clasificacion(mi_escala)
+prec <- precision_clasificacion(semilla_demo, verbose = FALSE, seed = 1)
 plot_sankey(prec)
-}
 
 }

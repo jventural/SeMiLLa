@@ -10,7 +10,8 @@ precision_clasificacion(
   metodo = "kmeans",
   algoritmos = c("kmeans", "ward", "gmm"),
   n_replicas = 10,
-  verbose = TRUE
+  verbose = TRUE,
+  seed = NULL
 )
 }
 \arguments{
@@ -36,6 +37,14 @@ Voss et al., 2026). Las replicas usan submuestras aleatorias del 90 por ciento
 de los items para evaluar robustez. Solo aplica con \code{metodo = "ensemble"}.}
 
 \item{verbose}{Mostrar progreso en consola (default: TRUE)}
+
+\item{seed}{Semilla base (entero) o \code{NULL} (default). Con un entero,
+la particion de referencia usa \code{seed} y la replica \code{r} usa
+\code{seed + r} (tanto para el submuestreo como para el clusterizador),
+de modo que el resultado es reproducible; \code{seed = 2024} reproduce
+el comportamiento de versiones anteriores. Con \code{NULL} no se fija
+ninguna semilla y K-means, el submuestreo de replicas y los algoritmos
+estocasticos pueden variar entre corridas.}
 }
 \value{
 Lista de clase 'semilla_precision' con:
@@ -50,6 +59,14 @@ Lista de clase 'semilla_precision' con:
 \item \code{silhouette_por_item}: Silhouette de cada item (negativos = mal ubicados)
 \item \code{silhouette_por_cluster}: Silhouette promedio por cluster
 \item \code{items_silhouette_negativo}: Items con silhouette negativo (revisar)
+\item \code{evaluacion_precision}, \code{evaluacion_ari},
+\code{evaluacion_silhouette}: Etiquetas interpretativas de cada indice
+\item \code{n_clusters}, \code{metodo}: Argumentos usados
+\item \code{consenso}: data.frame con la proporcion de particiones en
+que cada item cae en el cluster de su dimension (solo con
+\code{metodo = "ensemble"}; \code{NULL} en otro caso)
+\item \code{clusters_componentes}: Lista, por algoritmo, de las
+particiones de cada replica (solo con \code{metodo = "ensemble"})
 }
 }
 \description{
@@ -69,15 +86,16 @@ SeMiLLa por defecto usa una version mas ligera con 3 algoritmos diversos
 via el argumento \code{algoritmos}.
 }
 \examples{
-\dontrun{
-prec <- precision_clasificacion(mi_escala)
-print(prec$precision_global)
-print(prec$precision_por_dimension)
+prec <- precision_clasificacion(semilla_demo, verbose = FALSE, seed = 1)
+prec$precision_global
+prec$precision_por_dimension
 
-# Consenso ensemble (Voss et al., 2026)
-prec_ens <- precision_clasificacion(mi_escala, metodo = "ensemble")
+# Consenso ensemble (Voss et al., 2026), version ligera
+prec_ens <- precision_clasificacion(semilla_demo, metodo = "ensemble",
+                                    algoritmos = c("kmeans", "ward"),
+                                    n_replicas = 3, verbose = FALSE,
+                                    seed = 1)
 prec_ens$consenso  # frecuencia con la que cada item agrupa con su dimension
-}
 
 }
 \references{

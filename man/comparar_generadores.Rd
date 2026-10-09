@@ -2,6 +2,7 @@
 % Please edit documentation in R/comparar_generadores.R
 \name{comparar_generadores}
 \alias{comparar_generadores}
+\alias{print.semilla_benchmark_generadores}
 \title{Comparar modelos LLM como generadores de items}
 \usage{
 comparar_generadores(
@@ -15,9 +16,11 @@ comparar_generadores(
   jueces = c("gpt-4.1-mini", "gpt-5-mini"),
   max_palabras = 14L,
   modelo_embeddings = "text-embedding-3-small",
-  seed = 2026,
+  seed = NULL,
   verbose = TRUE
 )
+
+\method{print}{semilla_benchmark_generadores}(x, ...)
 }
 \arguments{
 \item{concepto}{Nombre del constructo (cadena).}
@@ -47,18 +50,33 @@ de familias distintas a las comparadas o, al menos, cruzadas.}
 \item{modelo_embeddings}{Modelo de embeddings para las metricas
 semanticas (default \code{"text-embedding-3-small"}).}
 
-\item{seed}{Semilla (baraja el orden en que los jueces ven los conjuntos).}
+\item{seed}{Semilla (baraja el orden en que los jueces ven los conjuntos).
+Con \code{NULL} (por defecto) no se fija semilla y el orden, y por tanto
+el resultado, puede variar entre corridas.}
 
 \item{verbose}{Mostrar progreso.}
+
+\item{x}{Objeto de clase \code{semilla_benchmark_generadores}.}
+
+\item{...}{No se usa.}
 }
 \value{
-Objeto \code{semilla_benchmark_generadores} con:
+Objeto \code{semilla_benchmark_generadores} (lista, devuelta de
+forma invisible) con:
 \itemize{
-\item \code{tabla}: data.frame comparativo (una fila por modelo).
+\item \code{tabla}: data.frame comparativo con una fila por modelo y las
+columnas \code{modelo}, \code{n_items}, \code{valido}, \code{seg},
+\code{palabras_med}, \code{sobre_tope}, \code{muletillas},
+\code{separabilidad}, \code{clasif_loo}, \code{pares},
+\code{facetas} y \code{jueces} (nota media de los jueces, 1-10).
 \item \code{items}: lista de data.frames con los items generados por
 cada modelo (para inspeccion cualitativa y material suplementario).
+\item \code{detalles}: lista por modelo con las metricas intermedias
+(incluidas las notas de cada juez).
 \item \code{parametros}: condiciones del experimento (reproducibilidad).
 }
+El metodo \code{print()} devuelve \code{x} de forma invisible; se llama por
+su efecto.
 }
 \description{
 Genera el mismo conjunto de items (mismo constructo, dimensiones, reglas
@@ -86,6 +104,7 @@ conductual, diversidad y naturalidad (1-10). Usar jueces de familias
 distintas mitiga el sesgo de auto-preferencia documentado en jueces LLM.
 }
 \examples{
+# Requiere clave de API de OpenAI
 \dontrun{
 bm <- comparar_generadores(
   concepto = "autorregulacion del aprendizaje",

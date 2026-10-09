@@ -6,17 +6,20 @@
 #' orden recomendado de uso de las funciones, desde la configuracion
 #' inicial hasta el entregable final administrable.
 #'
-#' @param tipo "texto" (default, ASCII en consola) o "grafico"
-#'   (genera diagrama con DiagrammeR/ggplot2)
-#' @param archivo Si tipo = "grafico", nombre del archivo PNG (sin extension)
+#' @param tipo \code{"texto"} (por defecto: el flujo en ASCII, emitido como
+#'   mensaje) o \code{"grafico"} (diagrama con ggplot2).
+#' @param archivo Solo con \code{tipo = "grafico"}: ruta del archivo PNG
+#'   \strong{sin} extension. Si es \code{NULL} (por defecto), el diagrama se
+#'   dibuja en el dispositivo grafico activo y no se escribe nada en disco.
 #'
-#' @return Invisiblemente NULL (texto) u objeto ggplot (grafico).
+#' @return \code{NULL} de forma invisible; se llama por su efecto (mostrar el
+#'   flujo como mensaje, dibujar el diagrama o guardarlo en \code{archivo}).
 #'
 #' @examples
-#' \dontrun{
-#' flujo()                                    # texto ASCII en consola
-#' flujo(tipo = "grafico", archivo = "wf")    # PNG en disco
-#' }
+#' flujo()
+#' f <- file.path(tempdir(), "flujo_semilla")
+#' flujo(tipo = "grafico", archivo = f)
+#' unlink(paste0(f, ".png"))
 #'
 #' @export
 flujo <- function(tipo = "texto", archivo = NULL) {
@@ -36,73 +39,79 @@ flujo <- function(tipo = "texto", archivo = NULL) {
 #' @keywords internal
 .flujo_texto <- function() {
 
-  cat("\n")
-  cat(.linea("="), "\n")
-  cat(.color_verde("FLUJO DE TRABAJO SeMiLLa v2.0 (Manual de Usuario)"), "\n")
-  cat(.linea("="), "\n\n")
+  # El texto se acumula y se emite como un unico message() (suprimible con
+  # suppressMessages()), en lugar de escribirse con cat() en la consola.
+  out <- character()
+  emit <- function(..., sep = " ") out <<- c(out, paste(..., sep = sep))
+  on.exit(message(paste(out, collapse = ""), appendLF = FALSE), add = TRUE)
 
-  cat("  ", .color_amarillo("FASE I. ANTES DE EMPEZAR"), "\n", sep = "")
-  cat("    Paso 1.  Instalacion y configuracion\n")
-  cat("    Paso 2.  cache(action, path)              [cache de llamadas LLM]\n\n")
+  emit("\n")
+  emit(.linea("="), "\n")
+  emit(.color_verde("FLUJO DE TRABAJO SeMiLLa v2.0 (Manual de Usuario)"), "\n")
+  emit(.linea("="), "\n\n")
 
-  cat("  ", .color_verde("FASE II. CONSTRUCCION DE LA ESCALA"), "\n", sep = "")
-  cat("    Paso 3.  generar_items(tipo = ...)        [likert/historias/guttman/...]\n")
-  cat("    Paso 3b. semilla(fuente = 'usuario')      [salta LLM: el usuario sube items]\n")
-  cat("    Paso 4.  ver_items()                      [inspeccion]\n\n")
+  emit("  ", .color_amarillo("FASE I. ANTES DE EMPEZAR"), "\n", sep = "")
+  emit("    Paso 1.  Instalacion y configuracion\n")
+  emit("    Paso 2.  cache(action, path)              [cache de llamadas LLM]\n\n")
 
-  cat("  ", .color_azul("FASE III. ANALISIS SEMANTICO"), "\n", sep = "")
-  cat("    Paso 5.  obtener_embeddings()             [OpenAI text-embedding-3-small]\n")
-  cat("    Paso 6.  analizar_redundancia()           [pares con sim > 0.70]\n")
-  cat("    Paso 7.  precision_clasificacion(metodo='ensemble')  [Voss et al., 2026]\n")
-  cat("    Paso 8.  (retirado en 2.10.0: efa_regularizado() esta obsoleta)\n\n")
+  emit("  ", .color_verde("FASE II. CONSTRUCCION DE LA ESCALA"), "\n", sep = "")
+  emit("    Paso 3.  generar_items(tipo = ...)        [likert/historias/guttman/...]\n")
+  emit("    Paso 3b. semilla(fuente = 'usuario')      [salta LLM: el usuario sube items]\n")
+  emit("    Paso 4.  ver_items()                      [inspeccion]\n\n")
 
-  cat("  ", .color_amarillo("FASE IV. REFINAMIENTO"), "\n", sep = "")
-  cat("    Paso 9.  refinar_escala(criterio = 'ensemble')\n\n")
+  emit("  ", .color_azul("FASE III. ANALISIS SEMANTICO"), "\n", sep = "")
+  emit("    Paso 5.  obtener_embeddings()             [OpenAI text-embedding-3-small]\n")
+  emit("    Paso 6.  analizar_redundancia()           [pares con sim > 0.70]\n")
+  emit("    Paso 7.  precision_clasificacion(metodo='ensemble')  [Voss et al., 2026]\n")
+  emit("    Paso 8.  (retirado en 2.10.0: efa_regularizado() esta obsoleta)\n\n")
 
-  cat("  ", .color_azul("FASE V. EVALUACION PSICOMETRICA SIN DATOS"), "\n", sep = "")
-  cat("    Paso 10. validez_contenido()              [V de Aiken con LLM]\n")
-  cat("    Paso 11. auditar_redaccion_items()        [v2.0 - antes evaluar_calidad_items]\n")
-  cat("    Paso 12. fiabilidad_semantica()           [Spearman-Brown]\n")
-  cat("    Paso 13. discriminacion_semantica()       [unicidad por item]\n")
-  cat("    Paso 14. analizar_coherencia()            [intra vs inter-dim]\n")
-  cat("    Paso 15. validez_criterio_predicha()      [Fokkema et al., 2022]\n\n")
+  emit("  ", .color_amarillo("FASE IV. REFINAMIENTO"), "\n", sep = "")
+  emit("    Paso 9.  refinar_escala(criterio = 'ensemble')\n\n")
 
-  cat("  ", .color_amarillo("FASE V-B. COMPUERTA PRE-APLICACION (obligatoria antes de campo)"), "\n", sep = "")
-  cat("    Paso 15b. compuerta_pre_aplicacion()      [redaccion + deseabilidad + simulacion]\n")
-  cat("     Escenario previsto: LISTA PARA CAMPO / APLICAR CON CAUTELA / NO APLICAR TODAVIA\n")
-  cat("              semilla() la ejecuta automaticamente (compuerta = TRUE)\n")
-  cat("    Paso 15c. optimizar_para_campo()          [correccion automatica guiada]\n")
-  cat("              Poda facetas/pares -> regenera anti-halo -> re-pasa la compuerta\n")
-  cat("              semilla() la dispara si el veredicto es NO APLICAR (optimizar = TRUE)\n\n")
+  emit("  ", .color_azul("FASE V. EVALUACION PSICOMETRICA SIN DATOS"), "\n", sep = "")
+  emit("    Paso 10. validez_contenido()              [V de Aiken con LLM]\n")
+  emit("    Paso 11. auditar_redaccion_items()        [v2.0 - antes evaluar_calidad_items]\n")
+  emit("    Paso 12. fiabilidad_semantica()           [Spearman-Brown]\n")
+  emit("    Paso 13. discriminacion_semantica()       [unicidad por item]\n")
+  emit("    Paso 14. analizar_coherencia()            [intra vs inter-dim]\n")
+  emit("    Paso 15. validez_criterio_predicha()      [Fokkema et al., 2022]\n\n")
 
-  cat("  ", .color_verde("FASE VI. ENTREGABLE FINAL"), "\n", sep = "")
-  cat("    Paso 16. forma_corta(x, n_items)\n")
-  cat("    Paso 17. sugerir_escala_respuesta(x)\n")
-  cat("    Paso 18. ensamblar(tipo = ...)            [v2.0 dispatcher unificado]\n")
-  cat("    Paso 19. exportar_escala() / guardar() / cargar()\n\n")
+  emit("  ", .color_amarillo("FASE V-B. COMPUERTA PRE-APLICACION (obligatoria antes de campo)"), "\n", sep = "")
+  emit("    Paso 15b. compuerta_pre_aplicacion()      [redaccion + deseabilidad + simulacion]\n")
+  emit("     Escenario previsto: LISTA PARA CAMPO / APLICAR CON CAUTELA / NO APLICAR TODAVIA\n")
+  emit("              semilla() la ejecuta automaticamente (compuerta = TRUE)\n")
+  emit("    Paso 15c. optimizar_para_campo()          [correccion automatica guiada]\n")
+  emit("              Poda facetas/pares -> regenera anti-halo -> re-pasa la compuerta\n")
+  emit("              semilla() la dispara si el veredicto es NO APLICAR (optimizar = TRUE)\n\n")
 
-  cat("  ", .color_amarillo("FASE VII. ADAPTACION Y COMPARACION"), "\n", sep = "")
-  cat("    Paso 20. adaptar_transcultural()          [Grobelny et al., 2025]\n")
-  cat("    Paso 21. detectar_dif_semantico()         [Belzak, 2023]\n")
-  cat("    Paso 22. comparar_escalas()\n\n")
+  emit("  ", .color_verde("FASE VI. ENTREGABLE FINAL"), "\n", sep = "")
+  emit("    Paso 16. forma_corta(x, n_items)\n")
+  emit("    Paso 17. sugerir_escala_respuesta(x)\n")
+  emit("    Paso 18. ensamblar(tipo = ...)            [v2.0 dispatcher unificado]\n")
+  emit("    Paso 19. exportar_escala() / guardar() / cargar()\n\n")
 
-  cat("  ", .color_azul("FASE VIII. VISUALIZACION"), "\n", sep = "")
-  cat("    Paso 23. plot_*()                         [14 graficos disponibles]\n")
-  cat("             plot_coherencia(tipo='boxplot'/'violin')   [v2.0 dispatcher]\n\n")
+  emit("  ", .color_amarillo("FASE VII. ADAPTACION Y COMPARACION"), "\n", sep = "")
+  emit("    Paso 20. adaptar_transcultural()          [Grobelny et al., 2025]\n")
+  emit("    Paso 21. detectar_dif_semantico()         [Belzak, 2023]\n")
+  emit("    Paso 22. comparar_escalas()\n\n")
 
-  cat("  ", .color_verde("FASE IX. MODOS AVANZADOS"), "\n", sep = "")
-  cat("    Paso 24. banco_cat()                      [opcional, Gao et al., 2026]\n")
-  cat("    Paso 25. crear_plantilla_escala() / leer_escala()\n\n")
+  emit("  ", .color_azul("FASE VIII. VISUALIZACION"), "\n", sep = "")
+  emit("    Paso 23. plot_*()                         [14 graficos disponibles]\n")
+  emit("             plot_coherencia(tipo='boxplot'/'violin')   [v2.0 dispatcher]\n\n")
 
-  cat(.linea("-"), "\n")
-  cat(.color_verde("FUNCION PRINCIPAL:"), " semilla() ejecuta el pipeline central (Paso 3-19),\n")
-  cat("  incluida la COMPUERTA PRE-APLICACION (Paso 15b) al cierre.\n")
-  cat(.color_verde("FLUJO MINIMO (9 pasos):"), "\n")
-  cat("  cache('enable') -> generar_items() -> obtener_embeddings() ->\n")
-  cat("  precision_clasificacion(metodo='ensemble') -> refinar_escala() ->\n")
-  cat("  validez_contenido() -> compuerta_pre_aplicacion() -> forma_corta() ->\n")
-  cat("  ensamblar(tipo='likert')\n")
-  cat(.linea("="), "\n\n")
+  emit("  ", .color_verde("FASE IX. MODOS AVANZADOS"), "\n", sep = "")
+  emit("    Paso 24. banco_cat()                      [opcional, Gao et al., 2026]\n")
+  emit("    Paso 25. crear_plantilla_escala() / leer_escala()\n\n")
+
+  emit(.linea("-"), "\n")
+  emit(.color_verde("FUNCION PRINCIPAL:"), " semilla() ejecuta el pipeline central (Paso 3-19),\n")
+  emit("  incluida la COMPUERTA PRE-APLICACION (Paso 15b) al cierre.\n")
+  emit(.color_verde("FLUJO MINIMO (9 pasos):"), "\n")
+  emit("  cache('enable') -> generar_items() -> obtener_embeddings() ->\n")
+  emit("  precision_clasificacion(metodo='ensemble') -> refinar_escala() ->\n")
+  emit("  validez_contenido() -> compuerta_pre_aplicacion() -> forma_corta() ->\n")
+  emit("  ensamblar(tipo='likert')\n")
+  emit(.linea("="), "\n\n")
 }
 
 
@@ -180,7 +189,7 @@ flujo <- function(tipo = "texto", archivo = NULL) {
   if (!is.null(archivo)) {
     archivo_png <- paste0(archivo, ".png")
     ggplot2::ggsave(archivo_png, p, width = 9, height = 11, dpi = 150)
-    cat("  ", .color_check(), " Diagrama guardado: ", archivo_png, "\n", sep = "")
+    message("  ", .color_check(), " Diagrama guardado: ", archivo_png)
   } else {
     print(p)
   }
@@ -194,53 +203,56 @@ flujo <- function(tipo = "texto", archivo = NULL) {
 #' @description
 #' Muestra un resumen de todas las funciones disponibles.
 #'
-#' @export
 #' @noRd
 ayuda <- function() {
 
-  cat("\n")
-  cat(.linea("="), "\n")
-  cat(.color_verde("SeMiLLa - FUNCIONES DISPONIBLES"), "\n")
-  cat(.linea("="), "\n\n")
+  out <- character()
+  emit <- function(..., sep = " ") out <<- c(out, paste(..., sep = sep))
+  on.exit(message(paste(out, collapse = ""), appendLF = FALSE), add = TRUE)
 
-  cat(.color_azul("FUNCION PRINCIPAL:"), "\n")
-  cat("  semilla()            Pipeline completo: concepto -> escala validada\n\n")
+  emit("\n")
+  emit(.linea("="), "\n")
+  emit(.color_verde("SeMiLLa - FUNCIONES DISPONIBLES"), "\n")
+  emit(.linea("="), "\n\n")
 
-  cat(.color_azul("CONCEPTUALIZACION (Item Development):"), "\n")
-  cat("  generar_escala()     Genera items desde un constructo psicologico\n")
-  cat("  ver_items()          Muestra items como dataframe (factor, item)\n\n")
+  emit(.color_azul("FUNCION PRINCIPAL:"), "\n")
+  emit("  semilla()            Pipeline completo: concepto -> escala validada\n\n")
 
-  cat(.color_azul("REPRESENTACION (Semantic Representation):"), "\n")
-  cat("  obtener_embeddings() Calcula embeddings semanticos via OpenAI\n")
-  cat("  items_similares()    Encuentra items similares a uno dado\n")
-  cat("  analizar_redundancia() Detecta pares de items redundantes\n\n")
+  emit(.color_azul("CONCEPTUALIZACION (Item Development):"), "\n")
+  emit("  generar_escala()     Genera items desde un constructo psicologico\n")
+  emit("  ver_items()          Muestra items como dataframe (factor, item)\n\n")
 
-  cat(.color_azul("ESTRUCTURA (Clustering Semantico):"), "\n")
-  cat("  precision_clasificacion() Clustering y comparacion con teoria\n")
-  cat("  refinar_escala()     Refinamiento iterativo de items\n\n")
+  emit(.color_azul("REPRESENTACION (Semantic Representation):"), "\n")
+  emit("  obtener_embeddings() Calcula embeddings semanticos via OpenAI\n")
+  emit("  items_similares()    Encuentra items similares a uno dado\n")
+  emit("  analizar_redundancia() Detecta pares de items redundantes\n\n")
 
-  cat(.color_azul("EVALUACION (Validity & Reliability):"), "\n")
-  cat("  validez_contenido()  Evalua validez de contenido via LLM (CVI)\n")
-  cat("  fiabilidad_semantica() Calcula Alpha Semantico (Spearman-Brown)\n")
-  cat("  compuerta_pre_aplicacion() Auditoria integral antes de ir a campo\n\n")
+  emit(.color_azul("ESTRUCTURA (Clustering Semantico):"), "\n")
+  emit("  precision_clasificacion() Clustering y comparacion con teoria\n")
+  emit("  refinar_escala()     Refinamiento iterativo de items\n\n")
 
-  cat(.color_azul("INTEGRACION (Scale Integration):"), "\n")
-  cat("  exportar_escala()    Exporta items a Excel + archivo de info\n")
-  cat("  guardar()            Guarda objeto completo (.rds)\n")
-  cat("  cargar()             Carga objeto guardado\n\n")
+  emit(.color_azul("EVALUACION (Validity & Reliability):"), "\n")
+  emit("  validez_contenido()  Evalua validez de contenido via LLM (CVI)\n")
+  emit("  fiabilidad_semantica() Calcula Alpha Semantico (Spearman-Brown)\n")
+  emit("  compuerta_pre_aplicacion() Auditoria integral antes de ir a campo\n\n")
 
-  cat(.color_azul("UTILIDADES:"), "\n")
-  cat("  flujo()              Muestra el flujo de trabajo\n")
-  cat("  ayuda()              Esta ayuda\n\n")
+  emit(.color_azul("INTEGRACION (Scale Integration):"), "\n")
+  emit("  exportar_escala()    Exporta items a Excel + archivo de info\n")
+  emit("  guardar()            Guarda objeto completo (.rds)\n")
+  emit("  cargar()             Carga objeto guardado\n\n")
 
-  cat(.linea("="), "\n")
+  emit(.color_azul("UTILIDADES:"), "\n")
+  emit("  flujo()              Muestra el flujo de trabajo\n")
+  emit("  ayuda()              Esta ayuda\n\n")
 
-  cat(.color_azul("REFERENCIA METODOLOGICA:"), "\n")
-  cat("  Ferrando, P.J., Morales-Vives, F., Casas, J.M., & Muniz, J. (2025).\n")
-  cat("  Likert scales: A practical guide. Psicothema, 37(4), 1-15.\n\n")
+  emit(.linea("="), "\n")
 
-  cat("Usa ?nombre_funcion para ver la documentacion completa\n")
-  cat(.linea("="), "\n\n")
+  emit(.color_azul("REFERENCIA METODOLOGICA:"), "\n")
+  emit("  Ferrando, P.J., Morales-Vives, F., Casas, J.M., & Muniz, J. (2025).\n")
+  emit("  Likert scales: A practical guide. Psicothema, 37(4), 1-15.\n\n")
+
+  emit("Usa ?nombre_funcion para ver la documentacion completa\n")
+  emit(.linea("="), "\n\n")
 
   invisible(NULL)
 }

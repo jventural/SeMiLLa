@@ -23,7 +23,7 @@ generar_escala_forcedchoice(
   tolerancia_valencia = 1,
   idioma = c("es", "en", "pt"),
   modelo = "gpt-4.1-mini-2025-04-14",
-  seed = 2026,
+  seed = NULL,
   verbose = TRUE
 )
 }
@@ -66,6 +66,15 @@ El paquete \pkg{thurstonianIRT} requiere bloques de tamano consistente.}
 \item{metodo}{Metodo de eleccion: \code{"most_least"} (default, MOLE),
 \code{"ranking"} o \code{"single_choice"}.}
 
+\item{complejidad_linguistica}{Nivel de lectura de los items:
+\code{"minimo"}, \code{"basico"}, \code{"intermedio"} (default) o
+\code{"avanzado"}. Fija el tope de palabras cuando \code{max_palabras}
+es \code{NULL}.}
+
+\item{max_palabras}{Numero maximo de palabras por item. Si \code{NULL}, se
+deriva del nivel: minimo = 10, basico = 12, intermedio = 14,
+avanzado = 18.}
+
 \item{estimar_valencia}{Si TRUE (default), llama al LLM para estimar la
 valencia social de cada item.}
 
@@ -79,14 +88,18 @@ mismo bloque (default 1.0 en escala 1-5).}
 
 \item{modelo}{Modelo OpenAI.}
 
-\item{seed}{Semilla para reproducibilidad.}
+\item{seed}{Semilla para reproducibilidad: fija \code{set.seed()} para el
+armado de bloques y la opcion \code{SeMiLLa.seed} que se envia a la API
+(restaurada al salir). Por defecto \code{NULL}: el resultado puede variar
+entre corridas.}
 
 \item{verbose}{Mostrar progreso.}
 }
 \value{
-Objeto \code{semilla_forcedchoice} con:
+Objeto de clase \code{c("semilla_forcedchoice", "list")} con:
 \itemize{
-\item \code{dimensiones}, \code{config}.
+\item \code{concepto}, \code{dimensiones}, \code{idioma} y
+\code{config} (lista con la configuracion de los bloques).
 \item \code{item_bank}: data.frame con todos los items
 (item_id, dimension, polaridad_item, texto_item, valencia_social).
 \item \code{bloques}: data.frame en formato largo
@@ -94,7 +107,8 @@ Objeto \code{semilla_forcedchoice} con:
 \item \code{design_matrix}: matriz Thurstoniana (\code{thurstonianIRT}-ready).
 \item \code{validacion_balance}: tabla con metricas de calidad de
 los bloques (rango de valencia por bloque, dimensiones distintas).
-\item \code{metadata}.
+\item \code{metadata}: lista con \code{modelo}, \code{seed},
+\code{fecha}, \code{n_items_total} y \code{n_bloques}.
 }
 }
 \description{
@@ -141,10 +155,11 @@ response formats. En Irwing, P., Booth, T., & Hughes, D. J.
 }
 
 \examples{
+# Requiere una clave de API de OpenAI (los items los redacta el LLM).
 \dontrun{
 fc <- generar_escala_forcedchoice(
   concepto    = "Big Five (modelo de personalidad)",
-  api_key     = api_key,
+  api_key     = Sys.getenv("OPENAI_API_KEY"),
   dimensiones = c("Apertura", "Conciencia", "Extraversion",
                    "Amabilidad", "Estabilidad emocional"),
   n_items_por_dimension = 8,

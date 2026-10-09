@@ -7,12 +7,25 @@
 plot_estructura(x)
 }
 \arguments{
-\item{x}{Objeto semilla con EFA}
+\item{x}{Objeto semilla con estructura calculada en \code{$separabilidad}
+(p. ej. el resultado de \code{precision_clasificacion()}) o con el
+esquema heredado \code{$efa}.}
 }
 \value{
-Objeto ggplot2
+Objeto de clase \code{ggplot} (ggplot2): un diagrama alluvial
+con el flujo de items entre dimensiones teoricas y clusters (o factores)
+empiricos. Se dibuja al imprimirlo. Requiere el paquete 'ggalluvial'.
 }
 \description{
 Visualiza la correspondencia entre dimensiones teoricas y factores EFA
 usando un diagrama de flujo (alluvial/Sankey).
+}
+\examples{
+if (requireNamespace("ggalluvial", quietly = TRUE)) {
+  esc <- semilla_demo
+  esc$separabilidad <- precision_clasificacion(esc, verbose = FALSE,
+                                               seed = 1)
+  plot_estructura(esc)
+}
+
 }

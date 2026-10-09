@@ -68,6 +68,13 @@
 #' @param n_bloques Numero de bloques en el test final (default 15).
 #' @param metodo Metodo de eleccion: \code{"most_least"} (default, MOLE),
 #'   \code{"ranking"} o \code{"single_choice"}.
+#' @param complejidad_linguistica Nivel de lectura de los items:
+#'   \code{"minimo"}, \code{"basico"}, \code{"intermedio"} (default) o
+#'   \code{"avanzado"}. Fija el tope de palabras cuando \code{max_palabras}
+#'   es \code{NULL}.
+#' @param max_palabras Numero maximo de palabras por item. Si \code{NULL}, se
+#'   deriva del nivel: minimo = 10, basico = 12, intermedio = 14,
+#'   avanzado = 18.
 #' @param estimar_valencia Si TRUE (default), llama al LLM para estimar la
 #'   valencia social de cada item.
 #' @param balancear_valencia Si TRUE (default), arma bloques con items de
@@ -76,12 +83,16 @@
 #'   mismo bloque (default 1.0 en escala 1-5).
 #' @param idioma "es", "en", "pt".
 #' @param modelo Modelo OpenAI.
-#' @param seed Semilla para reproducibilidad.
+#' @param seed Semilla para reproducibilidad: fija \code{set.seed()} para el
+#'   armado de bloques y la opcion \code{SeMiLLa.seed} que se envia a la API
+#'   (restaurada al salir). Por defecto \code{NULL}: el resultado puede variar
+#'   entre corridas.
 #' @param verbose Mostrar progreso.
 #'
-#' @return Objeto \code{semilla_forcedchoice} con:
+#' @return Objeto de clase \code{c("semilla_forcedchoice", "list")} con:
 #' \itemize{
-#'   \item \code{dimensiones}, \code{config}.
+#'   \item \code{concepto}, \code{dimensiones}, \code{idioma} y
+#'         \code{config} (lista con la configuracion de los bloques).
 #'   \item \code{item_bank}: data.frame con todos los items
 #'         (item_id, dimension, polaridad_item, texto_item, valencia_social).
 #'   \item \code{bloques}: data.frame en formato largo
@@ -89,14 +100,16 @@
 #'   \item \code{design_matrix}: matriz Thurstoniana (\code{thurstonianIRT}-ready).
 #'   \item \code{validacion_balance}: tabla con metricas de calidad de
 #'         los bloques (rango de valencia por bloque, dimensiones distintas).
-#'   \item \code{metadata}.
+#'   \item \code{metadata}: lista con \code{modelo}, \code{seed},
+#'         \code{fecha}, \code{n_items_total} y \code{n_bloques}.
 #' }
 #'
 #' @examples
+#' # Requiere una clave de API de OpenAI (los items los redacta el LLM).
 #' \dontrun{
 #' fc <- generar_escala_forcedchoice(
 #'   concepto    = "Big Five (modelo de personalidad)",
-#'   api_key     = api_key,
+#'   api_key     = Sys.getenv("OPENAI_API_KEY"),
 #'   dimensiones = c("Apertura", "Conciencia", "Extraversion",
 #'                    "Amabilidad", "Estabilidad emocional"),
 #'   n_items_por_dimension = 8,
@@ -127,7 +140,7 @@ generar_escala_forcedchoice <- function(
   tolerancia_valencia     = 1.0,
   idioma                  = c("es", "en", "pt"),
   modelo                  = "gpt-4.1-mini-2025-04-14",
-  seed                    = 2026,
+  seed                    = NULL,
   verbose                 = TRUE
 ) {
 
@@ -163,7 +176,8 @@ generar_escala_forcedchoice <- function(
     descripcion_dimensiones <- dimensiones
 
   if (!is.null(seed)) {
-    options(SeMiLLa.seed = as.integer(seed))
+    .op_prev <- options(SeMiLLa.seed = as.integer(seed))
+    on.exit(options(.op_prev), add = TRUE)
     set.seed(seed)
   }
 
@@ -675,6 +689,37 @@ generar_escala_forcedchoice <- function(
 # Print method
 # =============================================================================
 
+#' @title Imprimir una escala forced-choice
+#'
+#' @description Muestra el constructo, las dimensiones, el tamano del pool,
+#'   la configuracion de los bloques, la tabla de validacion del balance y el
+#'   primer bloque como ejemplo.
+#'
+#' @param x Objeto de clase \code{semilla_forcedchoice}, devuelto por
+#'   \code{\link{generar_escala_forcedchoice}}.
+#' @param ... No se usa; se mantiene por compatibilidad con
+#'   \code{\link[base]{print}}.
+#'
+#' @return Devuelve \code{x} de forma invisible; se llama por su efecto
+#'   (imprimir en la consola).
+#'
+#' @examples
+#' fc <- structure(list(
+#'   concepto    = "Personalidad",
+#'   dimensiones = c("Apertura", "Responsabilidad"),
+#'   config      = list(n_items_por_dimension = 1, n_bloques = 1,
+#'                      block_size = 2, metodo = "most_least"),
+#'   item_bank   = data.frame(item_id = 1:2),
+#'   bloques     = data.frame(
+#'     block_id = 1, dimension = c("Apertura", "Responsabilidad"),
+#'     polo_item = c("positivo", "negativo"), valencia_social = c(3.5, 3.4),
+#'     texto_item = c("Disfruto las ideas nuevas.",
+#'                    "Suelo postergar mis tareas.")),
+#'   design_matrix = data.frame(block = 1, i1 = 1, i2 = 2),
+#'   validacion_balance = data.frame(block_id = 1, rango_valencia = 0.1)),
+#'   class = c("semilla_forcedchoice", "list"))
+#' print(fc)
+#'
 #' @export
 print.semilla_forcedchoice <- function(x, ...) {
   cat("\n")

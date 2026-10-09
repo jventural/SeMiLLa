@@ -10,7 +10,10 @@ plot_scree(x)
 \item{x}{Objeto semilla o semilla_efa}
 }
 \value{
-Objeto ggplot2
+Objeto de clase \code{ggplot} (ggplot2): los autovalores de la
+matriz frente a los de parallel analysis, con una linea vertical en el
+numero de factores sugerido. Se dibuja al imprimirlo. Emite siempre un
+aviso de obsolescencia.
 }
 \description{
 \strong{Obsoleta desde 2.10.0; emite un aviso.} Aplica parallel analysis
@@ -18,4 +21,9 @@ a la matriz de similitud coseno entre embeddings con un n = 500 supuesto.
 Esa matriz no es una matriz de correlaciones de respuestas, asi que el
 grafico no indica cuantos factores tendra la escala. Use
 \code{\link{precision_clasificacion}} con \code{metodo = "ensemble"}.
+}
+\examples{
+p <- suppressWarnings(plot_scree(semilla_demo))
+p
+
 }

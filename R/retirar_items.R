@@ -47,18 +47,30 @@
 #' @param verbose Si \code{TRUE} (defecto), informa de lo retirado y de lo que
 #'   queda.
 #'
-#' @return El objeto de entrada con menos items, con \code{$embeddings} y
-#'   \code{$similitud} recortados en el mismo orden, \code{$separabilidad} a \code{NULL} y
-#'   la compuerta marcada como caduca. Ademas, el atributo
-#'   \code{"items_retirados"} acumula los identificadores retirados.
+#' @return El objeto de entrada (misma clase, p. ej. \code{semilla}) con menos
+#'   items: \code{$items} sin las filas retiradas, \code{$embeddings} y
+#'   \code{$similitud} recortados en el mismo orden, \code{$separabilidad} (y su
+#'   alias \code{$efa}) a \code{NULL} y la compuerta, si existe, marcada como
+#'   caduca. Ademas, el atributo \code{"items_retirados"} (vector de
+#'   caracteres) acumula los identificadores retirados.
 #'
 #' @examples
+#' # Retirar el item 2 (casi gemelo del 1) por codigo y el 7 por posicion
+#' escala2 <- retirar_items(semilla_demo, c("Item_2", 7))
+#' nrow(escala2$items)
+#' dim(escala2$similitud)
+#' attr(escala2, "items_retirados")
+#'
+#' # Flujo completo tras medir el consenso (requiere clave de API: llama a un
+#' # LLM)
 #' \dontrun{
-#' est <- estructura_por_consenso(escala, api_key = Sys.getenv("OPENAI_API_KEY"))
+#' est <- estructura_por_consenso(semilla_demo,
+#'                                api_key = Sys.getenv("OPENAI_API_KEY"))
 #' bajos <- est$consenso$Codigo[est$consenso$Consenso < 0.667]
-#' escala2 <- retirar_items(escala, bajos)
+#' escala2 <- retirar_items(semilla_demo, bajos)
 #' # y se vuelve a medir, porque lo anterior ya no la describe:
-#' est2 <- estructura_por_consenso(escala2, api_key = Sys.getenv("OPENAI_API_KEY"))
+#' est2 <- estructura_por_consenso(escala2,
+#'                                 api_key = Sys.getenv("OPENAI_API_KEY"))
 #' }
 #'
 #' @seealso \code{\link{estructura_por_consenso}}, \code{\link{forma_corta}}

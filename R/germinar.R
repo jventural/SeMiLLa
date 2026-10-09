@@ -10,11 +10,13 @@
 #'        "text-embedding-3-large", o "text-embedding-ada-002"
 #' @param verbose Mostrar progreso
 #'
-#' @return Objeto de clase 'semilla_embeddings' con:
+#' @return Objeto de clase \code{semilla_embeddings} (lista) con:
 #' \itemize{
 #'   \item \code{embeddings}: Matriz de embeddings (items x dimensiones)
 #'   \item \code{items}: Dataframe de items
-#'   \item \code{similitud}: Matriz de similitud coseno
+#'   \item \code{similitud}: Matriz de similitud coseno (items x items)
+#'   \item \code{metadata}: lista con \code{n_items}, \code{modelo},
+#'         \code{dimensiones} y \code{fecha}
 #' }
 #'
 #' @details
@@ -26,12 +28,11 @@
 #' optimizados para tareas de similitud semantica.
 #'
 #' @examples
+#' # Requiere clave de API (llama al servicio de embeddings).
 #' \dontrun{
-#' # Calcular embeddings
-#' emb <- obtener_embeddings(items_generados, api_key = Sys.getenv("OPENAI_API_KEY"))
-#'
-#' # Ver matriz de similitud
-#' View(emb$similitud)
+#' emb <- obtener_embeddings(semilla_demo$items,
+#'                           api_key = Sys.getenv("OPENAI_API_KEY"))
+#' round(emb$similitud[1:5, 1:5], 2)
 #' }
 #'
 #' @references
@@ -231,17 +232,21 @@ obtener_embeddings <- function(items,
 #' @param embeddings Objeto semilla_embeddings o semilla
 #' @param item Numero del item o texto
 #' @param top Numero de items similares (default: 5)
+#' @param verbose Logico. Si \code{TRUE} (por defecto) muestra en consola el
+#'   item de referencia y los mas parecidos.
 #'
-#' @return Dataframe con items similares
+#' @return Data.frame (invisible) con una fila por item similar y columnas
+#'   \code{item_num} (posicion del item), \code{factor} (dimension),
+#'   \code{item} (texto) y \code{similitud} (coseno con el item de
+#'   referencia), ordenado de mayor a menor similitud.
 #'
 #' @examples
-#' \dontrun{
-#' # Items similares al item 1
-#' items_similares(emb, item = 1, top = 5)
-#' }
+#' # semilla_demo trae embeddings sinteticos: no requiere clave de API.
+#' sim <- items_similares(semilla_demo, item = 1, top = 3)
+#' sim
 #'
 #' @export
-items_similares <- function(embeddings, item, top = 5) {
+items_similares <- function(embeddings, item, top = 5, verbose = TRUE) {
 
   # Extraer embeddings segun tipo
   if (inherits(embeddings, "semilla")) {
@@ -279,19 +284,21 @@ items_similares <- function(embeddings, item, top = 5) {
   )
 
   # Mostrar
-  cat("\n", .color_verde("Item de referencia"), " (#", idx, "):\n", sep = "")
-  cat("  [", emb$items$dimension[idx], "] ", emb$items$item[idx], "\n\n", sep = "")
-  cat(.color_verde("Items mas similares:"), "\n")
-  cat(.linea("-"), "\n")
+  if (verbose) {
+    cat("\n", .color_verde("Item de referencia"), " (#", idx, "):\n", sep = "")
+    cat("  [", emb$items$dimension[idx], "] ", emb$items$item[idx], "\n\n", sep = "")
+    cat(.color_verde("Items mas similares:"), "\n")
+    cat(.linea("-"), "\n")
 
-  for (i in 1:nrow(resultado)) {
-    cat(sprintf("  #%d (%.1f%%) [%s] %s\n",
-                resultado$item_num[i],
-                resultado$similitud[i] * 100,
-                resultado$factor[i],
-                resultado$item[i]))
+    for (i in 1:nrow(resultado)) {
+      cat(sprintf("  #%d (%.1f%%) [%s] %s\n",
+                  resultado$item_num[i],
+                  resultado$similitud[i] * 100,
+                  resultado$factor[i],
+                  resultado$item[i]))
+    }
+    cat("\n")
   }
-  cat("\n")
 
   invisible(resultado)
 }
@@ -305,16 +312,30 @@ items_similares <- function(embeddings, item, top = 5) {
 #' @param embeddings Objeto semilla_embeddings o semilla
 #' @param umbral Umbral de similitud. Default \code{"auto"} (v2.7.0):
 #'   cuantil .95 de las similitudes de la propia escala, acotado a
-#'   [0.70, 0.85]. Calibrado con dos escalas reales (n=280): un umbral FIJO
-#'   no sirve — 0.85 no capturo ninguna parafrasis danina en PM (vivian en
+#'   `[0.62, 0.70]` (la misma calibracion que \code{auditar_redundancia()}).
+#'   Calibrado con dos escalas reales (n=280): un umbral FIJO
+#'   no sirve: 0.85 no capturo ninguna parafrasis danina en PM (vivian en
 #'   .56-.78) y 0.70 sobre-alarmaba en ACO (actitud hacia un objeto unico,
 #'   linea base de similitud alta). Puede fijarse un numero. Para clusters
 #'   de faceta repetida use \code{\link{auditar_redundancia}}.
 #'
-#' @return Dataframe con pares redundantes
+#' @param verbose Logico. Si \code{TRUE} (por defecto) muestra en consola un
+#'   resumen de los pares redundantes.
+#'
+#' @return Data.frame (invisible) con una fila por par redundante y columnas
+#'   \code{item1_num}, \code{item1}, \code{dim1}, \code{item2_num},
+#'   \code{item2}, \code{dim2} y \code{similitud} (coseno), ordenado de mayor
+#'   a menor similitud. Vacio si no hay pares sobre el umbral. El umbral
+#'   usado se guarda en el atributo \code{"umbral"}.
+#'
+#' @examples
+#' # semilla_demo trae embeddings sinteticos: no requiere clave de API.
+#' red <- analizar_redundancia(semilla_demo)
+#' red[, c("item1_num", "item2_num", "similitud")]
+#' attr(red, "umbral")
 #'
 #' @export
-analizar_redundancia <- function(embeddings, umbral = "auto") {
+analizar_redundancia <- function(embeddings, umbral = "auto", verbose = TRUE) {
 
   # Extraer embeddings segun tipo
   if (inherits(embeddings, "semilla")) {
@@ -382,23 +403,23 @@ analizar_redundancia <- function(embeddings, umbral = "auto") {
 
   # v2.9.31: redondeado. Con el umbral fijo salia "70%"; con el adaptativo
   # imprimia "63.20027%".
-  cat("
-", .color_verde("ANALISIS DE REDUNDANCIA"),
-      sprintf(" (umbral: %.0f%%)
-", umbral * 100), sep = "")
-  cat(.linea("-"), "\n")
+  if (verbose) {
+    cat("\n", .color_verde("ANALISIS DE REDUNDANCIA"),
+        sprintf(" (umbral: %.0f%%)\n", umbral * 100), sep = "")
+    cat(.linea("-"), "\n")
 
-  if (nrow(redundantes) == 0) {
-    cat("No se encontraron items redundantes.\n\n")
-  } else {
-    cat("Pares redundantes: ", nrow(redundantes), "\n\n", sep = "")
-    for (i in 1:min(5, nrow(redundantes))) {
-      cat(sprintf("  %.1f%%: #%d vs #%d\n",
-                  redundantes$similitud[i] * 100,
-                  redundantes$item1_num[i],
-                  redundantes$item2_num[i]))
+    if (nrow(redundantes) == 0) {
+      cat("No se encontraron items redundantes.\n\n")
+    } else {
+      cat("Pares redundantes: ", nrow(redundantes), "\n\n", sep = "")
+      for (i in 1:min(5, nrow(redundantes))) {
+        cat(sprintf("  %.1f%%: #%d vs #%d\n",
+                    redundantes$similitud[i] * 100,
+                    redundantes$item1_num[i],
+                    redundantes$item2_num[i]))
+      }
+      cat("\n")
     }
-    cat("\n")
   }
 
   # Guardar el umbral usado para que plot_redundancia() pueda anotarlo

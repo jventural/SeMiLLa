@@ -38,20 +38,27 @@
 #' @param umbral_senales Numero minimo de tipos de senal (accion, escenario,
 #'   interlocutor) para marcar el item como ilustrable (default 2).
 #' @param verbose Mostrar resumen.
+#' @param x Objeto de clase \code{semilla_deteccion_ilustracion}.
+#' @param ... En el metodo \code{print()}, se pasa a
+#'   \code{print.data.frame()} cuando el objeto ya no tiene las columnas
+#'   esperadas; si no, no se usa.
 #'
-#' @return Data.frame de clase \code{semilla_deteccion_ilustracion} con
-#'   columnas: \code{n_item}, \code{dimension}, \code{item},
-#'   \code{necesita_ilustracion}, \code{criterio}, \code{gatillos}.
+#' @return Data.frame de clase \code{semilla_deteccion_ilustracion}, con una
+#'   fila por item y las columnas \code{n_item} (numero del item),
+#'   \code{dimension}, \code{item} (texto), \code{necesita_ilustracion}
+#'   (logico), \code{criterio} (regla que decidio) y \code{gatillos} (raices
+#'   lexicas encontradas, o \code{NA}). El metodo \code{print()} devuelve
+#'   \code{x} de forma invisible; se llama por su efecto.
 #'
 #' @examples
-#' \dontrun{
-#' det <- detectar_necesidad_ilustracion(mi_escala)
-#' subset(det, necesita_ilustracion)
-#'
-#' # Ilustrar solo los items detectados
-#' seleccion <- mi_escala$items[det$necesita_ilustracion, ]
-#' p <- prompts_ilustracion(seleccion, api_key = api_key)
-#' }
+#' items <- data.frame(
+#'   dimension = c("Social", "Social", "Autoestima"),
+#'   item = c("Juego con mis amigos en el recreo",
+#'            "Comparto mi comida con mis companeros en el aula",
+#'            "Pienso que soy una buena persona"))
+#' det <- detectar_necesidad_ilustracion(items)
+#' det
+#' det$necesita_ilustracion
 #'
 #' @seealso \code{prompts_ilustracion()}
 #'
@@ -174,7 +181,7 @@ detectar_necesidad_ilustracion <- function(escala,
 #' @keywords internal
 .normalizar_texto_deteccion <- function(s) {
   s <- tolower(as.character(s))
-  chartr("áéíóúüñ",
+  chartr("\u00e1\u00e9\u00ed\u00f3\u00fa\u00fc\u00f1",
          "aeiouun", s)
 }
 
@@ -240,6 +247,7 @@ detectar_necesidad_ilustracion <- function(escala,
 # Print method
 # =============================================================================
 
+#' @rdname detectar_necesidad_ilustracion
 #' @export
 print.semilla_deteccion_ilustracion <- function(x, ...) {
   # Si el usuario subseteo columnas, degradar al print de data.frame

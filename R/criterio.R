@@ -28,15 +28,30 @@
 #'   detecta segun la naturaleza de \code{criterio}.
 #' @param alpha Mezcla L1/L2 elastic-net (1 = lasso, 0 = ridge).
 #' @param folds Numero de folds para CV (default: 10).
-#' @param verbose Mostrar progreso.
+#' @param verbose Si \code{TRUE}, imprime en consola el progreso y el
+#'   resumen.
 #'
 #' @return Lista de clase \code{semilla_criterio} con:
 #' \itemize{
-#'   \item \code{r_cv}: correlacion (o AUC) validada por CV.
-#'   \item \code{coeficientes}: peso por item.
-#'   \item \code{items_clave}: items con mayor contribucion absoluta.
-#'   \item \code{r2_cv}, \code{lambda_optimo}, \code{tipo}.
+#'   \item \code{r_cv}: correlacion (o AUC, si el criterio es binario)
+#'     entre lo predicho y el criterio.
+#'   \item \code{r2_cv}: cuadrado de \code{r_cv} (aproximado).
+#'   \item \code{coeficientes}: vector numerico de pesos (uno por dimension
+#'     del embedding en la modalidad item-level; uno por item en la
+#'     modalidad sujeto-level).
+#'   \item \code{items_clave}: \code{data.frame} con \code{Codigo},
+#'     \code{Item}, \code{Dimension} y \code{Contribucion} (item-level) o
+#'     \code{Peso} (sujeto-level), ordenado de mayor a menor contribucion
+#'     absoluta.
+#'   \item \code{lambda_optimo}: penalizacion elegida (0.1 fijo sin
+#'     \code{glmnet}).
+#'   \item \code{alpha}: mezcla elastic-net usada.
+#'   \item \code{tipo}: \code{"lineal"} o \code{"logistico"}.
+#'   \item \code{modo}: \code{"item_level"} o \code{"sujeto_level"}.
+#'   \item \code{glmnet_disponible}: \code{TRUE} si se uso \code{glmnet}.
 #' }
+#' El metodo \code{print()} devuelve \code{x} de forma invisible; se llama
+#' por su efecto.
 #'
 #' @details
 #' Replica el hallazgo de Fokkema et al. (2022) de que la regresion
@@ -46,16 +61,22 @@
 #' implementada en base R.
 #'
 #' @examples
-#' \dontrun{
-#' # Modalidad item-level (rating de expertos sobre cada item)
-#' valoraciones <- data.frame(numero = 1:n, relevancia = runif(n, 0, 1))
-#' vc <- validez_criterio_predicha(mi_escala, criterio = valoraciones)
+#' set.seed(1)
+#' n <- nrow(semilla_demo$items)
 #'
-#' # Modalidad sujeto-level (respuestas + criterio empirico)
-#' vc <- validez_criterio_predicha(mi_escala,
-#'                                 criterio = rendimiento,
-#'                                 respuestas = matriz_respuestas)
-#' }
+#' # Modalidad item-level (rating de expertos sobre cada item)
+#' valoraciones <- data.frame(numero = seq_len(n), relevancia = runif(n))
+#' vc <- validez_criterio_predicha(semilla_demo, criterio = valoraciones,
+#'                                 folds = 5, verbose = FALSE)
+#' vc
+#'
+#' # Modalidad sujeto-level (respuestas simuladas + criterio empirico)
+#' respuestas <- matrix(sample(1:5, 100 * n, replace = TRUE), ncol = n)
+#' rendimiento <- rowSums(respuestas) + rnorm(100, sd = 5)
+#' vc2 <- validez_criterio_predicha(semilla_demo, criterio = rendimiento,
+#'                                  respuestas = respuestas, folds = 5,
+#'                                  verbose = FALSE)
+#' head(vc2$items_clave)
 #'
 #' @references
 #' Fokkema, M., Iliescu, D., Greiff, S., & Ziegler, M. (2022). Machine
@@ -200,6 +221,7 @@ validez_criterio_predicha <- function(x,
 }
 
 #' @keywords internal
+#' @noRd
 .auc_simple <- function(pred, y) {
   y <- as.numeric(as.factor(y)) - 1
   ord <- order(pred, decreasing = TRUE)
@@ -210,6 +232,8 @@ validez_criterio_predicha <- function(x,
   (sum(ranks[y == 1]) - n_pos * (n_pos + 1) / 2) / (n_pos * n_neg)
 }
 
+#' @rdname validez_criterio_predicha
+#' @param ... No se usa.
 #' @export
 print.semilla_criterio <- function(x, ...) {
   cat("Validez de Criterio Predicha SeMiLLa\n")

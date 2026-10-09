@@ -9,16 +9,22 @@ coherencia_dimensional(x, verbose = TRUE)
 \arguments{
 \item{x}{Objeto \code{semilla} o lista con \code{similitud} e \code{items}}
 
-\item{verbose}{Mostrar progreso}
+\item{verbose}{Si \code{TRUE}, imprime en consola el resumen por dimension.}
 }
 \value{
-Igual que \code{\link{omega_semantico}}.
+Igual que \code{\link{omega_semantico}}: \code{data.frame} con una
+fila por dimension y las columnas \code{dimension}, \code{n_items},
+\code{omega_semantico}, \code{alpha_semantico}, \code{lambda_promedio} y
+\code{heterogeneidad}.
 }
 \description{
 Alias descriptivo de \code{\link{omega_semantico}}. Calcula la cohesion
 semantica tipo omega de cada dimension sobre la matriz de similitud coseno.
 Es un proxy pre-empirico de consistencia (geometria del texto), no una
 estimacion de fiabilidad poblacional.
+}
+\examples{
+coherencia_dimensional(semilla_demo, verbose = FALSE)
 }
 \seealso{
 \code{\link{omega_semantico}}, \code{\link{auditar_redundancia}}

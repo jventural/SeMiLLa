@@ -27,7 +27,10 @@ con al menos las columnas \code{Dimension} y \code{Consenso} (y opcional
 \item{mostrar_valores}{Si TRUE, anota el valor de consenso junto a cada punto.}
 }
 \value{
-Objeto ggplot2
+Objeto de clase \code{ggplot} (ggplot2): un baston por item con
+su consenso (0 a 1), agrupado por dimension, con los items bajo
+\code{umbral_consenso} resaltados y una linea en el umbral. Se dibuja al
+imprimirlo.
 }
 \description{
 Grafico lollipop que muestra, para cada item, el grado de consenso (0 a 1)
@@ -40,14 +43,15 @@ cambia el objeto de precision que se le pasa. Es la version "por item" del
 diagrama \code{\link{plot_sankey}} (que muestra el flujo global).
 }
 \examples{
-\dontrun{
-pr <- precision_clasificacion(mi_escala, metodo = "ensemble")
-plot_consenso(pr)                                  # version sin refinar
+pr <- precision_clasificacion(semilla_demo, metodo = "ensemble",
+                              algoritmos = c("kmeans", "ward"),
+                              n_replicas = 3, verbose = FALSE, seed = 1)
+plot_consenso(pr)
 
-ref <- refinar_escala(mi_escala, api_key = api)
-pr2 <- precision_clasificacion(ref$escala_final, metodo = "ensemble")
-plot_consenso(pr2, titulo = "Consenso por item (refinado)")
-}
+# Tambien acepta un data.frame con Dimension y Consenso
+df <- data.frame(Dimension = rep(c("A", "B"), each = 3),
+                 Consenso = c(1, 0.9, 0.5, 1, 0.8, 0.6))
+plot_consenso(df, titulo = "Consenso por item")
 
 }
 \seealso{

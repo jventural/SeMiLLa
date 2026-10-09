@@ -10,8 +10,13 @@ balance_optimizacion(g0, g1)
 \item{g0, g1}{Objetos \code{semilla_compuerta} (antes y despues).}
 }
 \value{
-\code{data.frame} con indicador, antes, despues y sentido del cambio
-(\code{"mejora"}, \code{"empeora"}, \code{"igual"} o \code{"cambio"}).
+\code{data.frame} con una fila por indicador (\code{gemelos},
+\code{facetas}, \code{pares}, \code{desea_intra}, \code{desea_entre},
+\code{prob_limpia}, \code{phi}) y las columnas \code{indicador},
+\code{antes}, \code{despues} (valores numericos) y \code{cambio}, con el
+sentido del cambio: \code{"mejora"}, \code{"empeora"}, \code{"igual"},
+\code{"cambio"} (indicador sin direccion deseable) o una raya si falta
+alguno de los dos valores.
 }
 \description{
 Devuelve que mejoro y que empeoro entre dos ejecuciones de
@@ -20,6 +25,20 @@ deseabilidad intra y entre dimensiones, probabilidad de estructura limpia y
 |Phi|. Es la tabla que \code{\link{optimizar_para_campo}} imprime al
 terminar, expuesta para poder compararla en cualquier otro punto del flujo
 (por ejemplo antes y despues del refinamiento).
+}
+\examples{
+# Dos compuertas minimas construidas a mano (sin API)
+g0 <- structure(list(
+  redaccion = list(pares_redundantes = data.frame(i = 1:3, j = 4:6)),
+  deseabilidad = list(sd_intra_dim = 0.40, sd_entre_dim = 0.10),
+  estructura = list(prob_limpia = 0.55, phi_med = 0.60)),
+  class = "semilla_compuerta")
+g1 <- structure(list(
+  redaccion = list(pares_redundantes = data.frame(i = 1, j = 4)),
+  deseabilidad = list(sd_intra_dim = 0.25, sd_entre_dim = 0.12),
+  estructura = list(prob_limpia = 0.80, phi_med = 0.50)),
+  class = "semilla_compuerta")
+balance_optimizacion(g0, g1)
 }
 \seealso{
 \code{\link{compuerta_pre_aplicacion}}, \code{\link{optimizar_para_campo}}

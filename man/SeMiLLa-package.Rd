@@ -4,9 +4,9 @@
 \name{SeMiLLa-package}
 \alias{SeMiLLa}
 \alias{SeMiLLa-package}
-\title{SeMiLLa: SEmantic Measurement of Items via LLM Assistance}
+\title{SeMiLLa: Drafting and Auditing Psychometric Items with Large Language Models}
 \description{
-Automatic generation of psychometric scale items from psychological constructs using Large Language Models (LLMs). SeMiLLa searches for scientific information about a concept, extracts theoretical dimensions and attributes, generates high-quality items, calculates semantic embeddings, and performs Exploratory Factor Analysis (EFA) to validate the factorial structure. The package implements a complete workflow: from planting a concept (sembrar) to harvesting a validated scale (cosechar).
+Drafts psychometric scale items from a psychological construct with Large Language Models (LLMs) and audits them before any data are collected. It derives a working definition and dimensions from the model's knowledge, from user input or from 'PubMed' and 'Semantic Scholar' abstracts; writes items; obtains text embeddings; and checks whether items of the same dimension group together by ensemble clustering of those embeddings (semantic separability, after Voss, Wu, Javalagi and Kell (2026) \doi{10.1177/00131644261430762}; not factor analysis of responses). A pre-administration gate simulates ordinal responses under stated assumptions about loadings, factor correlations and social desirability, and simulated LLM judges rate content validity with Aiken's V (Aiken, 1985 \doi{10.1177/0013164485451012}) and the score interval of Penfield and Giacobbi (2004) \doi{10.1207/s15327841mpee0804_3}. These checks describe the wording, not the behaviour of real respondents, and do not replace a field study.
 }
 \seealso{
 Useful links:

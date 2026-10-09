@@ -43,12 +43,26 @@
 #'   encima se aborta con error (evita diagnosticos optimistas tras un fallo de
 #'   API). Los pocos items no calificados se imputan a 0.5 con warning.
 #' @param seed Semilla opcional para el barajado de items (reproducibilidad del
-#'   orden; la respuesta del LLM sigue siendo estocastica).
+#'   orden; la respuesta del LLM sigue siendo estocastica). Con \code{NULL}
+#'   (default) no se fija semilla y el orden puede variar entre corridas.
 #' @param verbose Logico; imprime resumen y advertencia.
-#' @return Lista con \code{deseabilidad} (vector 0-1 por item), \code{por_dimension},
-#'   \code{sd_entre_dim}, \code{sd_intra_dim}, \code{alerta_intra},
-#'   \code{estabilidad} (correlacion media entre pasadas), \code{n_imputados},
-#'   \code{uniforme} (logico), \code{riesgo_halo} y \code{mensaje}.
+#' @return Lista (devuelta de forma invisible) con \code{deseabilidad} (vector
+#'   numerico 0-1, un valor por item), \code{por_dimension} (media por
+#'   dimension), \code{sd_entre_dim} y \code{sd_intra_dim} (DE entre y dentro
+#'   de dimensiones), \code{alerta_intra} (logico), \code{estabilidad}
+#'   (correlacion media entre pasadas), \code{n_imputados} (items imputados a
+#'   0.5), \code{uniforme} (logico), \code{riesgo_halo} (logico),
+#'   \code{mensaje} (diagnostico en texto) y \code{pasadas} (matriz items x
+#'   pasadas con las calificaciones individuales).
+#' @examples
+#' # Requiere una clave de API de OpenAI (el juez es un LLM).
+#' \dontrun{
+#' d <- calificar_deseabilidad(semilla_demo,
+#'                             api_key = Sys.getenv("OPENAI_API_KEY"),
+#'                             n_pasadas = 2, seed = 2026)
+#' d$por_dimension
+#' d$mensaje
+#' }
 #' @export
 calificar_deseabilidad <- function(x, api_key = Sys.getenv("OPENAI_API_KEY"),
                                     modelo = "gpt-4.1-mini", poblacion = NULL,
@@ -286,11 +300,10 @@ calificar_deseabilidad <- function(x, api_key = Sys.getenv("OPENAI_API_KEY"),
 #'   categorias ordinales. \code{n_rep} por defecto 100 (con 40 el semaforo
 #'   cambia de color por ruido Monte Carlo de +-8 puntos).
 #' @param n_nucleos Nucleos para paralelizar las replicas (v2.8.0). Default
-#'   \code{NULL} = todos menos uno (v2.9.31; antes era 1)
-#'   (apto para servidores compartidos como Connect Cloud). Con el mismo
-#'   \code{seed}, el resultado es IDENTICO con 1 o con N nucleos (streams
-#'   L'Ecuyer por replica); en una PC local use
-#'   \code{parallel::detectCores() - 1}.
+#'   \code{NULL} = todos menos uno (v2.9.31; antes era 1), como maximo 2
+#'   durante \code{R CMD check}. Use \code{1} en servidores compartidos
+#'   como Connect Cloud. Con el mismo \code{seed}, el resultado es IDENTICO
+#'   con 1 o con N nucleos (streams L'Ecuyer por replica).
 #' @param umbral_fusion Phi simulado a partir del cual dos dimensiones se
 #'   declaran fundidas en el mapa de fusion (default 0.65 desde 2.9.14; antes
 #'   compartia el 0.70 de \code{umbral_phi}, que es OTRA decision: aquella
@@ -322,8 +335,12 @@ calificar_deseabilidad <- function(x, api_key = Sys.getenv("OPENAI_API_KEY"),
 #'   criterio 0.50 marcaba como colapso); |Phi| >= .70 es la heuristica
 #'   conservadora de discriminabilidad.
 #' @param api_key Clave OpenAI (solo si hay que calificar deseabilidad).
-#' @param seed,verbose Semilla y salida por consola.
-#' @return Lista que incluye \code{phi_pares} (matriz |Phi| simulada POR PAR
+#' @param seed Semilla de la simulacion (streams L'Ecuyer por replica
+#'   derivados de ella). Por defecto \code{NULL}: no se fija semilla y el
+#'   resultado puede variar entre corridas; pase un entero (p. ej.
+#'   \code{2026}) para reproducirlo.
+#' @param verbose Logico; imprime el avance y el resumen por consola.
+#' @return Lista (devuelta de forma invisible) que incluye \code{phi_pares} (matriz |Phi| simulada POR PAR
 #'   de dimensiones, escenario central) y \code{mapa_fusion} (grupos de
 #'   dimensiones que se espera se FUNDAN en un factor empirico, con
 #'   \code{k_esperado}; caso VP: 3 factores prosociales fundidos + Apertura
@@ -335,7 +352,17 @@ calificar_deseabilidad <- function(x, api_key = Sys.getenv("OPENAI_API_KEY"),
 #'   \code{resumen} por replica del escenario central. Devuelve tambien los
 #'   umbrales con los que se juzgo la corrida (\code{umbral_phi},
 #'   \code{umbral_fusion}, \code{umbral_rmsea}), para que quien lea el resultado
-#'   despues no tenga que repetirlos a mano y desincronizarlos.
+#'   despues no tenga que repetirlos a mano y desincronizarlos. Tambien trae
+#'   \code{veredicto_probabilidad} (veredicto que sale solo de
+#'   \code{prob_limpia}) y \code{sensibilidad_phi} (data.frame por valor de
+#'   \code{phi_teorico} cuando se pasa un rango; si no, \code{NULL}).
+#' @examples
+#' # Sin API: se pasa la deseabilidad (aqui neutra) en lugar de calificarla.
+#' s <- simular_estructura(semilla_demo, deseabilidad = rep(0.5, 15),
+#'                         fuerza_deseabilidad = 0.3, n = 200, n_rep = 5,
+#'                         n_nucleos = 1, seed = 2026, verbose = FALSE)
+#' s$prob_limpia
+#' s$sensibilidad
 #' @export
 simular_estructura <- function(x, deseabilidad = NULL, similitud = NULL,
                                carga_propia = 0.695, phi_teorico = 0.50,
@@ -347,7 +374,7 @@ simular_estructura <- function(x, deseabilidad = NULL, similitud = NULL,
                                umbral_fusion = 0.65,
                                n_nucleos = NULL,
                                api_key = Sys.getenv("OPENAI_API_KEY"),
-                               seed = 2026, verbose = TRUE) {
+                               seed = NULL, verbose = TRUE) {
   if (!requireNamespace("lavaan", quietly = TRUE)) stop("Necesitas el paquete 'lavaan'.")
   if (!requireNamespace("MASS",  quietly = TRUE)) stop("Necesitas el paquete 'MASS'.")
   if (inherits(x, "semilla") || (is.list(x) && !is.null(x$items))) {
@@ -401,7 +428,7 @@ simular_estructura <- function(x, deseabilidad = NULL, similitud = NULL,
   # v2.9.31: NULL = todos menos uno, igual que estres_escala(). El default 1
   # dejaba 23 de 24 nucleos parados en cada llamada, incluidas las que hace
   # compuerta_pre_aplicacion() por dentro.
-  n_nucleos <- max(1L, as.integer(n_nucleos %||% (parallel::detectCores() - 1L)))
+  n_nucleos <- max(1L, as.integer(n_nucleos %||% .nucleos_por_defecto()))
   cl <- .cluster_estres(n_nucleos)
   if (!is.null(cl)) on.exit(parallel::stopCluster(cl), add = TRUE)
 
@@ -470,7 +497,7 @@ simular_estructura <- function(x, deseabilidad = NULL, similitud = NULL,
   esc <- vector("list", n_esc)
   for (i in seq_len(n_esc)) {
     esc[[i]] <- sim_escenario(
-      fuerzas[i], seed + (i - 1) * 1000L,
+      fuerzas[i], if (is.null(seed)) NULL else seed + (i - 1) * 1000L,
       etiqueta = sprintf("[%d/%d] fuerza=%.2f", i, n_esc, fuerzas[i]))
     if (verbose) {
       cat(sprintf("        -> prob limpia %3.0f%% | RMSEAmed %.3f | |Phi|med %s\n",
@@ -509,7 +536,7 @@ simular_estructura <- function(x, deseabilidad = NULL, similitud = NULL,
     filas <- lapply(seq_along(phis), function(q) {
       Phi <<- matrix(phis[q], K, K); diag(Phi) <<- 1
       var_theta <<- diag(LAMBDA %*% Phi %*% t(LAMBDA))
-      e <- sim_escenario(f_c, seed + 50000L + q * 100L,
+      e <- sim_escenario(f_c, if (is.null(seed)) NULL else seed + 50000L + q * 100L,
                          etiqueta = sprintf("[phi=%.2f]", phis[q]))
       data.frame(phi_supuesto = phis[q], prob_limpia = e$prob,
                  rmsea_med = e$rmsea_med, phi_med = e$phi_med)
@@ -586,7 +613,7 @@ simular_estructura <- function(x, deseabilidad = NULL, similitud = NULL,
              "separarse %s [prob. de ajuste limpio: %s]"),
       mapa_fusion$k_esperado, K,
       paste(vapply(grupos_f, function(g) paste(g, collapse = " + "),
-                   character(1)), collapse = " · "),
+                   character(1)), collapse = " \u00b7 "),
       strsplit(prob_veredicto, " (", fixed = TRUE)[[1]][1])
   }
 

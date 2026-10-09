@@ -46,16 +46,21 @@
 #'   \item{LAMBDA}{Matriz p x K de cargas del generador (columnas = dimensiones).}
 #'   \item{afinidad}{Matriz p x K de afinidad media item-dimension.}
 #'   \item{n_cruces}{Numero de cargas cruzadas inyectadas.}
-#'   \item{params}{Parametros usados.}
+#'   \item{params}{Lista con \code{rango}, \code{umbral_cruce} y
+#'     \code{carga_cruzada} usados.}
+#'   El metodo \code{print()} devuelve \code{x} de forma invisible; se llama
+#'   por su efecto.
 #'
 #' @examples
-#' \dontrun{
-#' emb <- obtener_embeddings(data.frame(item = textos), api_key)
-#' cc  <- cargas_por_cohesion(emb$similitud, dimensiones)
-#' cc$tabla
-#' # Uso posterior en la prueba de estres (equivale a carga_propia = "semantica"):
-#' # estres_escala(x, similitud = emb$similitud, carga_propia = "semantica")
-#' }
+#' cc <- cargas_por_cohesion(semilla_demo$similitud,
+#'                           semilla_demo$items$dimension)
+#' cc
+#' cc$LAMBDA[1:3, ]
+#'
+#' # Tambien acepta la matriz de embeddings (filas = items)
+#' cc2 <- cargas_por_cohesion(semilla_demo$embeddings,
+#'                            semilla_demo$items$dimension)
+#' cc2$n_cruces
 #'
 #' @seealso \code{\link{simular_estructura}}, \code{\link{estres_escala}},
 #'   \code{\link{cargas_semanticas}}
@@ -95,6 +100,9 @@ cargas_por_cohesion <- function(similitud, dimension,
   out
 }
 
+#' @rdname cargas_por_cohesion
+#' @param x Objeto de clase \code{semilla_cargas_cohesion}.
+#' @param ... No se usa.
 #' @export
 print.semilla_cargas_cohesion <- function(x, ...) {
   cat("Cargas del generador por cohesion semantica (insumo de simulacion,\n")

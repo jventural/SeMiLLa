@@ -20,7 +20,8 @@
 #' Weijters et al., 2010).
 #'
 #' @param x Objeto semilla, semilla_items, o dataframe con columnas
-#'   'item' y 'dimension'.
+#'   'item' y 'dimension'. En el metodo \code{print}, un objeto
+#'   \code{semilla_escala_respuesta}.
 #' @param metodo Estrategia: "heuristica" (default) o "llm".
 #' @param api_key API key de OpenAI (requerida solo para metodo = "llm").
 #' @param modelo Modelo LLM. Default "gpt-4.1-mini".
@@ -36,31 +37,44 @@
 #' @param anclajes_contextuales Logico. Solo aplica a metodo = "llm". Si TRUE
 #'   (default), pide al LLM que genere anclajes especificos al dominio en
 #'   lugar de usar plantillas genericas.
+#' @param valencia Valencia del constructo: \code{"auto"} (default, se estima
+#'   por el contenido de los items y el concepto), \code{"positiva"},
+#'   \code{"negativa"} o \code{"neutra"}. Con valencia positiva se evitan por
+#'   defecto los anclajes absolutos (el "Nunca" inferior suele quedar vacio).
 #' @param verbose Mostrar progreso.
+#' @param ... Argumentos adicionales (ignorados por el metodo \code{print}).
 #'
-#' @return Objeto \code{semilla_escala_respuesta} con:
+#' @return Objeto \code{semilla_escala_respuesta} (lista) con:
 #' \itemize{
 #'   \item \code{tipo_escala}, \code{n_puntos}, \code{polaridad},
-#'         \code{punto_neutral}, \code{anclajes}, \code{justificacion},
+#'         \code{punto_neutral}, \code{anclajes} (vector nombrado de
+#'         etiquetas verbales), \code{justificacion},
 #'         \code{alternativas}
 #'   \item \code{contexto}: dominio detectado
+#'   \item \code{valencia}: valencia usada (estimada si era \code{"auto"})
 #'   \item \code{deseabilidad_social}: puntaje 0-1 estimado por contenido
 #'   \item \code{evitar_absolutos}: decision final
 #'   \item \code{diagnostico}: conteos y proporciones por tipo (heuristica)
 #'   \item \code{metodo}: metodo empleado
 #' }
+#' El metodo \code{print} devuelve \code{x} de forma invisible; se llama por
+#' su efecto (resumen en consola).
 #'
 #' @examples
-#' \dontrun{
-#' # Heuristica con deteccion automatica de contexto
-#' esc <- sugerir_escala_respuesta(mi_escala)
+#' # Heuristica con deteccion automatica de contexto (sin API)
+#' esc <- sugerir_escala_respuesta(semilla_demo, verbose = FALSE)
+#' print(esc)
 #'
 #' # Forzar dominio parental (evita absolutos)
-#' esc <- sugerir_escala_respuesta(mi_escala, contexto = "parental")
+#' esc_p <- sugerir_escala_respuesta(semilla_demo, contexto = "parental",
+#'                                   verbose = FALSE)
+#' esc_p$anclajes
 #'
+#' # Requiere una clave de API de OpenAI (variable OPENAI_API_KEY).
+#' \dontrun{
 #' # LLM con anclajes a medida del dominio
 #' esc <- sugerir_escala_respuesta(
-#'   mi_escala,
+#'   semilla_demo,
 #'   metodo  = "llm",
 #'   api_key = Sys.getenv("OPENAI_API_KEY"),
 #'   contexto = "parental"
@@ -982,6 +996,7 @@ sugerir_escala_respuesta <- function(x,
 # METODO S3: PRINT
 # =============================================================================
 
+#' @rdname sugerir_escala_respuesta
 #' @export
 print.semilla_escala_respuesta <- function(x, ...) {
   cat("\n")
@@ -1058,13 +1073,13 @@ print.semilla_escala_respuesta <- function(x, ...) {
   pos <- c("valor", "valores", "bienestar", "autoeficacia", "satisfacc",
            "resilien", "gratitud", "optimism", "compromiso", "fortaleza",
            "virtud", "moral", "esperanza", "felicidad", "autoestima",
-           "motivac", "empatia", "empatía", "prosocial", "florecimiento",
-           "sentido", "proposito", "propósito", "honestidad", "integridad",
+           "motivac", "empatia", "empat\u00EDa", "prosocial", "florecimiento",
+           "sentido", "proposito", "prop\u00F3sito", "honestidad", "integridad",
            "solidaridad", "respeto", "responsabilidad", "identidad")
-  neg <- c("ansied", "depres", "estres", "estrés", "burnout", "corrupc",
+  neg <- c("ansied", "depres", "estres", "estr\u00E9s", "burnout", "corrupc",
            "miedo", "ira", "agresi", "violenc", "soledad", "riesgo", "sintom",
-           "síntoma", "trastorno", "adicc", "dolor", "malestar", "desesperanza",
-           "suicid", "trauma", "fobia", "panico", "pánico", "acoso", "estigma")
+           "s\u00EDntoma", "trastorno", "adicc", "dolor", "malestar", "desesperanza",
+           "suicid", "trauma", "fobia", "panico", "p\u00E1nico", "acoso", "estigma")
   np <- sum(vapply(pos, function(w) grepl(w, txt, fixed = TRUE), logical(1)))
   nn <- sum(vapply(neg, function(w) grepl(w, txt, fixed = TRUE), logical(1)))
   if (np > nn && np > 0) "positiva" else if (nn > np && nn > 0) "negativa" else "neutra"

@@ -29,7 +29,9 @@ documentacion de la funcion subyacente:
 }}
 }
 \value{
-Objeto del tipo correspondiente.
+El objeto que devuelve la funcion subyacente segun \code{tipo}
+(por ejemplo, \code{semilla_test} o \code{semilla_test_multi} para
+\code{"likert"}); su estructura se describe en la ayuda de esa funcion.
 }
 \description{
 Dispatcher unificado para ensamblar el cuestionario administrable en
@@ -38,15 +40,8 @@ funciones \code{ensamblar_test()}, \code{ensamblar_test_historias()},
 etc., que siguen disponibles como alias por retrocompatibilidad.
 }
 \examples{
-\dontrun{
-# Likert (default), exportar a md y docx
-test <- ensamblar(tipo = "likert",
-                   escala = mi_escala,
-                   escala_respuesta = esc_resp,
-                   formato = c("md","docx"))
-
-# Forced-choice
-test <- ensamblar(tipo = "forced_choice", escala = mi_escala_fc)
-}
+# Likert (default), sin escribir en disco
+test <- ensamblar(tipo = "likert", escala = semilla_demo, verbose = FALSE)
+print(test)
 
 }

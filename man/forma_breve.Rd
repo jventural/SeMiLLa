@@ -37,13 +37,27 @@ cross-dimension en el puntaje semantico (defecto 1).}
 ya elegido de la misma dimension supera este umbral, el candidato se omite
 (evita casi-duplicados). Defecto 0.95.}
 
-\item{verbose}{Mostrar progreso.}
+\item{verbose}{Si \code{TRUE}, imprime en consola el progreso por
+dimension.}
 }
 \value{
-Objeto \code{semilla_forma_corta} (compatible con
-\code{plot_forma_corta} y \code{ensamblar}) con \code{$items},
-\code{$indices}, \code{$puntajes} (repr, cross, score y, en modo hibrido,
-\code{disc_empirica}), \code{$metodo} y metadatos.
+Lista de clase \code{c("semilla_forma_breve",
+  "semilla_forma_corta", "list")} (compatible con \code{plot_forma_corta} y
+\code{ensamblar}) con:
+\itemize{
+\item \code{items}: \code{data.frame} de los items retenidos, con
+\code{numero_original} (posicion en la escala completa) y \code{numero}
+renumerado.
+\item \code{indices}: posiciones originales de los items retenidos.
+\item \code{n_original}, \code{n_seleccionados}: numero de items antes y
+despues.
+\item \code{metodo}: \code{"discriminacion_neta"} (semantico) o
+\code{"hibrido_piloto"} (\code{"completa"} si no hubo reduccion).
+\item \code{por_dimension}, \code{beta_discriminante}: parametros usados.
+\item \code{puntajes}: \code{data.frame} con \code{numero_original},
+\code{dimension}, \code{repr}, \code{cross}, \code{score} y, en modo
+hibrido, \code{disc_empirica}.
+}
 }
 \description{
 Selecciona una forma breve eligiendo, por dimension, los items mas
@@ -81,6 +95,19 @@ En resumen: el aporte distintivo de \code{forma_breve} es su modo hibrido;
 sin datos, \code{forma_corta} sigue siendo el default recomendado.
 }
 
+\examples{
+# Modo semantico (sin datos de respuesta)
+fb <- forma_breve(semilla_demo, n_items = 9, verbose = FALSE)
+fb$items[, c("numero_original", "dimension", "item")]
+
+# Modo hibrido con un piloto simulado de 120 respuestas
+set.seed(1)
+piloto <- matrix(sample(1:5, 120 * 15, replace = TRUE), ncol = 15)
+fb2 <- forma_breve(semilla_demo, n_items = 9,
+                   respuestas_piloto = piloto, verbose = FALSE)
+fb2$puntajes
+
+}
 \seealso{
 \code{\link{forma_corta}}, \code{\link{discriminacion_semantica}}
 }

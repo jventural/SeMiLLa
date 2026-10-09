@@ -25,11 +25,20 @@ auditar_redaccion_items(
 \item{verbose}{Mostrar progreso}
 }
 \value{
-Lista con:
+Lista de clase \code{c("semilla_calidad", "list")} con:
 \itemize{
-\item \code{evaluacion}: Dataframe con puntuaciones por criterio
-\item \code{items_problematicos}: Items que no cumplen criterios minimos
-\item \code{recomendaciones}: Sugerencias de mejora por item
+\item \code{evaluacion}: data.frame con una fila por item: \code{numero},
+\code{item}, \code{dimension} (si existe), una columna 1-5 por
+criterio, las banderas de reglas \code{longitud_ok},
+\code{doble_negacion} y \code{palabras_absolutas}, y el
+\code{promedio} de los criterios.
+\item \code{items_problematicos}: las filas de \code{evaluacion} con
+promedio < 3 o alguna regla violada.
+\item \code{recomendaciones}: data.frame con \code{numero}, \code{item}
+y la \code{recomendacion} de mejora sugerida por el LLM.
+\item \code{resumen}: lista con \code{promedio_general},
+\code{n_sin_evaluar}, \code{n_problematicos} y
+\code{pct_problematicos}.
 }
 }
 \description{
@@ -54,9 +63,11 @@ Reglas automaticas aplicadas:
 }
 }
 \examples{
+# Requiere una clave de API de OpenAI (consulta un LLM).
 \dontrun{
 # Evaluar calidad de items
-calidad <- evaluar_calidad_items(mi_escala, api_key = Sys.getenv("OPENAI_API_KEY"))
+calidad <- auditar_redaccion_items(semilla_demo,
+                                   api_key = Sys.getenv("OPENAI_API_KEY"))
 
 # Ver items problematicos
 calidad$items_problematicos

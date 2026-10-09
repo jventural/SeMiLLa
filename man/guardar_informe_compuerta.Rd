@@ -9,11 +9,23 @@ guardar_informe_compuerta(lineas, ruta)
 \arguments{
 \item{lineas}{Salida de \code{\link{informe_compuerta}}.}
 
-\item{ruta}{Fichero de destino.}
+\item{ruta}{Fichero de destino. No tiene valor por defecto: use, por
+ejemplo, \code{file.path(tempdir(), "compuerta.txt")}.}
 }
 \value{
-La ruta, de forma invisible.
+La ruta (cadena de caracteres), de forma invisible; se llama por
+su efecto de escribir el archivo.
 }
 \description{
-Guardar el informe de la compuerta en un archivo
+Escribe en un archivo de texto UTF-8 (con BOM y saltos de linea de
+Windows) las lineas que devuelve \code{\link{informe_compuerta}}, de modo
+que se abra bien en el Bloc de notas.
+}
+\examples{
+escala <- semilla_demo
+escala$compuerta <- list(escenario = "ROBUSTA")
+f <- file.path(tempdir(), "compuerta.txt")
+guardar_informe_compuerta(informe_compuerta(escala), f)
+file.exists(f)
+unlink(f)
 }

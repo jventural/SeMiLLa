@@ -2,9 +2,12 @@
 % Please edit documentation in R/cobertura_facetas.R
 \name{auditar_cobertura_facetas}
 \alias{auditar_cobertura_facetas}
+\alias{print.semilla_cobertura}
 \title{Auditoria de cobertura de facetas del constructo}
 \usage{
 auditar_cobertura_facetas(escala, min_items = 1L, verbose = TRUE)
+
+\method{print}{semilla_cobertura}(x, ...)
 }
 \arguments{
 \item{escala}{Objeto \code{semilla} con \code{$items} (columnas
@@ -14,23 +17,37 @@ auditar_cobertura_facetas(escala, min_items = 1L, verbose = TRUE)
 \item{min_items}{Numero minimo de items por faceta para considerarla
 cubierta (por defecto 1).}
 
-\item{verbose}{Imprimir el resumen.}
+\item{verbose}{Logico. Si \code{TRUE}, imprime el resumen.}
+
+\item{x}{Objeto de clase \code{semilla_cobertura}.}
+
+\item{...}{No se usa.}
 }
 \value{
 Objeto de clase \code{semilla_cobertura} (lista) con:
 \itemize{
 \item \code{tabla}: data.frame con una fila por faceta declarada
-(dimension, faceta, n_items, cubierta).
+(\code{dimension}, \code{faceta}, \code{n_items}, \code{cubierta},
+\code{metodo} de cruce: \code{"exacto"}, \code{"contencion"} o
+\code{"solape"}).
 \item \code{huerfanas}: subconjunto de \code{tabla} con las facetas sin
 items suficientes.
 \item \code{sin_declarar}: etiquetas de \code{caracteristica} presentes en
 los items que NO figuran entre las declaradas (sintoma de que el LLM
 invento una faceta al reemplazar).
-\item \code{n_declaradas}, \code{n_cubiertas}, \code{prop_cubierta}.
+\item \code{equilibrio}: data.frame por dimension con \code{n_facetas},
+\code{n_items}, \code{reparto}, \code{max_prop} (proporcion de items
+de la faceta mas cargada) y \code{concentrada} (\code{max_prop > 0.50}).
+\item \code{n_concentradas}: numero de dimensiones concentradas.
+\item \code{n_declaradas}, \code{n_cubiertas}, \code{prop_cubierta}:
+conteos y proporcion de facetas cubiertas.
 \item \code{disponible}: FALSE si la escala no trae caracteristicas
 declaradas, en cuyo caso la auditoria no se puede hacer y NO debe
 interpretarse como que todo esta bien.
+\item \code{motivo}: por que no se pudo auditar (\code{NA} si se pudo).
 }
+El metodo \code{print()} devuelve \code{x} de forma invisible; se llama por
+su efecto.
 }
 \description{
 Comprueba que cada caracteristica (faceta) declarada en
@@ -41,9 +58,13 @@ via mas corta para lograrlo es que todos midan la misma faceta. Sin esta
 comprobacion, esa perdida no deja rastro.
 }
 \examples{
-\dontrun{
-cob <- auditar_cobertura_facetas(escala)
+esc <- semilla_demo
+# Facetas declaradas por dimension (la de Ansiedad incluye una sin items)
+esc$concepto$caracteristicas <- list(
+  Autoeficacia = c("confianza ante tareas", "persistencia"),
+  Organizacion = c("planificacion", "gestion del tiempo"),
+  Ansiedad     = c("bloqueo", "evitacion", "rumiacion nocturna"))
+cob <- auditar_cobertura_facetas(esc)
 cob$huerfanas   # las facetas que se quedaron sin items
-}
 
 }

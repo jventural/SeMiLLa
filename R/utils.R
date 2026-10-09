@@ -11,18 +11,25 @@
 #'
 #' @description
 #' Lee una escala existente desde un archivo Excel (.xlsx) o CSV y la transforma
-#' al formato requerido por `validar_escala()`. Esto facilita enormemente el
+#' al formato que acepta `semilla(fuente = "usuario")`. Esto facilita enormemente el
 #' ingreso de datos para usuarios no familiarizados con la sintaxis de R.
 #'
 #' @param archivo Ruta al archivo Excel (.xlsx) o CSV (.csv)
 #' @param hoja Para archivos Excel, nombre o numero de la hoja (default: 1)
 #'
-#' @return Lista con tres elementos listos para usar en `validar_escala()`:
+#' @return Lista con tres elementos (los que acepta
+#'   \code{semilla(fuente = "usuario", dimensiones = ...)}):
 #' \itemize{
-#'   \item \code{nombre}: Nombre del constructo (extraido de la primera dimension)
-#'   \item \code{definicion}: Definicion operacional del constructo
-#'   \item \code{dimensiones}: Lista estructurada con dimensiones e items
+#'   \item \code{nombre}: cadena con el nombre del constructo (columna
+#'     \code{constructo} o, si falta, el nombre del archivo).
+#'   \item \code{definicion}: cadena con la definicion operacional del
+#'     constructo.
+#'   \item \code{dimensiones}: lista nombrada, un elemento por dimension,
+#'     cada uno con \code{definicion} (cadena) e \code{items} (vector de
+#'     caracteres con los textos, nombrado con los codigos).
 #' }
+#' El resumen de lo leido se emite con \code{message()} (se silencia con
+#' \code{suppressMessages()}).
 #'
 #' @details
 #' El archivo debe tener las siguientes columnas (en cualquier orden):
@@ -42,24 +49,16 @@
 #' Puedes generar una plantilla de ejemplo con `crear_plantilla_escala()`.
 #'
 #' @examples
-#' \dontrun{
-#' # Leer escala desde Excel
-#' escala_data <- leer_escala("mi_escala.xlsx")
+#' # Crear una plantilla CSV en un directorio temporal y leerla
+#' f <- file.path(tempdir(), "plantilla_escala.csv")
+#' suppressMessages(crear_plantilla_escala(f))
+#' escala_data <- leer_escala(f)
+#' escala_data$nombre
+#' names(escala_data$dimensiones)
+#' escala_data$dimensiones[[1]]$items
+#' unlink(f)
 #'
-#' # Usar directamente en validar_escala
-#' resultado <- validar_escala(
-#'   nombre = escala_data$nombre,
-#'   definicion = escala_data$definicion,
-#'   dimensiones = escala_data$dimensiones,
-#'   api_key = Sys.getenv("OPENAI_API_KEY")
-#' )
-#'
-#' # O de forma mas compacta con do.call
-#' escala_data <- leer_escala("mi_escala.xlsx")
-#' resultado <- do.call(validar_escala, c(escala_data, list(api_key = mi_api_key)))
-#' }
-#'
-#' @seealso \code{validar_escala()}, \code{\link{crear_plantilla_escala}}
+#' @seealso \code{\link{crear_plantilla_escala}}, \code{\link{semilla}}
 #'
 #' @export
 leer_escala <- function(archivo, hoja = 1) {
@@ -161,25 +160,18 @@ leer_escala <- function(archivo, hoja = 1) {
     )
   }
 
-  # Mostrar resumen
-  cat("\n")
-  cat("=== ESCALA CARGADA EXITOSAMENTE ===\n\n")
-  cat("  Constructo: ", nombre_constructo, "\n", sep = "")
-  cat("  Dimensiones: ", length(dimensiones), "\n", sep = "")
-  cat("  Items totales: ", nrow(datos), "\n\n", sep = "")
-
-  for (dim_nombre in names(dimensiones)) {
-    n_items <- length(dimensiones[[dim_nombre]]$items)
-    cat("  [", n_items, " items] ", dim_nombre, "\n", sep = "")
-  }
-  cat("\n")
-  cat("Usa estos datos con validar_escala():\n\n")
-  cat("  resultado <- validar_escala(\n")
-  cat("    nombre = escala$nombre,\n")
-  cat("    definicion = escala$definicion,\n")
-  cat("    dimensiones = escala$dimensiones,\n")
-  cat("    api_key = tu_api_key\n")
-  cat("  )\n\n")
+  # Mostrar resumen (con message(): el usuario puede silenciarlo)
+  lineas_dim <- vapply(names(dimensiones), function(dim_nombre) {
+    paste0("  [", length(dimensiones[[dim_nombre]]$items), " items] ", dim_nombre)
+  }, character(1))
+  message(paste(c(
+    "=== ESCALA CARGADA EXITOSAMENTE ===",
+    paste0("  Constructo: ", nombre_constructo),
+    paste0("  Dimensiones: ", length(dimensiones)),
+    paste0("  Items totales: ", nrow(datos)),
+    "",
+    lineas_dim
+  ), collapse = "\n"))
 
   # Retornar lista
   resultado <- list(
@@ -201,18 +193,25 @@ leer_escala <- function(archivo, hoja = 1) {
 #' @param archivo Ruta donde guardar la plantilla (incluir extension .xlsx o .csv)
 #' @param ejemplo Incluir datos de ejemplo (default: TRUE)
 #'
-#' @return Invisible. Crea el archivo en la ruta especificada.
+#' @return Devuelve de forma invisible el data.frame escrito (columnas
+#'   \code{constructo}, \code{definicion_constructo}, \code{dimension},
+#'   \code{definicion_dimension}, \code{codigo} e \code{item}; 15 filas de
+#'   ejemplo, o 1 fila guia si \code{ejemplo = FALSE}). Se llama por su
+#'   efecto: escribir el archivo en \code{archivo}. Las instrucciones de uso
+#'   se emiten con \code{message()}.
 #'
 #' @examples
-#' \dontrun{
-#' # Crear plantilla Excel
-#' crear_plantilla_escala("mi_escala_plantilla.xlsx")
+#' # Plantilla CSV con datos de ejemplo, en un directorio temporal
+#' f <- file.path(tempdir(), "mi_escala_plantilla.csv")
+#' plantilla <- crear_plantilla_escala(f)
+#' head(plantilla[, c("dimension", "codigo", "item")])
+#' unlink(f)
 #'
-#' # Crear plantilla CSV
-#' crear_plantilla_escala("mi_escala_plantilla.csv")
-#'
-#' # Crear plantilla vacia (solo encabezados)
-#' crear_plantilla_escala("plantilla_vacia.xlsx", ejemplo = FALSE)
+#' # Plantilla vacia (una fila guia); en Excel requiere 'writexl'
+#' if (requireNamespace("writexl", quietly = TRUE)) {
+#'   f2 <- file.path(tempdir(), "plantilla_vacia.xlsx")
+#'   crear_plantilla_escala(f2, ejemplo = FALSE)
+#'   unlink(f2)
 #' }
 #'
 #' @seealso \code{\link{leer_escala}}
@@ -299,22 +298,25 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
          "Usa .xlsx o .csv")
   }
 
-  cat("\n")
-  cat("=== PLANTILLA CREADA ===\n\n")
-  cat("  Archivo: ", archivo, "\n\n", sep = "")
-  cat("INSTRUCCIONES:\n\n")
-  cat("  1. Abre el archivo en Excel o LibreOffice\n")
-  cat("  2. Modifica los datos con tu escala\n")
-  cat("  3. Guarda el archivo\n")
-  cat("  4. Cargalo en R con:\n\n")
-  cat("     escala <- leer_escala(\"", basename(archivo), "\")\n\n", sep = "")
-  cat("COLUMNAS REQUERIDAS:\n\n")
-  cat("  - constructo: Nombre del constructo (solo en fila 1)\n")
-  cat("  - definicion_constructo: Definicion operacional (solo en fila 1)\n")
-  cat("  - dimension: Nombre de la dimension del item\n")
-  cat("  - definicion_dimension: Definicion de esa dimension\n")
-  cat("  - codigo: Codigo unico del item (ej: RP1, RP2)\n")
-  cat("  - item: Texto completo del item\n\n")
+  message(paste(c(
+    "=== PLANTILLA CREADA ===",
+    paste0("  Archivo: ", archivo),
+    "",
+    "INSTRUCCIONES:",
+    "  1. Abre el archivo en Excel o LibreOffice",
+    "  2. Modifica los datos con tu escala",
+    "  3. Guarda el archivo",
+    "  4. Cargalo en R con:",
+    paste0("     escala <- leer_escala(\"", basename(archivo), "\")"),
+    "",
+    "COLUMNAS REQUERIDAS:",
+    "  - constructo: Nombre del constructo (solo en fila 1)",
+    "  - definicion_constructo: Definicion operacional (solo en fila 1)",
+    "  - dimension: Nombre de la dimension del item",
+    "  - definicion_dimension: Definicion de esa dimension",
+    "  - codigo: Codigo unico del item (ej: RP1, RP2)",
+    "  - item: Texto completo del item"
+  ), collapse = "\n"))
 
   invisible(datos)
 }
@@ -549,7 +551,7 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
 # -----------------------------------------------------------------------------
 
 #' Hacer una matriz definida positiva
-#' @keywords internal
+#' @noRd
 .hacer_definida_positiva <- function(mat, tol = 1e-6) {
   # Descomposicion en valores propios
   eig <- eigen(mat, symmetric = TRUE)
@@ -590,7 +592,7 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
 #' @param hc Objeto \code{hclust}.
 #' @param tol Inversion maxima atribuible a redondeo (default 1e-8).
 #' @return El mismo objeto con \code{height} no decreciente.
-#' @keywords internal
+#' @noRd
 .hc_monotono <- function(hc, tol = 1e-8) {
   h <- hc$height
   if (is.null(h) || !length(h) || !is.unsorted(h)) return(hc)
@@ -1699,7 +1701,7 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
 #' Aplica transformaciones para que la matriz de similitud semantica
 #' se comporte mas como una matriz de correlacion empirica.
 #'
-#' @keywords internal
+#' @noRd
 .transformar_similitud_para_cfa <- function(similitud, metodo = "semantico", verbose = TRUE) {
 
   cor_matrix <- as.matrix(similitud)
@@ -1753,7 +1755,10 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
 .ejecutar_cfa_semantico <- function(similitud, items, items_por_dimension,
                                      estimador = "ML", ortogonal = FALSE,
                                      corr_residuales = FALSE, transformar = TRUE,
-                                     verbose = TRUE) {
+                                     verbose = TRUE, seed = NULL) {
+  # seed: lo pasa quien llama (p. ej. el 'seed' de validar_escala()). Con
+  # NULL no se fija semilla y los datos simulados (estimadores robustos)
+  # pueden variar entre corridas.
 
   # Verificar que lavaan este disponible (es dependencia dura del paquete)
   if (!requireNamespace("lavaan", quietly = TRUE)) {
@@ -1840,7 +1845,7 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
       }
 
       cor_matrix_pd <- .hacer_definida_positiva(cor_matrix)
-      set.seed(12345)
+      if (!is.null(seed)) set.seed(seed)
       datos_sim <- MASS::mvrnorm(n = n_obs, mu = rep(0, ncol(cor_matrix_pd)),
                                   Sigma = cor_matrix_pd)
       datos_sim <- as.data.frame(datos_sim)
@@ -2630,4 +2635,36 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
   }
 
   items_df
+}
+
+
+# Nucleos por defecto para las simulaciones en paralelo. Durante R CMD check
+# (y en CRAN) _R_CHECK_LIMIT_CORES_ esta definida y la politica permite 2 como
+# maximo; fuera del check se usan todos menos uno, como hasta ahora.
+
+#' @keywords internal
+.nucleos_por_defecto <- function() {
+  n <- max(1L, parallel::detectCores() - 1L, na.rm = TRUE)
+  lim <- Sys.getenv("_R_CHECK_LIMIT_CORES_", "")
+  if (nzchar(lim) && !identical(toupper(lim), "FALSE")) n <- min(n, 2L)
+  n
+}
+
+
+# Permutacion determinista de 1:k identificada por 'clave' (el numero de item).
+# Sustituye a set.seed(n) + sample(): la prueba y su clave de respuestas tienen
+# que barajar igual, y CRAN no admite fijar la semilla dentro de una funcion
+# aunque luego se restaure el generador. Usa un generador congruencial propio
+# (MINSTD, Park y Miller) sembrado con la clave: no toca el RNG de R. Con k
+# pequeno puede salir la identidad, igual que con sample().
+
+#' @keywords internal
+.barajado_fijo <- function(k, clave) {
+  if (k <= 1) return(seq_len(k))
+  m <- 2147483647
+  x <- (abs(as.numeric(clave)) * 7919 + 12345) %% m
+  if (x == 0) x <- 1
+  u <- numeric(k)
+  for (i in seq_len(k)) { x <- (48271 * x) %% m; u[i] <- x }
+  order(u)
 }

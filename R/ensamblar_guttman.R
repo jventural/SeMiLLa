@@ -32,8 +32,32 @@
 #' @param idioma "es" o "en".
 #' @param verbose Mostrar progreso.
 #'
-#' @return Lista con clase \code{semilla_test_guttman} con texto markdown
-#'   y rutas de archivos generados.
+#' @return Objeto de clase \code{semilla_test_guttman} (lista) con
+#'   \code{nombre_test}, \code{subtitulo}, \code{items} (data.frame de items
+#'   de la escala), \code{alternativas} (data.frame de alternativas por item),
+#'   \code{construct_map} (lista con la descripcion de cada nivel),
+#'   \code{texto_md} (cuestionario completo en Markdown) y \code{archivos}
+#'   (rutas escritas; vacio si \code{archivo = NULL}, en cuyo caso no se
+#'   escribe nada en disco). El metodo \code{print()} devuelve \code{x} de
+#'   forma invisible; se llama por su efecto.
+#'
+#' @examples
+#' # Objeto Guttman minimo construido a mano (normalmente sale de
+#' # generar_escala_guttman()).
+#' g <- structure(list(
+#'   concepto = "Uso de estrategias de estudio", idioma = "es",
+#'   items = data.frame(n_item = 1:2, faceta = c("Planificacion", "Repaso"),
+#'                      stem = c("Antes de estudiar...", "Despues de clase...")),
+#'   alternativas = data.frame(
+#'     n_item = rep(1:2, each = 3), nivel_idx = rep(0:2, 2),
+#'     alternativa = c("No planifico", "Planifico a veces",
+#'                     "Planifico siempre", "No repaso",
+#'                     "Repaso a veces", "Repaso cada dia")),
+#'   construct_map = list("0" = "Ausente", "1" = "Parcial", "2" = "Pleno")),
+#'   class = c("semilla_guttman", "list"))
+#' tg <- ensamblar_test_guttman(g, incluir_datos = FALSE, verbose = FALSE)
+#' tg
+#' cat(substr(tg$texto_md, 1, 300))
 #'
 #' @export
 ensamblar_test_guttman <- function(
@@ -492,6 +516,9 @@ ensamblar_test_guttman <- function(
 }
 
 
+#' @rdname ensamblar_test_guttman
+#' @param x Objeto de clase \code{semilla_test_guttman}.
+#' @param ... No se usa.
 #' @export
 print.semilla_test_guttman <- function(x, ...) {
   cat("\n")

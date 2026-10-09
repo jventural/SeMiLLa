@@ -4,22 +4,37 @@
 \alias{analizar_redundancia}
 \title{Analizar Redundancia de Items}
 \usage{
-analizar_redundancia(embeddings, umbral = "auto")
+analizar_redundancia(embeddings, umbral = "auto", verbose = TRUE)
 }
 \arguments{
 \item{embeddings}{Objeto semilla_embeddings o semilla}
 
 \item{umbral}{Umbral de similitud. Default \code{"auto"} (v2.7.0):
 cuantil .95 de las similitudes de la propia escala, acotado a
-\link{0.70, 0.85}. Calibrado con dos escalas reales (n=280): un umbral FIJO
-no sirve — 0.85 no capturo ninguna parafrasis danina en PM (vivian en
+\verb{[0.62, 0.70]} (la misma calibracion que \code{auditar_redundancia()}).
+Calibrado con dos escalas reales (n=280): un umbral FIJO
+no sirve: 0.85 no capturo ninguna parafrasis danina en PM (vivian en
 .56-.78) y 0.70 sobre-alarmaba en ACO (actitud hacia un objeto unico,
 linea base de similitud alta). Puede fijarse un numero. Para clusters
 de faceta repetida use \code{\link{auditar_redundancia}}.}
+
+\item{verbose}{Logico. Si \code{TRUE} (por defecto) muestra en consola un
+resumen de los pares redundantes.}
 }
 \value{
-Dataframe con pares redundantes
+Data.frame (invisible) con una fila por par redundante y columnas
+\code{item1_num}, \code{item1}, \code{dim1}, \code{item2_num},
+\code{item2}, \code{dim2} y \code{similitud} (coseno), ordenado de mayor
+a menor similitud. Vacio si no hay pares sobre el umbral. El umbral
+usado se guarda en el atributo \code{"umbral"}.
 }
 \description{
 Identifica pares de items potencialmente redundantes.
+}
+\examples{
+# semilla_demo trae embeddings sinteticos: no requiere clave de API.
+red <- analizar_redundancia(semilla_demo)
+red[, c("item1_num", "item2_num", "similitud")]
+attr(red, "umbral")
+
 }

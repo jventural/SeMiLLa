@@ -10,13 +10,15 @@ plot_embeddings(
   colorear_por = "dimension",
   mostrar_etiquetas = TRUE,
   perplexity = NULL,
-  semilla = 42
+  semilla = NULL
 )
 }
 \arguments{
 \item{x}{Objeto semilla o semilla_embeddings}
 
-\item{metodo}{Metodo de reduccion: "tsne" (default) o "umap"}
+\item{metodo}{Metodo de reduccion: "tsne" (default, requiere 'Rtsne'),
+"umap" (requiere 'umap'); cualquier otro valor (p. ej. "pca") usa
+componentes principales.}
 
 \item{colorear_por}{Variable para colorear: "dimension" o "factor_efa"}
 
@@ -24,22 +26,28 @@ plot_embeddings(
 
 \item{perplexity}{Perplexity para t-SNE (default: 5 o n/4)}
 
-\item{semilla}{Semilla para reproducibilidad}
+\item{semilla}{Semilla (entero) para la proyeccion, o \code{NULL}
+(default). Con \code{NULL} no se fija ninguna semilla y la proyeccion
+t-SNE/UMAP puede variar entre corridas; pase un entero (p. ej.
+\code{42}) para un grafico reproducible.}
 }
 \value{
-Objeto ggplot2
+Objeto de clase \code{ggplot} (ggplot2): un diagrama de
+dispersion de los items en las dos dimensiones de la proyeccion, con
+color por dimension (o cluster), etiquetas con el numero de item y
+elipses por grupo. Se dibuja al imprimirlo.
 }
 \description{
 Proyecta los embeddings de alta dimension a 2D usando t-SNE o UMAP,
 coloreando los items por dimension o factor.
 }
 \examples{
-\dontrun{
-# Proyeccion t-SNE
-plot_embeddings(mi_escala)
+# Proyeccion por componentes principales (no requiere paquetes extra)
+plot_embeddings(semilla_demo, metodo = "pca")
 
-# Colorear por factor EFA
-plot_embeddings(mi_escala, colorear_por = "factor_efa")
+# Proyeccion t-SNE reproducible
+if (requireNamespace("Rtsne", quietly = TRUE)) {
+  plot_embeddings(semilla_demo, metodo = "tsne", semilla = 42)
 }
 
 }

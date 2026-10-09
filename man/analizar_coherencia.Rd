@@ -20,9 +20,16 @@ Lista de clase 'semilla_coherencia' con:
 \item \code{similitud_inter}: Vector de similitudes entre dimensiones
 \item \code{mediana_intra}: Mediana de similitud intra-dimension
 \item \code{mediana_inter}: Mediana de similitud inter-dimension
+\item \code{media_intra}, \code{media_inter}: Medias de ambas similitudes
 \item \code{diferencia_separabilidad}: Diferencia entre medianas (> 0.15 es bueno)
-\item \code{coherencia_por_dimension}: Estadisticas por dimension
-\item \code{items_baja_coherencia}: Items con coherencia < umbral
+\item \code{evaluacion}: Etiqueta de la separabilidad ("Excelente",
+"Buena", "Aceptable" o "Baja")
+\item \code{coherencia_por_dimension}: data.frame con estadisticas por dimension
+\item \code{items_baja_coherencia}: data.frame con los items cuya
+similitud media con su dimension es menor que el umbral
+\item \code{datos_por_item}: data.frame con la similitud media de cada
+item con su dimension
+\item \code{umbral}: El umbral usado
 }
 }
 \description{
@@ -31,9 +38,8 @@ con la similitud entre items de diferentes dimensiones (inter).
 Una escala bien construida debe mostrar mayor similitud intra que inter.
 }
 \examples{
-\dontrun{
-coh <- analizar_coherencia(mi_escala)
-print(coh$diferencia_separabilidad)
-}
+coh <- analizar_coherencia(semilla_demo, verbose = FALSE)
+coh$diferencia_separabilidad
+coh$coherencia_por_dimension
 
 }

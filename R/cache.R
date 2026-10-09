@@ -27,29 +27,37 @@
 #' Esto garantiza reproducibilidad 100% aun cuando OpenAI actualice el modelo
 #' silenciosamente.
 #'
-#' @param dir Directorio donde se guardara el cache (default: "SeMiLLa_cache"
-#'   en el working directory)
-#' @param verbose Mostrar mensajes (default: TRUE)
+#' El proposito de esta funcion es fijar las opciones de sesion
+#' \code{SeMiLLa.cache_dir} y \code{SeMiLLa.cache_enabled}; por eso no las
+#' restaura al salir. Use \code{deshabilitar_cache()} para desactivarlo.
 #'
-#' @return Directorio de cache (invisible)
+#' @param dir Directorio donde se guardara el cache. Por defecto, el
+#'   directorio de cache de usuario que devuelve
+#'   \code{tools::R_user_dir("SeMiLLa", "cache")} (nunca el directorio de
+#'   trabajo). Para un proyecto concreto, indique una ruta propia.
+#' @param verbose Logico. Si \code{TRUE} (por defecto), muestra el directorio
+#'   y el numero de entradas existentes.
+#'
+#' @return Cadena de caracteres con la ruta normalizada del directorio de
+#'   cache, de forma invisible. Se llama sobre todo por su efecto: crea el
+#'   directorio si no existe y fija las opciones \code{SeMiLLa.cache_dir} y
+#'   \code{SeMiLLa.cache_enabled = TRUE}.
+#'
+#' @seealso \code{\link{cache}}, \code{\link{deshabilitar_cache}},
+#'   \code{\link{info_cache}}, \code{\link{limpiar_cache}}
 #'
 #' @examples
-#' \dontrun{
-#' # Habilitar cache en el directorio del proyecto
-#' habilitar_cache("D:/mi_proyecto/cache_llm")
-#'
-#' # Primera corrida: llama a la API y guarda
-#' escala <- semilla("resiliencia infantil", api_key, seed = 2026)
-#'
-#' # Segunda corrida: lee del cache (items IDENTICOS)
-#' escala2 <- semilla("resiliencia infantil", api_key, seed = 2026)
-#'
-#' # Desactivar
+#' old <- options(SeMiLLa.cache_dir = NULL, SeMiLLa.cache_enabled = NULL)
+#' d <- file.path(tempdir(), "semilla_cache_demo")
+#' habilitar_cache(d)
+#' info_cache()
 #' deshabilitar_cache()
-#' }
+#' options(old)
+#' unlink(d, recursive = TRUE)
 #'
 #' @export
-habilitar_cache <- function(dir = "SeMiLLa_cache", verbose = TRUE) {
+habilitar_cache <- function(dir = tools::R_user_dir("SeMiLLa", "cache"),
+                            verbose = TRUE) {
   dir <- normalizePath(dir, mustWork = FALSE)
   if (!dir.exists(dir)) {
     dir.create(dir, recursive = TRUE)
@@ -69,8 +77,19 @@ habilitar_cache <- function(dir = "SeMiLLa_cache", verbose = TRUE) {
 #' @title Deshabilitar Cache de Respuestas LLM
 #'
 #' @description Desactiva el cache. Las llamadas siguientes iran a la API.
+#'   Su proposito es fijar la opcion de sesion \code{SeMiLLa.cache_enabled =
+#'   FALSE}; no borra el directorio ni las entradas guardadas.
 #'
-#' @param verbose Mostrar mensaje (default: TRUE)
+#' @param verbose Logico. Si \code{TRUE} (por defecto), muestra un mensaje.
+#'
+#' @return \code{NULL} de forma invisible; se llama por su efecto.
+#'
+#' @examples
+#' old <- options(SeMiLLa.cache_enabled = NULL)
+#' deshabilitar_cache()
+#' getOption("SeMiLLa.cache_enabled")
+#' options(old)
+#'
 #' @export
 deshabilitar_cache <- function(verbose = TRUE) {
   options(SeMiLLa.cache_enabled = FALSE)
@@ -81,16 +100,25 @@ deshabilitar_cache <- function(verbose = TRUE) {
 
 #' @title Informacion del Cache
 #'
-#' @description Muestra estado y estadisticas del cache actual.
+#' @description Devuelve el estado y las estadisticas del cache actual. Al
+#'   imprimirse (en consola, o con \code{capture.output()}) los muestra en
+#'   cuatro lineas.
 #'
-#' @return Lista invisible con: habilitado, dir, n_entradas, tamano_mb
+#' @return Lista de clase \code{semilla_cache_info} con cuatro elementos:
+#'   \code{habilitado} (logico, si el cache esta activo), \code{dir} (ruta del
+#'   directorio de cache o \code{NULL} si no hay ninguno configurado),
+#'   \code{n_entradas} (entero, numero de archivos \code{.rds} guardados) y
+#'   \code{tamano_mb} (numerico, tamano total de esas entradas en megabytes).
+#'
+#' @examples
+#' estado <- info_cache()
+#' estado$habilitado
+#' estado
+#'
 #' @export
 info_cache <- function() {
   habilitado <- isTRUE(getOption("SeMiLLa.cache_enabled", FALSE))
   dir <- getOption("SeMiLLa.cache_dir", NULL)
-
-  cat("\n  [cache] Estado: ", ifelse(habilitado, "HABILITADO", "deshabilitado"), "\n", sep = "")
-  cat("  [cache] Directorio: ", ifelse(is.null(dir), "(ninguno)", dir), "\n", sep = "")
 
   n_entradas <- 0L
   tamano_mb <- 0
@@ -101,43 +129,73 @@ info_cache <- function() {
       tamano_mb <- sum(file.info(archivos)$size) / (1024^2)
     }
   }
-  cat("  [cache] Entradas: ", n_entradas, "\n", sep = "")
-  cat("  [cache] Tamano: ", sprintf("%.2f MB", tamano_mb), "\n\n", sep = "")
-
-  invisible(list(
+  # Visible y con metodo print: la app lee el estado con
+  # capture.output(cache("info")), que no captura message().
+  structure(list(
     habilitado = habilitado,
     dir = dir,
     n_entradas = n_entradas,
     tamano_mb = tamano_mb
-  ))
+  ), class = c("semilla_cache_info", "list"))
+}
+
+
+#' @rdname info_cache
+#' @param x Objeto \code{semilla_cache_info}.
+#' @param ... No se usa.
+#' @export
+print.semilla_cache_info <- function(x, ...) {
+  cat("  [cache] Estado: ", if (isTRUE(x$habilitado)) "HABILITADO" else "deshabilitado",
+      "\n", sep = "")
+  cat("  [cache] Directorio: ", if (is.null(x$dir)) "(ninguno)" else x$dir, "\n", sep = "")
+  cat("  [cache] Entradas: ", x$n_entradas, "\n", sep = "")
+  cat("  [cache] Tamano: ", sprintf("%.2f MB", x$tamano_mb), "\n", sep = "")
+  invisible(x)
 }
 
 
 #' @title Limpiar Cache
 #'
-#' @description Elimina todas las entradas del cache actual.
+#' @description Elimina todas las entradas (\code{.rds}) del directorio de
+#'   cache configurado en la opcion \code{SeMiLLa.cache_dir}.
 #'
-#' @param confirmar Si TRUE (default), pide confirmacion
+#' @param confirmar Logico. Si \code{TRUE} (por defecto) y la sesion es
+#'   interactiva, pide confirmacion (Enter) antes de borrar. En sesiones no
+#'   interactivas se borra sin preguntar.
+#'
+#' @return Numero entero de entradas eliminadas, de forma invisible, o
+#'   \code{NULL} invisible si no hay directorio configurado o ya esta vacio.
+#'   Se llama por su efecto.
+#'
+#' @examples
+#' old <- options(SeMiLLa.cache_dir = NULL, SeMiLLa.cache_enabled = NULL)
+#' d <- file.path(tempdir(), "semilla_cache_demo")
+#' habilitar_cache(d, verbose = FALSE)
+#' saveRDS(1:3, file.path(d, "demo.rds"))
+#' limpiar_cache(confirmar = FALSE)
+#' options(old)
+#' unlink(d, recursive = TRUE)
+#'
 #' @export
 limpiar_cache <- function(confirmar = TRUE) {
   dir <- getOption("SeMiLLa.cache_dir", NULL)
   if (is.null(dir) || !dir.exists(dir)) {
-    cat("  [cache] No hay directorio de cache configurado.\n")
+    message("  [cache] No hay directorio de cache configurado.")
     return(invisible(NULL))
   }
   archivos <- list.files(dir, pattern = "\\.rds$", full.names = TRUE)
   n <- length(archivos)
   if (n == 0) {
-    cat("  [cache] Ya esta vacio.\n")
+    message("  [cache] Ya esta vacio.")
     return(invisible(NULL))
   }
-  if (confirmar) {
-    cat("  [cache] Se eliminaran ", n, " entradas de: ", dir, "\n", sep = "")
-    cat("  Presiona Enter para continuar, Ctrl+C para cancelar...")
+  if (confirmar && interactive()) {
+    message("  [cache] Se eliminaran ", n, " entradas de: ", dir)
+    message("  Presiona Enter para continuar, Ctrl+C para cancelar...")
     readline()
   }
   unlink(archivos)
-  cat("  [cache] ", n, " entradas eliminadas\n", sep = "")
+  message("  [cache] ", n, " entradas eliminadas")
   invisible(n)
 }
 
@@ -155,35 +213,44 @@ limpiar_cache <- function(confirmar = TRUE) {
 #' Funcion unificada para gestionar el cache de disco de SeMiLLa. Sustituye
 #' las cuatro funciones \code{habilitar_cache()}, \code{deshabilitar_cache()},
 #' \code{info_cache()} y \code{limpiar_cache()} (que se mantienen como alias
-#' por retrocompatibilidad).
+#' por retrocompatibilidad). Con \code{"enable"} y \code{"disable"} su
+#' proposito es fijar opciones de sesion, que por eso no se restauran.
 #'
 #' @param action Una de: \code{"enable"} (activar cache), \code{"disable"}
 #'   (desactivar), \code{"info"} (mostrar estado), \code{"clear"} (vaciar).
 #' @param path Directorio donde guardar el cache. Solo se usa con
-#'   \code{action = "enable"}. Default: \code{"SeMiLLa_cache"} en el WD.
-#' @param verbose Mostrar mensajes en consola.
+#'   \code{action = "enable"}. Por defecto,
+#'   \code{tools::R_user_dir("SeMiLLa", "cache")} (nunca el directorio de
+#'   trabajo).
+#' @param verbose Logico. Mostrar mensajes en consola (acciones
+#'   \code{"enable"} y \code{"disable"}).
 #' @param confirmar Solo aplica con \code{action = "clear"}: pedir
-#'   confirmacion antes de borrar.
+#'   confirmacion antes de borrar (solo en sesiones interactivas).
 #'
 #' @return Depende de la accion:
 #' \itemize{
-#'   \item \code{"enable"}: directorio de cache (invisible).
+#'   \item \code{"enable"}: ruta del directorio de cache (invisible).
 #'   \item \code{"disable"}: \code{NULL} invisible.
-#'   \item \code{"info"}: lista con estado del cache.
-#'   \item \code{"clear"}: numero de entradas eliminadas (invisible).
+#'   \item \code{"info"}: objeto \code{semilla_cache_info} (visible) con \code{habilitado},
+#'     \code{dir}, \code{n_entradas} y \code{tamano_mb} (ver
+#'     \code{\link{info_cache}}).
+#'   \item \code{"clear"}: numero de entradas eliminadas (invisible), o
+#'     \code{NULL} si no habia nada que borrar.
 #' }
 #'
 #' @examples
-#' \dontrun{
-#' cache("enable", path = "D:/mi_proyecto/cache_llm")
+#' old <- options(SeMiLLa.cache_dir = NULL, SeMiLLa.cache_enabled = NULL)
+#' d <- file.path(tempdir(), "semilla_cache_demo")
+#' cache("enable", path = d)
 #' cache("info")
 #' cache("clear", confirmar = FALSE)
 #' cache("disable")
-#' }
+#' options(old)
+#' unlink(d, recursive = TRUE)
 #'
 #' @export
 cache <- function(action = c("enable", "disable", "info", "clear"),
-                  path = "SeMiLLa_cache",
+                  path = tools::R_user_dir("SeMiLLa", "cache"),
                   verbose = TRUE,
                   confirmar = TRUE) {
   action <- match.arg(action)
@@ -194,6 +261,7 @@ cache <- function(action = c("enable", "disable", "info", "clear"),
     "clear"   = limpiar_cache(confirmar = confirmar)
   )
 }
+
 
 
 # -----------------------------------------------------------------------------

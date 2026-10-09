@@ -2,6 +2,7 @@
 % Please edit documentation in R/escala_respuesta.R
 \name{sugerir_escala_respuesta}
 \alias{sugerir_escala_respuesta}
+\alias{print.semilla_escala_respuesta}
 \title{Sugerir escala de respuesta optima}
 \usage{
 sugerir_escala_respuesta(
@@ -17,10 +18,13 @@ sugerir_escala_respuesta(
   anclajes_contextuales = TRUE,
   verbose = TRUE
 )
+
+\method{print}{semilla_escala_respuesta}(x, ...)
 }
 \arguments{
 \item{x}{Objeto semilla, semilla_items, o dataframe con columnas
-'item' y 'dimension'.}
+'item' y 'dimension'. En el metodo \code{print}, un objeto
+\code{semilla_escala_respuesta}.}
 
 \item{metodo}{Estrategia: "heuristica" (default) o "llm".}
 
@@ -36,6 +40,11 @@ sugerir_escala_respuesta(
 "adicciones", "educativo", "laboral" o "general". Afecta tanto a la
 heuristica como a las instrucciones que recibe el LLM.}
 
+\item{valencia}{Valencia del constructo: \code{"auto"} (default, se estima
+por el contenido de los items y el concepto), \code{"positiva"},
+\code{"negativa"} o \code{"neutra"}. Con valencia positiva se evitan por
+defecto los anclajes absolutos (el "Nunca" inferior suele quedar vacio).}
+
 \item{evitar_absolutos}{Logico. Si TRUE (default cuando el contexto es
 sensible), sustituye "Nunca"/"Siempre" por cuantificadores relativos
 ("Casi nunca"/"Casi siempre", "En pocas ocasiones"/"En la mayoria de las
@@ -46,19 +55,25 @@ ocasiones") para reducir efectos piso/techo.}
 lugar de usar plantillas genericas.}
 
 \item{verbose}{Mostrar progreso.}
+
+\item{...}{Argumentos adicionales (ignorados por el metodo \code{print}).}
 }
 \value{
-Objeto \code{semilla_escala_respuesta} con:
+Objeto \code{semilla_escala_respuesta} (lista) con:
 \itemize{
 \item \code{tipo_escala}, \code{n_puntos}, \code{polaridad},
-\code{punto_neutral}, \code{anclajes}, \code{justificacion},
+\code{punto_neutral}, \code{anclajes} (vector nombrado de
+etiquetas verbales), \code{justificacion},
 \code{alternativas}
 \item \code{contexto}: dominio detectado
+\item \code{valencia}: valencia usada (estimada si era \code{"auto"})
 \item \code{deseabilidad_social}: puntaje 0-1 estimado por contenido
 \item \code{evitar_absolutos}: decision final
 \item \code{diagnostico}: conteos y proporciones por tipo (heuristica)
 \item \code{metodo}: metodo empleado
 }
+El metodo \code{print} devuelve \code{x} de forma invisible; se llama por
+su efecto (resumen en consola).
 }
 \description{
 Recomienda el formato de respuesta mas apropiado para una escala (tipo,
@@ -80,16 +95,20 @@ efectos piso/techo por deseabilidad social (Krosnick, 1999;
 Weijters et al., 2010).
 }
 \examples{
-\dontrun{
-# Heuristica con deteccion automatica de contexto
-esc <- sugerir_escala_respuesta(mi_escala)
+# Heuristica con deteccion automatica de contexto (sin API)
+esc <- sugerir_escala_respuesta(semilla_demo, verbose = FALSE)
+print(esc)
 
 # Forzar dominio parental (evita absolutos)
-esc <- sugerir_escala_respuesta(mi_escala, contexto = "parental")
+esc_p <- sugerir_escala_respuesta(semilla_demo, contexto = "parental",
+                                  verbose = FALSE)
+esc_p$anclajes
 
+# Requiere una clave de API de OpenAI (variable OPENAI_API_KEY).
+\dontrun{
 # LLM con anclajes a medida del dominio
 esc <- sugerir_escala_respuesta(
-  mi_escala,
+  semilla_demo,
   metodo  = "llm",
   api_key = Sys.getenv("OPENAI_API_KEY"),
   contexto = "parental"

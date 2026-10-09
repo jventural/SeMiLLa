@@ -12,22 +12,29 @@ crear_plantilla_escala(archivo, ejemplo = TRUE)
 \item{ejemplo}{Incluir datos de ejemplo (default: TRUE)}
 }
 \value{
-Invisible. Crea el archivo en la ruta especificada.
+Devuelve de forma invisible el data.frame escrito (columnas
+\code{constructo}, \code{definicion_constructo}, \code{dimension},
+\code{definicion_dimension}, \code{codigo} e \code{item}; 15 filas de
+ejemplo, o 1 fila guia si \code{ejemplo = FALSE}). Se llama por su
+efecto: escribir el archivo en \code{archivo}. Las instrucciones de uso
+se emiten con \code{message()}.
 }
 \description{
 Genera un archivo Excel o CSV de plantilla que el usuario puede llenar
 con los datos de su escala. Incluye un ejemplo con algunos items.
 }
 \examples{
-\dontrun{
-# Crear plantilla Excel
-crear_plantilla_escala("mi_escala_plantilla.xlsx")
+# Plantilla CSV con datos de ejemplo, en un directorio temporal
+f <- file.path(tempdir(), "mi_escala_plantilla.csv")
+plantilla <- crear_plantilla_escala(f)
+head(plantilla[, c("dimension", "codigo", "item")])
+unlink(f)
 
-# Crear plantilla CSV
-crear_plantilla_escala("mi_escala_plantilla.csv")
-
-# Crear plantilla vacia (solo encabezados)
-crear_plantilla_escala("plantilla_vacia.xlsx", ejemplo = FALSE)
+# Plantilla vacia (una fila guia); en Excel requiere 'writexl'
+if (requireNamespace("writexl", quietly = TRUE)) {
+  f2 <- file.path(tempdir(), "plantilla_vacia.xlsx")
+  crear_plantilla_escala(f2, ejemplo = FALSE)
+  unlink(f2)
 }
 
 }

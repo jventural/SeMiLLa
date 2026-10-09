@@ -47,7 +47,10 @@ ensamblar_prueba_html(
 \item{verbose}{Mostrar progreso.}
 }
 \value{
-(Invisible) vector con las rutas de los dos HTML generados.
+De forma invisible, un vector \code{character} de longitud 2 con
+las rutas de los archivos escritos: \code{<archivo>_docente.html} y
+\code{<archivo>_alumno.html}. Se llama sobre todo por su efecto (escribir
+los dos HTML en disco).
 }
 \description{
 Genera dos archivos HTML autocontenidos (sin dependencias externas, con
@@ -71,14 +74,30 @@ en base64 dentro del HTML, de modo que el archivo se puede enviar o
 mover sin perderlas.
 }
 \examples{
-\dontrun{
-ensamblar_prueba_html(
-  p,
-  archivo = "salida/prueba_psicometria"
-)
-# -> salida/prueba_psicometria_docente.html
-# -> salida/prueba_psicometria_alumno.html
-}
+# Prueba objetiva minima construida a mano (sin llamar a ningun LLM)
+p <- structure(list(
+  dominio = "estadistica basica",
+  idioma  = "es",
+  items = data.frame(
+    n_item = 1:2, formato = "opcion_multiple",
+    tema = c("Media", "Mediana"), nivel_bloom = "Recordar",
+    enunciado = c("La media aritmetica se obtiene...",
+                  "La mediana es el valor que..."),
+    instruccion_extra = NA_character_, stringsAsFactors = FALSE),
+  opciones = data.frame(
+    n_item = rep(1:2, each = 3),
+    texto_opcion = c("sumando y dividiendo entre n", "ordenando",
+                     "contando", "deja la mitad debajo", "mas se repite",
+                     "es el mayor"),
+    es_correcta = c(TRUE, FALSE, FALSE, TRUE, FALSE, FALSE),
+    stringsAsFactors = FALSE),
+  emparejamientos = data.frame(), contextos = data.frame()),
+  class = c("semilla_prueba_objetiva", "list"))
+
+base <- file.path(tempdir(), "prueba_demo")
+rutas <- ensamblar_prueba_html(p, archivo = base, verbose = FALSE)
+file.exists(rutas)
+unlink(rutas)
 
 }
 \seealso{

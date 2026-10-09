@@ -2,6 +2,7 @@
 % Please edit documentation in R/historias.R
 \name{generar_escala_historias}
 \alias{generar_escala_historias}
+\alias{print.semilla_historias}
 \title{Generar escala basada en historias (vignette-based scale)}
 \usage{
 generar_escala_historias(
@@ -25,7 +26,7 @@ generar_escala_historias(
   max_palabras_historia = 110L,
   max_palabras_item = 18L,
   modelo = "gpt-4.1-mini-2025-04-14",
-  seed = 2026,
+  seed = NULL,
   verbose = TRUE,
   items_modo = c("transversal", "por_historia"),
   enfoque_items = c("facetas", "historias"),
@@ -35,6 +36,8 @@ generar_escala_historias(
   nivel_socioeconomico = c("auto", "alto", "medio", "medio_bajo", "bajo"),
   variante_regional = "auto"
 )
+
+\method{print}{semilla_historias}(x, ...)
 }
 \arguments{
 \item{concepto}{Cadena con la definicion del constructo a evaluar.}
@@ -93,7 +96,10 @@ especifico (sin contar la introduccion).}
 
 \item{modelo}{Modelo OpenAI. Default \code{"gpt-4.1-mini-2025-04-14"}.}
 
-\item{seed}{Semilla para reproducibilidad.}
+\item{seed}{Entero o \code{NULL} (default). Si se indica, se pasa a la API
+del LLM (opcion \code{SeMiLLa.seed}, que se restaura al salir) para
+favorecer la reproducibilidad. Con \code{NULL} el resultado puede variar
+entre corridas.}
 
 \item{verbose}{Mostrar progreso.}
 
@@ -127,6 +133,10 @@ contexto. NULL por defecto.}
 vocabulario: "auto" (default), "selva_peru" (castellano amazonico simple,
 lector adolescente a menudo bilingue) o una cadena libre de guia de
 registro. Se combina con etapa_evolutiva y nivel_socioeconomico.}
+
+\item{x}{Objeto de clase \code{semilla_historias} (metodo \code{print}).}
+
+\item{...}{Argumentos adicionales (ignorados por el metodo \code{print}).}
 }
 \value{
 Objeto \code{semilla_historias} (lista) con:
@@ -138,6 +148,8 @@ Objeto \code{semilla_historias} (lista) con:
 \item \code{concepto}, \code{poblacion}, \code{idioma}.
 \item \code{metadata}: lista con modelo, seed, fecha, n_items, etc.
 }
+El metodo \code{print} devuelve \code{x} de forma invisible; se llama por
+su efecto (muestra un resumen en consola).
 }
 \description{
 Genera un instrumento donde el respondiente lee una HISTORIA breve sobre
@@ -160,10 +172,11 @@ se aplican a CADA historia. Cubren M facetas de juicio
 Cada llamada al LLM se cachea via \code{habilitar_cache()}.
 }
 \examples{
+# Requiere una clave de API de OpenAI (variable OPENAI_API_KEY).
 \dontrun{
 h <- generar_escala_historias(
   concepto = "normalizacion de violencia psicologica en pareja",
-  api_key  = api_key,
+  api_key  = Sys.getenv("OPENAI_API_KEY"),
   factores = c("Control", "Celos", "Humillacion", "Aislamiento"),
   agresor  = "Diego",
   victima  = "Camila",

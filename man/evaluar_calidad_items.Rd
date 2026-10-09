@@ -7,11 +7,28 @@
 evaluar_calidad_items(...)
 }
 \arguments{
-\item{...}{Argumentos de \code{\link{auditar_redaccion_items}}}
+\item{...}{Argumentos de \code{\link{auditar_redaccion_items}}
+(\code{x}, \code{api_key}, \code{criterios}, \code{modelo},
+\code{verbose}, etc.).}
+}
+\value{
+El mismo objeto que devuelve \code{\link{auditar_redaccion_items}}:
+la auditoria de la redaccion de cada item. La primera llamada de la sesion
+emite ademas un \code{warning} de depreciacion.
 }
 \description{
 Esta funcion fue renombrada en SeMiLLa v2.0 para distinguirla
 claramente de \code{validez_contenido()} (que evalua criterios psicometricos
 formales con V de Aiken). \code{auditar_redaccion_items()} se enfoca en la
 redaccion de los items.
+}
+\examples{
+# Requiere una clave de API de OpenAI (llama a un LLM).
+\dontrun{
+calidad <- evaluar_calidad_items(semilla_demo,
+                                 api_key = Sys.getenv("OPENAI_API_KEY"))
+}
+}
+\seealso{
+\code{\link{auditar_redaccion_items}}
 }

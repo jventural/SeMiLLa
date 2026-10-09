@@ -17,17 +17,19 @@ redundantes con columnas \code{item1_num/item1/dim1/item2_num/item2/dim2/
 \item{titulo}{Titulo del grafico (default: auto)}
 }
 \value{
-Objeto ggplot2 (o \code{NULL} invisible si no hay redundancias)
+Objeto de clase \code{ggplot} (ggplot2): barras con el numero de
+pares redundantes por dimension (\code{tipo = "barras"}) o con la
+similitud de los pares mas redundantes (\code{tipo = "pares"}). Se
+dibuja al imprimirlo. Si no hay redundancias devuelve \code{NULL} de
+forma invisible (con un mensaje).
 }
 \description{
 Visualiza los pares de items redundantes como un grafico de red o heatmap.
 Muestra que items tienen alta similitud dentro de su dimension.
 }
 \examples{
-\dontrun{
-red <- analizar_redundancia(mi_escala)
+red <- analizar_redundancia(semilla_demo, verbose = FALSE)
 plot_redundancia(red)              # barras por dimension
 plot_redundancia(red, "pares")     # top pares por similitud
-}
 
 }

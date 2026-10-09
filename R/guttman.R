@@ -46,7 +46,9 @@
 #'   se distribuyen uniformemente.
 #' @param idioma "es" o "en".
 #' @param modelo Modelo OpenAI.
-#' @param seed Semilla para reproducibilidad.
+#' @param seed Semilla que se envia al LLM (opcion \code{SeMiLLa.seed}, que se
+#'   restaura al salir). Con \code{NULL} (por defecto) no se fija ninguna
+#'   semilla y los items pueden variar entre corridas.
 #' @param max_palabras_stem Limite de palabras del stem.
 #' @param max_palabras_alternativa Limite por alternativa.
 #' @param verbose Mostrar progreso.
@@ -57,10 +59,15 @@
 #'   \item \code{items}: data.frame (n_item, faceta, stem)
 #'   \item \code{alternativas}: data.frame en formato largo
 #'         (n_item, nivel_idx, nivel_nombre, alternativa)
-#'   \item \code{concepto}, \code{idioma}, \code{metadata}
+#'   \item \code{concepto}, \code{idioma}, \code{facetas}
+#'   \item \code{metadata}: lista con \code{modelo}, \code{seed},
+#'         \code{fecha}, \code{n_items} y \code{K} (numero de niveles).
 #' }
+#' El metodo \code{print()} devuelve \code{x} de forma invisible; se llama
+#' por su efecto.
 #'
 #' @examples
+#' # Requiere clave de API (los stems y alternativas los redacta un LLM).
 #' \dontrun{
 #' construct_map <- list(
 #'   "Nivel 0" = "Desconocimiento del rol del investigador",
@@ -70,8 +77,8 @@
 #'   "Nivel 4" = "Integracion plena de la identidad"
 #' )
 #' g <- generar_escala_guttman(
-#'   concepto = "identidad investigadora...",
-#'   api_key  = api_key,
+#'   concepto = "identidad investigadora en estudiantes de posgrado",
+#'   api_key  = Sys.getenv("OPENAI_API_KEY"),
 #'   construct_map = construct_map,
 #'   n_items = 12L
 #' )
@@ -88,7 +95,7 @@ generar_escala_guttman <- function(
   items_por_faceta         = NULL,
   idioma                   = c("es", "en"),
   modelo                   = "gpt-4.1-mini-2025-04-14",
-  seed                     = 2026,
+  seed                     = NULL,
   max_palabras_stem        = 18L,
   max_palabras_alternativa = 22L,
   verbose                  = TRUE
@@ -122,7 +129,10 @@ generar_escala_guttman <- function(
     asignacion_facetas <- rep(NA_character_, n_items)
   }
 
-  if (!is.null(seed)) options(SeMiLLa.seed = as.integer(seed))
+  if (!is.null(seed)) {
+    old_opt <- options(SeMiLLa.seed = as.integer(seed))
+    on.exit(options(old_opt), add = TRUE)
+  }
 
   if (verbose) {
     cat("\n[generar_escala_guttman] Configurando OpenAI...\n")
@@ -396,6 +406,9 @@ generar_escala_guttman <- function(
 # Print method
 # =============================================================================
 
+#' @rdname generar_escala_guttman
+#' @param x Objeto de clase \code{semilla_guttman}.
+#' @param ... No se usa.
 #' @export
 print.semilla_guttman <- function(x, ...) {
   cat("\n")

@@ -6,7 +6,7 @@
 \usage{
 cache(
   action = c("enable", "disable", "info", "clear"),
-  path = "SeMiLLa_cache",
+  path = tools::R_user_dir("SeMiLLa", "cache"),
   verbose = TRUE,
   confirmar = TRUE
 )
@@ -16,34 +16,43 @@ cache(
 (desactivar), \code{"info"} (mostrar estado), \code{"clear"} (vaciar).}
 
 \item{path}{Directorio donde guardar el cache. Solo se usa con
-\code{action = "enable"}. Default: \code{"SeMiLLa_cache"} en el WD.}
+\code{action = "enable"}. Por defecto,
+\code{tools::R_user_dir("SeMiLLa", "cache")} (nunca el directorio de
+trabajo).}
 
-\item{verbose}{Mostrar mensajes en consola.}
+\item{verbose}{Logico. Mostrar mensajes en consola (acciones
+\code{"enable"} y \code{"disable"}).}
 
 \item{confirmar}{Solo aplica con \code{action = "clear"}: pedir
-confirmacion antes de borrar.}
+confirmacion antes de borrar (solo en sesiones interactivas).}
 }
 \value{
 Depende de la accion:
 \itemize{
-\item \code{"enable"}: directorio de cache (invisible).
+\item \code{"enable"}: ruta del directorio de cache (invisible).
 \item \code{"disable"}: \code{NULL} invisible.
-\item \code{"info"}: lista con estado del cache.
-\item \code{"clear"}: numero de entradas eliminadas (invisible).
+\item \code{"info"}: objeto \code{semilla_cache_info} (visible) con \code{habilitado},
+\code{dir}, \code{n_entradas} y \code{tamano_mb} (ver
+\code{\link{info_cache}}).
+\item \code{"clear"}: numero de entradas eliminadas (invisible), o
+\code{NULL} si no habia nada que borrar.
 }
 }
 \description{
 Funcion unificada para gestionar el cache de disco de SeMiLLa. Sustituye
 las cuatro funciones \code{habilitar_cache()}, \code{deshabilitar_cache()},
 \code{info_cache()} y \code{limpiar_cache()} (que se mantienen como alias
-por retrocompatibilidad).
+por retrocompatibilidad). Con \code{"enable"} y \code{"disable"} su
+proposito es fijar opciones de sesion, que por eso no se restauran.
 }
 \examples{
-\dontrun{
-cache("enable", path = "D:/mi_proyecto/cache_llm")
+old <- options(SeMiLLa.cache_dir = NULL, SeMiLLa.cache_enabled = NULL)
+d <- file.path(tempdir(), "semilla_cache_demo")
+cache("enable", path = d)
 cache("info")
 cache("clear", confirmar = FALSE)
 cache("disable")
-}
+options(old)
+unlink(d, recursive = TRUE)
 
 }

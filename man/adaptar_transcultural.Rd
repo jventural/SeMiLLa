@@ -2,6 +2,7 @@
 % Please edit documentation in R/transcultural.R
 \name{adaptar_transcultural}
 \alias{adaptar_transcultural}
+\alias{print.semilla_transcultural}
 \title{Adaptacion Transcultural de una Escala con LLM}
 \usage{
 adaptar_transcultural(
@@ -15,9 +16,12 @@ adaptar_transcultural(
   api_key_embedding = NULL,
   verbose = TRUE
 )
+
+\method{print}{semilla_transcultural}(x, ...)
 }
 \arguments{
-\item{x}{Objeto semilla original (con o sin embeddings).}
+\item{x}{Objeto semilla original (con o sin embeddings). En el metodo
+\code{print()}, un objeto de clase \code{semilla_transcultural}.}
 
 \item{idioma_destino}{Codigo de idioma destino: "es", "en", "pt", "fr",
 "de", "it", "pl", etc.}
@@ -45,16 +49,27 @@ no es el mismo que el del LLM (por ejemplo un token \code{hf_} si
 \code{NULL}: se reutiliza \code{api_key}.}
 
 \item{verbose}{Mostrar progreso.}
+
+\item{...}{No se usa.}
 }
 \value{
 Lista de clase \code{semilla_transcultural} con:
 \itemize{
 \item \code{escala_origen}: objeto semilla original.
-\item \code{escala_destino}: objeto semilla adaptado.
-\item \code{equivalencia}: tabla con distancia coseno por item.
-\item \code{items_problematicos}: items con baja equivalencia semantica.
-\item \code{idioma_destino}, \code{cultura}.
+\item \code{escala_destino}: objeto semilla adaptado (con embeddings y
+similitud si se verifico la equivalencia).
+\item \code{equivalencia}: tabla con distancia coseno por item (salida
+\code{$distancias} de \code{\link{detectar_dif_semantico}}), o
+\code{NULL} si no se verifico.
+\item \code{items_problematicos}: items con baja equivalencia semantica,
+o \code{NULL}.
+\item \code{idioma_destino}, \code{cultura}, \code{modelo}: condiciones
+de la adaptacion.
+\item \code{modelo_embedding}: modelo de embeddings usado para la
+equivalencia, o \code{NULL}.
 }
+El metodo \code{print()} devuelve \code{x} de forma invisible; se llama por
+su efecto.
 }
 \description{
 Genera una version traducida y culturalmente adaptada de una escala
@@ -76,13 +91,15 @@ produce un \emph{borrador rapido} que un panel humano debe auditar
 antes del back-translation.
 }
 \examples{
+# Requiere clave de API de OpenAI
 \dontrun{
-escala_es <- semilla("autoeficacia academica", idioma = "es")
-escala_pl <- adaptar_transcultural(escala_es,
-                                   idioma_destino = "pl",
-                                   cultura = "estudiantes universitarios polacos",
-                                   api_key = Sys.getenv("OPENAI_API_KEY"))
-escala_pl$items_problematicos
+adapt <- adaptar_transcultural(semilla_demo,
+                               idioma_destino = "pl",
+                               api_key = Sys.getenv("OPENAI_API_KEY"),
+                               cultura = "estudiantes universitarios polacos",
+                               verificar_equivalencia = FALSE)
+adapt
+adapt$escala_destino$items
 }
 
 }

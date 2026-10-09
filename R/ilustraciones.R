@@ -7,7 +7,7 @@
 #'
 #' \enumerate{
 #'   \item Estilo visual (linea negra blanco-y-negro, sin sombreado, fondo blanco).
-#'   \item Ficha del personaje recurrente (mismo niño/a en toda la serie).
+#'   \item Ficha del personaje recurrente (mismo nino o nina en toda la serie).
 #'   \item Descripcion de la escena especifica del item (generada por LLM).
 #'   \item Recordatorio de consistencia visual entre imagenes.
 #' }
@@ -41,7 +41,8 @@
 #'   o \code{"es"}.
 #' @param modelo Modelo OpenAI a usar para describir las escenas
 #'   (default: \code{"gpt-4.1-mini-2025-04-14"}).
-#' @param seed Semilla para reproducibilidad.
+#' @param seed Semilla que se envia al LLM (se restaura al salir). Con
+#'   \code{NULL} (por defecto) las escenas pueden variar entre corridas.
 #' @param archivo Ruta de salida SIN extension. Si se proporciona, escribe
 #'   un Excel con tres hojas: \code{prompts}, \code{info}, \code{instrucciones}.
 #' @param verbose Mostrar progreso.
@@ -49,18 +50,6 @@
 #' @return Data.frame con clase \code{semilla_prompts_ilustracion} y columnas:
 #'   \code{n_item}, \code{dimension}, \code{item}, \code{escena}, \code{prompt}.
 #'
-#' @examples
-#' \dontrun{
-#' p <- prompts_ilustracion(
-#'   escala         = mi_escala,
-#'   api_key        = api_key,
-#'   idioma_prompts = "en",
-#'   archivo        = "test_aplicacion/prompts_ilustracion"
-#' )
-#' head(p$prompt, 1)
-#' }
-#'
-#' @export
 #' @noRd
 prompts_ilustracion <- function(escala,
                                 api_key,
@@ -70,7 +59,7 @@ prompts_ilustracion <- function(escala,
                                 idioma_prompts = c("en", "es"),
                                 idioma_docs    = c("es", "en"),
                                 modelo         = "gpt-4.1-mini-2025-04-14",
-                                seed           = 2026,
+                                seed           = NULL,
                                 archivo        = NULL,
                                 verbose        = TRUE) {
 
@@ -167,7 +156,10 @@ prompts_ilustracion <- function(escala,
   if (verbose) cat("\n[prompts_ilustracion] Configurando cliente OpenAI...\n")
   openai <- .configurar_openai(api_key, modelo = modelo)
 
-  if (!is.null(seed)) options(SeMiLLa.seed = as.integer(seed))
+  if (!is.null(seed)) {
+    old_opt <- options(SeMiLLa.seed = as.integer(seed))
+    on.exit(options(old_opt), add = TRUE)
+  }
 
   sys_msg <- if (idioma_prompts == "en") paste(
     "You are a visual storyteller for children's psychometric illustrations.",
@@ -371,17 +363,44 @@ prompts_ilustracion <- function(escala,
           "c, d) or option texts. Do NOT include written words that could",
           "act as a clue. Show only the situation posed by the stem.")
   } else {
-    paste("REGLAS DE PROTECCIÓN DE LA CLAVE: esta ilustración",
-          "acompaña un ítem de prueba con una respuesta correcta.",
+    paste("REGLAS DE PROTECCI\u00D3N DE LA CLAVE: esta ilustraci\u00F3n",
+          "acompa\u00F1a un \u00EDtem de prueba con una respuesta correcta.",
           "La imagen NO debe representar, escribir ni sugerir la respuesta",
           "correcta. NO incluir letras de opciones (a, b, c, d) ni el texto",
           "de las opciones. NO incluir palabras escritas que sirvan de",
-          "pista. Mostrar únicamente la situación que plantea el",
+          "pista. Mostrar \u00FAnicamente la situaci\u00F3n que plantea el",
           "enunciado.")
   }
 }
 
 
+#' @title Imprimir prompts de ilustracion
+#'
+#' @description
+#' Metodo \code{print()} para los prompts de ilustracion que genera la
+#' aplicacion de SeMiLLa: muestra el idioma, la paleta, el numero de items,
+#' la ficha del personaje, el estilo y la escena del primer item.
+#'
+#' @param x Data.frame de clase \code{semilla_prompts_ilustracion} con
+#'   columnas \code{n_item}, \code{dimension}, \code{item}, \code{escena} y
+#'   \code{prompt}, y atributos \code{personaje}, \code{estilo},
+#'   \code{paleta} e \code{idioma}.
+#' @param ... No se usa.
+#'
+#' @return Devuelve \code{x} de forma invisible; se llama por su efecto.
+#'
+#' @examples
+#' p <- data.frame(n_item = 1, dimension = "Social",
+#'                 item = "Juego con mis amigos en el recreo",
+#'                 escena = "A child playing tag with friends at school",
+#'                 prompt = "Black and white line art ...")
+#' class(p) <- c("semilla_prompts_ilustracion", "data.frame")
+#' attr(p, "personaje") <- "A single recurring child around 8 years old"
+#' attr(p, "estilo") <- "Black and white line art coloring page"
+#' attr(p, "paleta") <- "bn"
+#' attr(p, "idioma") <- "en"
+#' print(p)
+#'
 #' @export
 print.semilla_prompts_ilustracion <- function(x, ...) {
   cat("\n")

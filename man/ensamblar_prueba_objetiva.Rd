@@ -36,18 +36,25 @@ ensamblar_prueba_objetiva(
 
 \item{instrucciones}{Texto custom; si NULL, autogenerado.}
 
-\item{archivo}{Ruta SIN extension. Se generaran:
-\code{<archivo>_aplicable.docx} y \code{<archivo>_clave.docx}.}
+\item{archivo}{Ruta SIN extension (default \code{NULL}: no se escribe
+ningun archivo y solo se devuelve el texto Markdown). Si se pasa, se
+generan \verb{<archivo>_aplicable} y \verb{<archivo>_clave} en los
+formatos pedidos.}
 
-\item{formato}{Vector con: "md", "docx".}
+\item{formato}{Vector con: "md", "docx" (este ultimo requiere
+\pkg{officer} y \pkg{flextable}, o \pkg{rmarkdown}). Solo se usa si se
+indica \code{archivo}.}
 
-\item{idioma}{"es" o "en".}
+\item{idioma}{"es" o "en". Si es \code{NULL} (default) se toma del objeto.}
 
 \item{verbose}{Mostrar progreso.}
 }
 \value{
-Lista con dos elementos: \code{aplicable} y \code{clave}, cada
-uno de clase \code{semilla_test_objetivo}.
+Lista de clase \code{c("semilla_test_objetivo_multi", "list")} con
+dos elementos, \code{aplicable} y \code{clave}, cada uno de clase
+\code{semilla_test_objetivo}: una lista con \code{nombre_test},
+\code{texto_md} (la prueba en Markdown) y \code{archivos} (rutas
+escritas; vacio si \code{archivo = NULL}).
 }
 \description{
 Toma un objeto \code{semilla_prueba_objetiva} y produce dos archivos:
@@ -57,4 +64,38 @@ opciones, sin marcar la respuesta correcta.
 \item Version \strong{con clave}: anexo con respuestas correctas,
 tema y nivel Bloom por item (uso interno del docente/investigador).
 }
+}
+\examples{
+p <- structure(list(
+  dominio = "psicometria introductoria",
+  items = data.frame(
+    n_item = 1:2, tema = c("Fiabilidad", "Validez"),
+    nivel_bloom = "Comprender", formato = "usual",
+    enunciado = c("Que estima el coeficiente alfa?",
+                  "Que evidencia aporta un analisis factorial confirmatorio?"),
+    instruccion_extra = NA_character_, stringsAsFactors = FALSE),
+  opciones = data.frame(
+    n_item = rep(1:2, each = 3), n_opcion = rep(1:3, 2),
+    etiqueta = rep(letters[1:3], 2),
+    texto_opcion = c("La consistencia interna de las puntuaciones",
+                     "La validez de criterio", "La dificultad del item",
+                     "Estructura interna", "Contenido",
+                     "Relacion con otras variables"),
+    es_correcta = c(TRUE, FALSE, FALSE, TRUE, FALSE, FALSE),
+    stringsAsFactors = FALSE),
+  emparejamientos = data.frame(), contextos = data.frame(),
+  idioma = "es", metadata = list(n_items = 2)),
+  class = c("semilla_prueba_objetiva", "list"))
+
+# Sin archivo: solo devuelve el Markdown
+pr <- ensamblar_prueba_objetiva(p, verbose = FALSE)
+cat(pr$clave$texto_md)
+
+# Con archivo en un directorio temporal (solo Markdown)
+f <- file.path(tempdir(), "prueba")
+pr2 <- ensamblar_prueba_objetiva(p, archivo = f, formato = "md",
+                                 verbose = FALSE)
+pr2
+unlink(c(pr2$aplicable$archivos, pr2$clave$archivos))
+
 }

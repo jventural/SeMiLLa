@@ -15,7 +15,7 @@ refinar_escala(
   max_intentos_redundancia = 3,
   heredar_compuerta = TRUE,
   modelo = "gpt-4.1-mini",
-  exportar_excel = TRUE,
+  exportar_excel = FALSE,
   carpeta_salida = NULL,
   max_reescrituras_item = 2L,
   devolver_mejor = TRUE,
@@ -73,14 +73,25 @@ podar: el consenso empirico PREMIA a los items parecidos entre si.}
 
 \item{modelo}{Modelo de OpenAI para generar nuevos items}
 
-\item{exportar_excel}{Exportar historial a Excel (default: TRUE)}
+\item{exportar_excel}{Logico. Exportar el historial a Excel (default:
+\code{FALSE}). Requiere el paquete \pkg{openxlsx} y
+\code{carpeta_salida}.}
 
-\item{carpeta_salida}{Carpeta para guardar resultados}
+\item{carpeta_salida}{Carpeta donde guardar el Excel cuando
+\code{exportar_excel = TRUE} (sin valor por defecto; p. ej.
+\code{tempdir()}). Se crea si no existe.}
+
+\item{max_reescrituras_item}{Entero. Tope de veces que un mismo item puede
+reescribirse en toda la corrida (default: 2). Un item que no converge
+en ese numero de intentos se deja como esta.}
+
+\item{devolver_mejor}{Logico. Si \code{TRUE} (default), devuelve la mejor
+iteracion vista y no necesariamente la ultima.}
 
 \item{verbose}{Mostrar progreso en consola (default: TRUE)}
 }
 \value{
-Lista con:
+Lista de clase \code{semilla_refinamiento} con, entre otros:
 \itemize{
 \item \code{escala_final}: Objeto semilla con la escala refinada
 \item \code{historial}: Dataframe con items reemplazados por iteracion
@@ -90,6 +101,17 @@ Lista con:
 \item \code{evolucion}: Dataframe (\code{Iteracion}, \code{Precision}) con
 la precision en cada paso del refinamiento; apto para
 \code{plot_evolucion_precision()}
+\item \code{concordancia}: lista con la re-verificacion del eje 1 de la
+compuerta (facetas y pares redundantes antes/despues, nucleos vetados
+que reaparecen y \code{concuerda}), o \code{NULL} si no habia compuerta.
+\item \code{items_no_convergentes}, \code{textos_intentados},
+\code{veces_reescrito}: diagnostico de los items que no encajaron.
+\item \code{iteracion_elegida}, \code{sin_mejora}, \code{score_inicial},
+\code{score_entregado}: que iteracion se entrego y por que.
+\item \code{rechazos_redundancia}, \code{rechazos_detalle}: reemplazos
+descartados por parecerse a items existentes.
+\item \code{cobertura}: auditoria de cobertura de facetas de la escala
+final (o \code{NULL}).
 }
 }
 \description{
@@ -98,6 +120,7 @@ los reemplaza con nuevos items generados por IA, y repite el analisis
 hasta que todos los items encajen en su estructura teorica.
 }
 \examples{
+# Requiere una clave de API de OpenAI (variable OPENAI_API_KEY).
 \dontrun{
 # Crear escala inicial
 escala <- semilla("resiliencia infantil", api_key = Sys.getenv("OPENAI_API_KEY"))

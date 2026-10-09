@@ -14,8 +14,19 @@ plot_resumen(x, cv = NULL, fiab = NULL)
 \item{fiab}{Resultado de fiabilidad_semantica() (opcional)}
 }
 \value{
-Objeto combinado de ggplot2 (requiere patchwork)
+Objeto \code{patchwork} (graficos ggplot2 combinados): el heatmap
+de similitud, la proyeccion de los embeddings, la V de Aiken y el alpha
+por dimension (si se pasan \code{cv} y \code{fiab}) y un panel de texto
+con las metricas. Se dibuja al imprimirlo. Requiere el paquete
+'patchwork'.
 }
 \description{
 Panel integrado con las metricas psicometricas principales de la escala.
+}
+\examples{
+if (requireNamespace("patchwork", quietly = TRUE)) {
+  fiab <- fiabilidad_semantica(semilla_demo, verbose = FALSE)
+  plot_resumen(semilla_demo, fiab = fiab)
+}
+
 }

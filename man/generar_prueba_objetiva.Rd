@@ -14,7 +14,7 @@ generar_prueba_objetiva(
   k_contexto_dependiente = 3L,
   idioma = c("es", "en", "pt"),
   modelo = "gpt-4.1-mini-2025-04-14",
-  seed = 2026,
+  seed = NULL,
   verbose = TRUE
 )
 }
@@ -48,22 +48,26 @@ generar_prueba_objetiva(
 
 \item{modelo}{Modelo OpenAI.}
 
-\item{seed}{Semilla para reproducibilidad.}
+\item{seed}{Semilla que se envia a la API del LLM (best-effort; la opcion
+\code{SeMiLLa.seed} se restaura al salir). Por defecto \code{NULL}: sin
+semilla, el resultado puede variar entre corridas.}
 
 \item{verbose}{Mostrar progreso.}
 }
 \value{
-Objeto \code{semilla_prueba_objetiva} con:
+Objeto de clase \code{c("semilla_prueba_objetiva", "list")} con:
 \itemize{
-\item \code{dominio}, \code{tabla_especificacion}.
+\item \code{dominio}, \code{tabla_especificacion}, \code{idioma}.
 \item \code{items}: data.frame (n_item, tema, nivel_bloom, formato,
 enunciado, instruccion_extra).
 \item \code{opciones}: data.frame en formato largo (n_item, n_opcion,
 etiqueta, texto_opcion, es_correcta).
-\item \code{emparejamientos}: data.frame para items de emparejamiento.
+\item \code{emparejamientos}: data.frame para items de emparejamiento
+(n_item, premisa, respuesta); vacio si no hay.
 \item \code{contextos}: data.frame con textos base de
-items contexto-dependientes.
-\item \code{metadata}.
+items contexto-dependientes (n_item, contexto); vacio si no hay.
+\item \code{metadata}: lista con \code{modelo}, \code{seed},
+\code{fecha} y \code{n_items}.
 }
 }
 \description{
@@ -107,6 +111,7 @@ assessment. \emph{Applied Measurement in Education, 15}(3),
 }
 
 \examples{
+# Requiere una clave de API de OpenAI (los items los redacta el LLM).
 \dontrun{
 tabla <- data.frame(
   tema        = c("Validez", "Fiabilidad", "IRT"),
@@ -116,9 +121,10 @@ tabla <- data.frame(
 )
 p <- generar_prueba_objetiva(
   dominio = "psicometria introductoria",
-  api_key = api_key,
+  api_key = Sys.getenv("OPENAI_API_KEY"),
   tabla_especificacion = tabla
 )
+print(p)
 }
 
 }

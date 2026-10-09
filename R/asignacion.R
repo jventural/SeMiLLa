@@ -104,7 +104,8 @@
 #'
 #' @param x Objeto \code{semilla} (o lista) con \code{$items$dimension} y
 #'   \code{$similitud}. Tambien acepta una matriz de similitud directa, en cuyo
-#'   caso hay que pasar \code{dimension}.
+#'   caso hay que pasar \code{dimension}. En el metodo \code{print()}, un
+#'   objeto de clase \code{semilla_asignacion}.
 #' @param dimension Vector de dimensiones, si \code{x} es una matriz.
 #' @param umbral_margen Margen por debajo del cual un item se declara mal
 #'   asignado (negativo; por defecto \code{-0.05}). Los items con margen
@@ -112,15 +113,30 @@
 #'   Calibrado con \code{text-embedding-3-small}: ver el encabezado del archivo.
 #' @param verbose Si \code{TRUE}, imprime el resumen.
 #'
-#' @return Lista de clase \code{semilla_asignacion} con:
-#'   \item{items}{data.frame por item: sim_propia, sim_ajena, dim_mas_cercana,
-#'     margen, mal_asignado}
+#' @return Lista de clase \code{semilla_asignacion}, devuelta de forma
+#'   invisible, con:
+#'   \item{items}{data.frame por item: \code{item}, \code{dimension},
+#'     \code{sim_propia}, \code{sim_ajena}, \code{dim_mas_cercana},
+#'     \code{margen}, \code{mal_asignado} y \code{frontera}}
 #'   \item{mal_asignados}{data.frame solo con los items senalados}
 #'   \item{n_mal_asignados}{entero}
 #'   \item{frontera}{items con margen negativo pero por encima del umbral}
 #'   \item{n_frontera}{entero}
 #'   \item{umbral_margen}{el umbral usado}
 #'   \item{alerta}{"ok" o "riesgo"}
+#'   Con una sola dimension, \code{items} y \code{mal_asignados} son
+#'   \code{NULL}. El metodo \code{print()} devuelve \code{x} de forma
+#'   invisible; se llama por su efecto.
+#'
+#' @examples
+#' aud <- auditar_asignacion(semilla_demo, verbose = FALSE)
+#' aud
+#' aud$items[, c("dimension", "margen", "mal_asignado")]
+#'
+#' # Tambien con una matriz de similitud y un vector de dimensiones
+#' auditar_asignacion(semilla_demo$similitud,
+#'                    dimension = semilla_demo$items$dimension,
+#'                    verbose = FALSE)$alerta
 #'
 #' @seealso \code{\link{compuerta_pre_aplicacion}}
 #' @export
@@ -193,10 +209,8 @@ auditar_asignacion <- function(x, dimension = NULL, umbral_margen = -0.05,
   invisible(out)
 }
 
-#' @title Imprimir la auditoria de asignacion
-#' @param x Objeto \code{semilla_asignacion}.
-#' @param ... Sin uso.
-#' @return El objeto, invisible.
+#' @rdname auditar_asignacion
+#' @param ... No se usa.
 #' @export
 print.semilla_asignacion <- function(x, ...) {
   cat("\n============================================================\n")

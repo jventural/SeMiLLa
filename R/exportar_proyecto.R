@@ -32,12 +32,25 @@
 #' @param dif Resultado de \code{\link{detectar_dif_semantico}} (tabla 12).
 #' @param k Numero de factores para las figuras EFA-cargas (por defecto, el numero
 #'   de dimensiones de la escala).
-#' @param nombre_test,autor Metadatos del test ensamblado.
-#' @param dpi Resolucion de las figuras PNG (default 600, calidad de
+#' @param nombre_test,autor Metadatos del test ensamblado (titulo del
+#'   formulario y autor que figura en el).
+#' @param dpi Resolucion de las figuras PNG (por defecto 600, calidad de
 #'   publicacion).
-#' @param verbose Mensajes de progreso.
+#' @param verbose Logico. Si \code{TRUE}, muestra mensajes de progreso.
 #'
-#' @return (Invisible) data.frame con los archivos generados y su estado.
+#' @return Un \code{data.frame}, de forma invisible, con una fila por archivo
+#'   (o grupo de archivos) que se intento generar y dos columnas:
+#'   \code{archivo} (ruta relativa a \code{dir}) y \code{ok} (logico,
+#'   \code{TRUE} si se escribio sin error). La funcion se llama sobre todo por
+#'   su efecto: escribir los archivos en \code{dir}.
+#'
+#' @examples
+#' d <- file.path(tempdir(), "proyecto_demo")
+#' res <- exportar_proyecto(semilla_demo, dir = d, abreviatura = "DEMO",
+#'                          dpi = 72, verbose = FALSE)
+#' res
+#' unlink(d, recursive = TRUE)
+#'
 #' @export
 exportar_proyecto <- function(escala, dir, abreviatura = "TEST",
                               efa = NULL, ensemble = NULL, refinamiento = NULL,
@@ -140,22 +153,27 @@ exportar_proyecto <- function(escala, dir, abreviatura = "TEST",
   # ---- Figuras comparativas sin refinar vs refinado (10-13) ----
   if (!is.null(escala_sin_refinar)) {
     .fig_sankey_de(escala_sin_refinar, file.path(GR, "12_sankey_sinrefinar.png"),
-                   paste0(abreviatura, " (sin refinar)"), gp_reg = reg, msg = msg)
+                   paste0(abreviatura, " (sin refinar)"), gp_reg = reg, msg = msg,
+                   dpi = dpi)
   }
   .fig_sankey_de(escala, file.path(GR, "13_sankey_refinado.png"),
-                 paste0(abreviatura, " (refinado)"), gp_reg = reg, msg = msg)
+                 paste0(abreviatura, " (refinado)"), gp_reg = reg, msg = msg,
+                 dpi = dpi)
   # ---- Lollipop de consenso por item: sin refinar (14) y refinado (15) ----
   if (!is.null(escala_sin_refinar)) {
     .fig_consenso_de(escala_sin_refinar, file.path(GR, "14_consenso_sinrefinar.png"),
-                     paste0(abreviatura, " (sin refinar)"), gp_reg = reg, msg = msg)
+                     paste0(abreviatura, " (sin refinar)"), gp_reg = reg, msg = msg,
+                     dpi = dpi)
   }
   .fig_consenso_de(escala, file.path(GR, "15_consenso_refinado.png"),
-                   paste0(abreviatura, " (refinado)"), gp_reg = reg, msg = msg)
+                   paste0(abreviatura, " (refinado)"), gp_reg = reg, msg = msg,
+                   dpi = dpi)
 
   msg(">> Exportando escala final...")
   base_final <- file.path(RES, paste0(abreviatura, "_escala_final"))
-  ok_ef <- tryCatch({ exportar_escala(escala, archivo = base_final, incluir_info = TRUE)
-                      guardar(escala, base_final); TRUE },
+  ok_ef <- tryCatch({ exportar_escala(escala, archivo = base_final, incluir_info = TRUE,
+                                      verbose = verbose)
+                      guardar(escala, base_final, verbose = verbose); TRUE },
                     error = function(e) { msg("   [x] escala final: ", e$message); FALSE })
   reg(paste0(abreviatura, "_escala_final.{xlsx,txt,rds}"), ok_ef)
 
@@ -199,8 +217,12 @@ exportar_proyecto <- function(escala, dir, abreviatura = "TEST",
 }
 
 # --- helpers internos (no exportados) -------------------------------------
+# 'dpi' llega como argumento: antes estas funciones lo leian de un entorno en
+# el que no existe y el error, atrapado por tryCatch, impedia generar las
+# figuras 12-15.
 
-.fig_sankey_de <- function(esc, file, etiqueta, gp_reg = NULL, msg = message) {
+.fig_sankey_de <- function(esc, file, etiqueta, gp_reg = NULL, msg = message,
+                           dpi = 600) {
   ok <- tryCatch({
     pr <- precision_clasificacion(esc, metodo = "ensemble", algoritmos = c("kmeans", "ward"), verbose = FALSE)
     p <- plot_sankey(pr, titulo = paste0("Flujo item -> cluster (", etiqueta, ")"))
@@ -210,7 +232,8 @@ exportar_proyecto <- function(escala, dir, abreviatura = "TEST",
   invisible(ok)
 }
 
-.fig_consenso_de <- function(esc, file, etiqueta, gp_reg = NULL, msg = message) {
+.fig_consenso_de <- function(esc, file, etiqueta, gp_reg = NULL, msg = message,
+                             dpi = 600) {
   ok <- tryCatch({
     pr <- precision_clasificacion(esc, metodo = "ensemble", algoritmos = c("kmeans", "ward"), verbose = FALSE)
     p <- plot_consenso(pr, titulo = paste0("Consenso del ensemble por item (", etiqueta, ")"))

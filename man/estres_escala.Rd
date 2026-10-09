@@ -36,7 +36,7 @@ estres_escala(
   poblacion = NULL,
   n_nucleos = NULL,
   api_key = Sys.getenv("OPENAI_API_KEY"),
-  seed = 2026,
+  seed = NULL,
   verbose = TRUE
 )
 }
@@ -59,6 +59,25 @@ cada sesgo, p. ej. \code{list(descuido = c(.1, .2, .4))}.}
 modelo generador, identicos a \code{\link{simular_estructura}} (incluida
 la opcion \code{carga_propia = "semantica"}, v2.9.0).}
 
+\item{dl_juez}{Canal de dependencia local por gemelos SEMANTICOS que
+detecta un juez LLM: \code{"escenario"} (default; la linea base se
+reporta con y sin esos pares), \code{"off"} (no se consulta al juez) u
+\code{"on"} (los pares entran al pronostico base como un hecho).}
+
+\item{dl_adyacencia}{Canal de dependencia local por ADYACENCIA de items
+consecutivos: \code{"off"} (default), \code{"escenario"} u \code{"on"},
+con el mismo significado que en \code{dl_juez}.}
+
+\item{pares_juez}{data.frame opcional con columnas \code{item1} e
+\code{item2} (posiciones de los items) con los pares gemelos ya
+juzgados; si se pasa, no se consulta al juez LLM.}
+
+\item{modelo_jueces}{Modelo LLM del juez de parafrasis (canal
+\code{dl_juez}).}
+
+\item{g_juez, g_ady}{Fuerza (carga del factor de error compartido) que se
+asigna a cada par del canal juez y del canal de adyacencia.}
+
 \item{n_rep}{Replicas Monte Carlo por celda (sesgo x dosis). Por defecto 60.}
 
 \item{umbral_rmsea, umbral_phi}{Criterios de estructura limpia.}
@@ -76,23 +95,30 @@ diagnostico (comportamiento clasico). Requiere una escala regenerable
 \item{max_iteraciones}{Maximo de vueltas de reescritura (default 5).}
 
 \item{n_reescribir}{Cuantos items reescribir por vuelta. Si \code{NULL},
-\code{ceiling(0.15 * n_items)} acotado a \link{1, 5}.}
+\code{ceiling(0.15 * n_items)} acotado a \code{[1, 5]}.}
 
 \item{n_rep_intermedio}{Replicas Monte Carlo en las vueltas intermedias
 (mas rapido; el diagnostico final usa \code{n_rep}). Default 30.}
+
+\item{umbral_redundancia}{Similitud coseno a partir de la cual un item
+reescrito en la optimizacion se considera gemelo de otro de la escala y
+se revierte a su texto anterior (default 0.70).}
 
 \item{modelo}{Modelo LLM para reescribir los items en la optimizacion.}
 
 \item{poblacion}{Poblacion objetivo (para la reescritura; si \code{NULL} se toma
 del metadata de la escala).}
 
-\item{n_nucleos}{Nucleos a usar. Por defecto (\code{NULL}) todos menos uno.
+\item{n_nucleos}{Nucleos a usar. Por defecto (\code{NULL}) todos menos uno
+(como maximo 2 durante \code{R CMD check}).
 Use \code{1} en servidores compartidos (p. ej. Connect Cloud).}
 
 \item{api_key}{Clave OpenAI (para calificar deseabilidad y, si
 \code{optimizar_estres=TRUE}, reescribir items y recalcular embeddings).}
 
-\item{seed}{Semilla global (streams por replica derivados de ella).}
+\item{seed}{Semilla global (streams por replica derivados de ella). Por
+defecto \code{NULL}: no se fija semilla y el resultado puede variar entre
+corridas; pase un entero (p. ej. \code{2026}) para reproducirlo.}
 
 \item{verbose}{Imprime el avance celda a celda y el resumen final.}
 }
@@ -105,10 +131,13 @@ sesgo), \code{fragilidad_items} (caida de carga por item y sesgo critico),
 resistencia a las dosis de sesgo), \code{origen} (EJE 1: estructura de
 partida, con \code{$etiqueta} LIMPIA / EN DUDA / COMPROMETIDA y
 \code{$escenarios}, la linea base recalculada con los pares de cada canal
-de dependencia local) y \code{params}.
-Si \code{optimizar_estres=TRUE} y hubo mejora, ademas \code{optimizacion}
-(historial iteracion a iteracion, indices inicial/final, items reescritos)
-y \code{escala_final} (la escala mejorada, lista para seguir usandose).
+de dependencia local), \code{umbral_quiebre}, \code{params} (lista con
+los parametros usados) y \code{minutos} (duracion). Se devuelve de forma
+invisible. Siempre trae \code{optimizacion} (lista; \code{$aplicada} es
+\code{FALSE} si no se optimizo). Si \code{optimizar_estres=TRUE} y hubo
+mejora, \code{optimizacion} contiene ademas el historial iteracion a
+iteracion, los indices inicial/final y los items reescritos, y se anade
+\code{escala_final} (la escala mejorada, lista para seguir usandose).
 Tiene metodos \code{print()} y \code{plot()}.
 }
 \description{
@@ -141,6 +170,18 @@ por defecto usa todos los nucleos menos uno. Los streams RNG son POR
 REPLICA (L'Ecuyer-CMRG), asi que con el mismo \code{seed} el resultado es
 IDENTICO con 1 o con N nucleos: sirve para verificar la paridad entre la
 app Shiny y el script local.
+}
+\examples{
+# Sin API: solo el sesgo de aquiescencia, sin juez LLM ni optimizacion.
+\donttest{
+st <- estres_escala(semilla_demo, sesgos = "aquiescencia",
+                    dosis = list(aquiescencia = c(0.4, 0.8)),
+                    dl_juez = "off", optimizar_estres = FALSE,
+                    n_rep = 4, n_nucleos = 1, api_key = "",
+                    seed = 2026, verbose = FALSE)
+st$quiebres
+print(st)
+}
 }
 \seealso{
 \code{\link{simular_estructura}}, \code{\link{compuerta_pre_aplicacion}}

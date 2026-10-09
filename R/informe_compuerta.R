@@ -22,7 +22,7 @@
   x <- suppressWarnings(as.numeric(unlist(x, use.names = FALSE)))
   if (length(x) == 0 || all(is.na(x))) "-" else
     paste(formatC(x[seq_len(min(6L, length(x)))], format = "f", digits = d),
-          collapse = " · ")
+          collapse = " \u00B7 ")
 }
 .inf_pct <- function(x, d = 1) {
   x <- suppressWarnings(as.numeric(unlist(x, use.names = FALSE)))
@@ -80,7 +80,7 @@
 
   # ---- Cabecera -----------------------------------------------------------
   add(strrep("=", 74),
-      " SeMiLLa · COMPUERTA PRE-APLICACION",
+      " SeMiLLa \u00B7 COMPUERTA PRE-APLICACION",
       strrep("=", 74))
   add(.inf_campo("Descargado", format(Sys.time(), "%Y-%m-%d %H:%M:%S")))
   add(.inf_campo("Escala", escala$metadata$concepto_original %|N|% "(sin nombre)"))
@@ -117,7 +117,7 @@
   p <- g$parametros
   if (!is.null(p))
     add(.inf_campo("Parametros", sprintf(
-      "%s respondientes · %s replicas · umbral de parecido %s · %s",
+      "%s respondientes \u00B7 %s replicas \u00B7 umbral de parecido %s \u00B7 %s",
       p$n %|N|% "?", p$n_rep %|N|% "?", p$umbral_sem %|N|% "?", p$fecha %|N|% "?")))
 
   # ---- Titular ------------------------------------------------------------
@@ -166,7 +166,7 @@
     "No detecta bien un item ajeno a todo el instrumento (.28)."), "  "))
 
   # ---- Control 1: redaccion ----------------------------------------------
-  add("", .inf_regla("CONTROL 2 · COMO ESTAN ESCRITOS LOS ITEMS"))
+  add("", .inf_regla("CONTROL 2 \u00B7 COMO ESTAN ESCRITOS LOS ITEMS"))
   rd <- g$redaccion
   # Casi todos estos campos son LISTAS con varios componentes (global/media/
   # por_item), no escalares: hay que nombrar el componente o el informe escupe
@@ -181,10 +181,10 @@
     if (isTRUE(rd$parametros$umbral_sem_auto)) "  (automatico)" else "  (fijado a mano)")))
   add(.inf_campo("Umbral de faceta", .inf_num(rd$parametros$umbral_faceta, 3)))
   add(.inf_campo("Solape de n-gramas", sprintf(
-    "medio %s · maximo %s   (n = %s)", .inf_num(rd$ngram_overlap$media, 3),
+    "medio %s \u00B7 maximo %s   (n = %s)", .inf_num(rd$ngram_overlap$media, 3),
     .inf_num(rd$ngram_overlap$maxima, 3), .inf_num(rd$ngram_overlap$n_gram, 0))))
   add(.inf_campo("Homogeneidad sintact.", sprintf(
-    "indice %s · prefijo compartido %s · alerta %s",
+    "indice %s \u00B7 prefijo compartido %s \u00B7 alerta %s",
     .inf_num(rd$homogeneidad_sintactica$indice, 3),
     .inf_num(rd$homogeneidad_sintactica$prefijo_compartido, 3),
     .inf_sino(rd$homogeneidad_sintactica$alerta))))
@@ -205,7 +205,7 @@
   }
 
   # ---- Control 2: deseabilidad -------------------------------------------
-  add("", .inf_regla("CONTROL 3 · QUE TAN COMPROMETEDOR ES RESPONDER"))
+  add("", .inf_regla("CONTROL 3 \u00B7 QUE TAN COMPROMETEDOR ES RESPONDER"))
   if (is.null(d)) {
     add("  NO SE PUDO EVALUAR en esta corrida.",
         "  Los numeros de estructura se calcularon con deseabilidad imputada",
@@ -238,7 +238,7 @@
   }
 
   # ---- Control 3: estructura ---------------------------------------------
-  add("", .inf_regla("CONTROL 4 · COMO SE COMPORTARA LA ESTRUCTURA"))
+  add("", .inf_regla("CONTROL 4 \u00B7 COMO SE COMPORTARA LA ESTRUCTURA"))
   s <- local$sim %|N|% e3
   if (is.null(s)) add("  (sin resultados de simulacion)") else {
     add(.inf_campo("Veredicto", s$veredicto %|N|% "-"))
@@ -286,11 +286,11 @@
         b$n_rep_banda %|N|% "?")))
     if (!is.null(g$estructura_alternativa))
       add("", .inf_parrafo(paste("Estructura alternativa probable:",
-        paste(unlist(g$estructura_alternativa), collapse = " · ")), "  "))
+        paste(unlist(g$estructura_alternativa), collapse = " \u00B7 ")), "  "))
   }
 
   # ---- Resistencia --------------------------------------------------------
-  add("", .inf_regla("RESISTENCIA · QUE PASA SI LA GENTE RESPONDE CON SESGO"))
+  add("", .inf_regla("RESISTENCIA \u00B7 QUE PASA SI LA GENTE RESPONDE CON SESGO"))
   es <- local$estres
   if (is.null(es)) add("  (no se corrio: requiere el analisis en tu computadora)") else {
     add(.inf_campo("Veredicto", es$veredicto %|N|% "-"))
@@ -441,7 +441,7 @@
                      "umbral_phi", "umbral_fusion", "umbral_rmsea")))
   hay_resto <- length(resto) > 0 || any(lengths(sub_resto) > 0)
   if (hay_resto) {
-    add("", .inf_regla("APENDICE · CAMPOS ADICIONALES"))
+    add("", .inf_regla("APENDICE \u00B7 CAMPOS ADICIONALES"))
     add(.inf_parrafo(paste("Campos presentes en el resultado que no tienen",
         "seccion propia en este informe. Se vuelcan tal cual para no perder",
         "nada del estado."), "  "))
@@ -449,7 +449,7 @@
       add("", paste0("  [", et, "]"))
       if (is.data.frame(v)) add(.inf_tabla(v))
       else if (is.atomic(v) && length(v) <= 40)
-        add(.inf_parrafo(paste(format(v), collapse = " · "), "    "))
+        add(.inf_parrafo(paste(format(v), collapse = " \u00B7 "), "    "))
       else add(paste0("    ", utils::capture.output(str(v, max.level = 2))))
     }
     for (n in resto) volcar(n, g[[n]])
@@ -458,7 +458,7 @@
   }
 
   add("", strrep("=", 74),
-      paste0(" Generado por SeMiLLa · ", format(Sys.time(), "%Y-%m-%d %H:%M:%S")),
+      paste0(" Generado por SeMiLLa \u00B7 ", format(Sys.time(), "%Y-%m-%d %H:%M:%S")),
       strrep("=", 74))
   L
 }
@@ -501,13 +501,18 @@
 #'   los hay. Anaden las secciones de estructura completa y resistencia.
 #' @param origen Texto libre sobre de donde salio el resultado.
 #'
-#' @return Un vector de caracteres, una linea por elemento.
+#' @return Vector de caracteres con el informe, una linea por elemento
+#'   (cabecera, titular con el escenario, controles 1 a 4, resistencia e
+#'   items). No escribe nada en disco; para guardarlo use
+#'   \code{\link{guardar_informe_compuerta}}.
 #'
 #' @examples
-#' \dontrun{
-#' cat(informe_compuerta(escala), sep = "\n")
-#' writeLines(informe_compuerta(escala), "compuerta.txt")
-#' }
+#' # Compuerta minima construida a mano sobre la escala de demostracion
+#' # (normalmente sale de compuerta_pre_aplicacion(), que requiere API).
+#' escala <- semilla_demo
+#' escala$compuerta <- list(escenario = "ROBUSTA")
+#' lineas <- informe_compuerta(escala)
+#' cat(head(lineas, 20), sep = "\n")
 #' @export
 informe_compuerta <- function(escala, local = NULL, origen = NULL) {
   if (is.null(escala) || is.null(escala$compuerta))
@@ -516,9 +521,24 @@ informe_compuerta <- function(escala, local = NULL, origen = NULL) {
 }
 
 #' @title Guardar el informe de la compuerta en un archivo
+#'
+#' @description
+#' Escribe en un archivo de texto UTF-8 (con BOM y saltos de linea de
+#' Windows) las lineas que devuelve \code{\link{informe_compuerta}}, de modo
+#' que se abra bien en el Bloc de notas.
+#'
 #' @param lineas Salida de \code{\link{informe_compuerta}}.
-#' @param ruta Fichero de destino.
-#' @return La ruta, de forma invisible.
+#' @param ruta Fichero de destino. No tiene valor por defecto: use, por
+#'   ejemplo, \code{file.path(tempdir(), "compuerta.txt")}.
+#' @return La ruta (cadena de caracteres), de forma invisible; se llama por
+#'   su efecto de escribir el archivo.
+#' @examples
+#' escala <- semilla_demo
+#' escala$compuerta <- list(escenario = "ROBUSTA")
+#' f <- file.path(tempdir(), "compuerta.txt")
+#' guardar_informe_compuerta(informe_compuerta(escala), f)
+#' file.exists(f)
+#' unlink(f)
 #' @export
 guardar_informe_compuerta <- function(lineas, ruta) {
   .cmp_escribir_txt(lineas, ruta)

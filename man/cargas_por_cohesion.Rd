@@ -2,6 +2,7 @@
 % Please edit documentation in R/cargas_por_cohesion.R
 \name{cargas_por_cohesion}
 \alias{cargas_por_cohesion}
+\alias{print.semilla_cargas_cohesion}
 \title{Cargas del generador ordenadas por cohesion semantica (uso independiente)}
 \usage{
 cargas_por_cohesion(
@@ -11,6 +12,8 @@ cargas_por_cohesion(
   umbral_cruce = 0.9,
   carga_cruzada = 0.2
 )
+
+\method{print}{semilla_cargas_cohesion}(x, ...)
 }
 \arguments{
 \item{similitud}{Matriz p x p de similitud coseno entre items (p. ej. la
@@ -31,6 +34,10 @@ la afinidad con otra dimension inyecta una carga cruzada (por defecto
 
 \item{carga_cruzada}{Valor de la carga cruzada inyectada (por defecto
 \code{0.20}).}
+
+\item{x}{Objeto de clase \code{semilla_cargas_cohesion}.}
+
+\item{...}{No se usa.}
 }
 \value{
 Una lista de clase \code{semilla_cargas_cohesion} con:
@@ -39,7 +46,10 @@ Una lista de clase \code{semilla_cargas_cohesion} con:
 \item{LAMBDA}{Matriz p x K de cargas del generador (columnas = dimensiones).}
 \item{afinidad}{Matriz p x K de afinidad media item-dimension.}
 \item{n_cruces}{Numero de cargas cruzadas inyectadas.}
-\item{params}{Parametros usados.}
+\item{params}{Lista con \code{rango}, \code{umbral_cruce} y
+\code{carga_cruzada} usados.}
+El metodo \code{print()} devuelve \code{x} de forma invisible; se llama
+por su efecto.
 }
 \description{
 Calcula, sin necesidad de un objeto \code{semilla} ni de llamadas a la API,
@@ -64,13 +74,15 @@ DISTINTA.
 }
 
 \examples{
-\dontrun{
-emb <- obtener_embeddings(data.frame(item = textos), api_key)
-cc  <- cargas_por_cohesion(emb$similitud, dimensiones)
-cc$tabla
-# Uso posterior en la prueba de estres (equivale a carga_propia = "semantica"):
-# estres_escala(x, similitud = emb$similitud, carga_propia = "semantica")
-}
+cc <- cargas_por_cohesion(semilla_demo$similitud,
+                          semilla_demo$items$dimension)
+cc
+cc$LAMBDA[1:3, ]
+
+# Tambien acepta la matriz de embeddings (filas = items)
+cc2 <- cargas_por_cohesion(semilla_demo$embeddings,
+                           semilla_demo$items$dimension)
+cc2$n_cruces
 
 }
 \seealso{

@@ -22,11 +22,13 @@ obtener_embeddings(
 \item{verbose}{Mostrar progreso}
 }
 \value{
-Objeto de clase 'semilla_embeddings' con:
+Objeto de clase \code{semilla_embeddings} (lista) con:
 \itemize{
 \item \code{embeddings}: Matriz de embeddings (items x dimensiones)
 \item \code{items}: Dataframe de items
-\item \code{similitud}: Matriz de similitud coseno
+\item \code{similitud}: Matriz de similitud coseno (items x items)
+\item \code{metadata}: lista con \code{n_items}, \code{modelo},
+\code{dimensiones} y \code{fecha}
 }
 }
 \description{
@@ -42,12 +44,11 @@ El modelo text-embedding-3-small genera vectores de 1536 dimensiones
 optimizados para tareas de similitud semantica.
 }
 \examples{
+# Requiere clave de API (llama al servicio de embeddings).
 \dontrun{
-# Calcular embeddings
-emb <- obtener_embeddings(items_generados, api_key = Sys.getenv("OPENAI_API_KEY"))
-
-# Ver matriz de similitud
-View(emb$similitud)
+emb <- obtener_embeddings(semilla_demo$items,
+                          api_key = Sys.getenv("OPENAI_API_KEY"))
+round(emb$similitud[1:5, 1:5], 2)
 }
 
 }

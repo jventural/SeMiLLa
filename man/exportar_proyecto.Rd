@@ -72,15 +72,20 @@ graficos comparativos 10 (EFA sin refinar) y 12 (Sankey sin refinar).}
 \item{k}{Numero de factores para las figuras EFA-cargas (por defecto, el numero
 de dimensiones de la escala).}
 
-\item{nombre_test, autor}{Metadatos del test ensamblado.}
+\item{nombre_test, autor}{Metadatos del test ensamblado (titulo del
+formulario y autor que figura en el).}
 
-\item{dpi}{Resolucion de las figuras PNG (default 600, calidad de
+\item{dpi}{Resolucion de las figuras PNG (por defecto 600, calidad de
 publicacion).}
 
-\item{verbose}{Mensajes de progreso.}
+\item{verbose}{Logico. Si \code{TRUE}, muestra mensajes de progreso.}
 }
 \value{
-(Invisible) data.frame con los archivos generados y su estado.
+Un \code{data.frame}, de forma invisible, con una fila por archivo
+(o grupo de archivos) que se intento generar y dos columnas:
+\code{archivo} (ruta relativa a \code{dir}) y \code{ok} (logico,
+\code{TRUE} si se escribio sin error). La funcion se llama sobre todo por
+su efecto: escribir los archivos en \code{dir}.
 }
 \description{
 Genera, en un solo llamado, toda la estructura de salida de un proyecto
@@ -92,4 +97,12 @@ Reproduce la misma coleccion de archivos que el pipeline por lotes, pero a
 partir de los objetos ya calculados en la sesion (no recalcula ni vuelve a
 llamar al LLM). Es la funcion que usa el boton "Exportar proyecto completo"
 de la SeMiLLa App, de modo que la salida desde R y desde la App es identica.
+}
+\examples{
+d <- file.path(tempdir(), "proyecto_demo")
+res <- exportar_proyecto(semilla_demo, dir = d, abreviatura = "DEMO",
+                         dpi = 72, verbose = FALSE)
+res
+unlink(d, recursive = TRUE)
+
 }

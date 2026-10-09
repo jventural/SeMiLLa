@@ -14,9 +14,28 @@ plot_v_aiken(cv, ordenar = TRUE, corte = 0.7)
 \item{corte}{Valor de corte (default: 0.70)}
 }
 \value{
-Objeto ggplot2
+Objeto de clase \code{ggplot} (ggplot2): un punto por item con la
+V de Aiken promedio, su intervalo de confianza como segmento, color segun
+cumpla o no el \code{corte} (V e IC inferior) y la linea de corte. Se
+dibuja al imprimirlo.
 }
 \description{
 Grafico lollipop mostrando V de Aiken para cada item con intervalos
 de confianza y linea de corte.
+}
+\examples{
+# Un objeto 'semilla_cv' construido a mano (validez_contenido() lo crea
+# consultando un LLM)
+cv <- structure(list(
+  v_aiken = data.frame(
+    numero = 1:4,
+    item = semilla_demo$items$item[1:4],
+    V_promedio = c(0.93, 0.81, 0.74, 0.62),
+    IC_inf = c(0.82, 0.68, 0.60, 0.48),
+    IC_sup = c(0.97, 0.89, 0.84, 0.74)
+  ),
+  metadata = list(confianza = 0.95)
+), class = c("semilla_cv", "list"))
+plot_v_aiken(cv)
+
 }

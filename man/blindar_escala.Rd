@@ -26,13 +26,27 @@ blindar_escala(
 
 \item{modelo}{Modelo LLM para jueces y reescritura.}
 
+\item{contexto_prohibido}{Vector character opcional con terminos o patrones
+(expresiones regulares) que los items no deben contener; los que los
+contienen se reescriben. Si es \code{NULL} (default) se toma de
+\code{x$metadata$contexto_prohibido}.}
+
+\item{instrucciones_estilo}{Cadena opcional con instrucciones de estilo de
+redaccion para la reescritura. Si es \code{NULL} (default) se toma de
+\code{x$metadata$instrucciones_estilo}.}
+
+\item{modelo_jueces}{Modelo LLM de los jueces de contexto y de parafrasis
+(default \code{"gpt-4.1-mini"}).}
+
 \item{max_rondas}{Rondas maximas de juicio + reescritura.}
 
 \item{verbose}{Mostrar progreso.}
 }
 \value{
-El objeto con \code{$items} blindados, \code{$blindaje} (reporte)
-y embeddings/similitud recalculados si existian.
+El mismo objeto \code{x} (con su clase) con \code{$items}
+blindados (los items ofensores reescritos), \code{$blindaje} (reporte de
+lo que juzgo y cambio cada juez) y \code{$embeddings}/\code{$similitud}
+recalculados si algun item cambio.
 }
 \description{
 Ejecuta sobre una escala existente los mismos jueces LLM que
@@ -43,5 +57,16 @@ palabras). Los items ofensores se reescriben de forma dirigida y, si el
 objeto traia embeddings, se recalculan al final.
 }
 \details{
-Motivacion: los embeddings subdetectan parafrasis (pares con r policorica= .70 en datos reales viven en coseno 0.43-0.78), y esos gemelos producendependencia local y correlaciones interfactoriales infladas.
+Motivacion: los embeddings subdetectan parafrasis (los pares con r
+policorica de .70 o mas en datos reales viven en coseno 0.43-0.78), y esos gemelos producen
+dependencia local y correlaciones interfactoriales infladas.
+}
+\examples{
+# Requiere una clave de API de OpenAI (jueces LLM y embeddings).
+\dontrun{
+esc <- blindar_escala(semilla_demo,
+                      api_key = Sys.getenv("OPENAI_API_KEY"),
+                      poblacion = "estudiantes universitarios")
+esc$blindaje
+}
 }

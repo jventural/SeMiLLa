@@ -2,6 +2,7 @@
 % Please edit documentation in R/cognitivos.R
 \name{generar_test_cognitivo}
 \alias{generar_test_cognitivo}
+\alias{print.semilla_test_cognitivo}
 \title{Generar test cognitivo procedural (memoria de trabajo, atencion)}
 \usage{
 generar_test_cognitivo(
@@ -14,9 +15,11 @@ generar_test_cognitivo(
   cluster_dificultad = TRUE,
   max_iter_refinamiento = 10L,
   idioma = c("es", "en"),
-  seed = 2026,
+  seed = NULL,
   verbose = TRUE
 )
+
+\method{print}{semilla_test_cognitivo}(x, ...)
 }
 \arguments{
 \item{paradigma}{Paradigma cognitivo. Por ahora solo \code{"ospan"}.
@@ -51,9 +54,14 @@ trial antes de aceptar (default 10).}
 
 \item{idioma}{"es" o "en" (afecta solo etiquetas de instrucciones).}
 
-\item{seed}{Semilla para reproducibilidad.}
+\item{seed}{Semilla para reproducibilidad. Con \code{NULL} (por defecto) no
+se fija ninguna semilla y los estimulos pueden variar entre corridas.}
 
 \item{verbose}{Mostrar progreso.}
+
+\item{x}{Objeto de clase \code{semilla_test_cognitivo}.}
+
+\item{...}{No se usa.}
 }
 \value{
 Objeto \code{semilla_test_cognitivo} con:
@@ -68,10 +76,12 @@ operacion+letra) con columnas:
 \item \code{trials_resumen}: un row por trial con la lista de
 estimulos a memorizar (clave).
 \item \code{validacion_procedural}: data.frame con metricas de
-calidad (\% letras unicas, \% balance V/F, plausibilidad).
+calidad (porcentaje de letras unicas, balance V/F, plausibilidad).
 \item \code{cluster_summary}: tabla nivel_teorico x cluster.
 \item \code{metadata}.
 }
+El metodo \code{print()} devuelve \code{x} de forma invisible; se llama
+por su efecto.
 }
 \description{
 Quinto formato de SeMiLLa: tests cognitivos donde los estimulos se
@@ -122,16 +132,15 @@ task dependent? \emph{Journal of Memory and Language, 28}(2),
 }
 
 \examples{
-\dontrun{
 tc <- generar_test_cognitivo(
   paradigma          = "ospan",
-  niveles_dificultad = c(3, 4, 5, 6, 7),
-  n_trials_por_nivel = 3,
+  niveles_dificultad = c(3, 4, 5),
+  n_trials_por_nivel = 2,
   complejidad_operacion = "media",
   estimulo_memoria   = "letras",
-  seed = 2026
+  seed = 2026,
+  verbose = FALSE
 )
 print(tc)
-}
 
 }

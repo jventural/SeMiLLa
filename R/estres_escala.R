@@ -14,7 +14,8 @@
 # ---- Infraestructura de replicas reproducibles (secuencial == paralelo) -----
 
 # n streams L'Ecuyer-CMRG independientes derivados de un seed, sin perturbar
-# de forma permanente el RNG global del usuario.
+# de forma permanente el RNG global del usuario. Con seed = NULL los streams
+# parten de un estado aleatorio (set.seed(NULL) reinicializa el generador).
 #' @keywords internal
 .semillas_lecuyer <- function(seed, n) {
   old_seed <- if (exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE))
@@ -52,7 +53,7 @@
 .barra_txt <- function(frac, ancho = 24L) {
   frac <- max(0, min(1, frac))
   lleno <- as.integer(round(frac * ancho))
-  paste0("|", strrep("#", lleno), strrep("·", ancho - lleno), "| ",
+  paste0("|", strrep("#", lleno), strrep("\u00b7", ancho - lleno), "| ",
          sprintf("%3.0f%%", 100 * frac))
 }
 
@@ -397,11 +398,26 @@
 #' @param carga_propia,phi_teorico,umbral_ld,fuerza_ld,n,k_cat Parametros del
 #'   modelo generador, identicos a \code{\link{simular_estructura}} (incluida
 #'   la opcion \code{carga_propia = "semantica"}, v2.9.0).
+#' @param dl_juez Canal de dependencia local por gemelos SEMANTICOS que
+#'   detecta un juez LLM: \code{"escenario"} (default; la linea base se
+#'   reporta con y sin esos pares), \code{"off"} (no se consulta al juez) u
+#'   \code{"on"} (los pares entran al pronostico base como un hecho).
+#' @param dl_adyacencia Canal de dependencia local por ADYACENCIA de items
+#'   consecutivos: \code{"off"} (default), \code{"escenario"} u \code{"on"},
+#'   con el mismo significado que en \code{dl_juez}.
+#' @param pares_juez data.frame opcional con columnas \code{item1} e
+#'   \code{item2} (posiciones de los items) con los pares gemelos ya
+#'   juzgados; si se pasa, no se consulta al juez LLM.
+#' @param modelo_jueces Modelo LLM del juez de parafrasis (canal
+#'   \code{dl_juez}).
+#' @param g_juez,g_ady Fuerza (carga del factor de error compartido) que se
+#'   asigna a cada par del canal juez y del canal de adyacencia.
 #' @param n_rep Replicas Monte Carlo por celda (sesgo x dosis). Por defecto 60.
 #' @param umbral_rmsea,umbral_phi Criterios de estructura limpia.
 #' @param umbral_quiebre Probabilidad bajo la cual se declara el punto de
 #'   quiebre. Por defecto 0.50.
-#' @param n_nucleos Nucleos a usar. Por defecto (\code{NULL}) todos menos uno.
+#' @param n_nucleos Nucleos a usar. Por defecto (\code{NULL}) todos menos uno
+#'   (como maximo 2 durante \code{R CMD check}).
 #'   Use \code{1} en servidores compartidos (p. ej. Connect Cloud).
 #' @param optimizar_estres Logico (default \code{TRUE}). Si la escala resulta
 #'   VULNERABLE/FRAGIL, reescribe iterativamente los items que colapsan primero
@@ -411,15 +427,20 @@
 #'   (objeto \code{semilla} con textos de items) y \code{api_key}.
 #' @param max_iteraciones Maximo de vueltas de reescritura (default 5).
 #' @param n_reescribir Cuantos items reescribir por vuelta. Si \code{NULL},
-#'   \code{ceiling(0.15 * n_items)} acotado a [1, 5].
+#'   \code{ceiling(0.15 * n_items)} acotado a \code{[1, 5]}.
 #' @param n_rep_intermedio Replicas Monte Carlo en las vueltas intermedias
 #'   (mas rapido; el diagnostico final usa \code{n_rep}). Default 30.
+#' @param umbral_redundancia Similitud coseno a partir de la cual un item
+#'   reescrito en la optimizacion se considera gemelo de otro de la escala y
+#'   se revierte a su texto anterior (default 0.70).
 #' @param modelo Modelo LLM para reescribir los items en la optimizacion.
 #' @param poblacion Poblacion objetivo (para la reescritura; si \code{NULL} se toma
 #'   del metadata de la escala).
 #' @param api_key Clave OpenAI (para calificar deseabilidad y, si
 #'   \code{optimizar_estres=TRUE}, reescribir items y recalcular embeddings).
-#' @param seed Semilla global (streams por replica derivados de ella).
+#' @param seed Semilla global (streams por replica derivados de ella). Por
+#'   defecto \code{NULL}: no se fija semilla y el resultado puede variar entre
+#'   corridas; pase un entero (p. ej. \code{2026}) para reproducirlo.
 #' @param verbose Imprime el avance celda a celda y el resumen final.
 #' @return Objeto \code{semilla_estres} con \code{curvas} (data.frame sesgo x
 #'   dosis con prob_limpia, IC de Wilson, rmsea/phi medianos, tasas de
@@ -429,11 +450,25 @@
 #'   resistencia a las dosis de sesgo), \code{origen} (EJE 1: estructura de
 #'   partida, con \code{$etiqueta} LIMPIA / EN DUDA / COMPROMETIDA y
 #'   \code{$escenarios}, la linea base recalculada con los pares de cada canal
-#'   de dependencia local) y \code{params}.
-#'   Si \code{optimizar_estres=TRUE} y hubo mejora, ademas \code{optimizacion}
-#'   (historial iteracion a iteracion, indices inicial/final, items reescritos)
-#'   y \code{escala_final} (la escala mejorada, lista para seguir usandose).
+#'   de dependencia local), \code{umbral_quiebre}, \code{params} (lista con
+#'   los parametros usados) y \code{minutos} (duracion). Se devuelve de forma
+#'   invisible. Siempre trae \code{optimizacion} (lista; \code{$aplicada} es
+#'   \code{FALSE} si no se optimizo). Si \code{optimizar_estres=TRUE} y hubo
+#'   mejora, \code{optimizacion} contiene ademas el historial iteracion a
+#'   iteracion, los indices inicial/final y los items reescritos, y se anade
+#'   \code{escala_final} (la escala mejorada, lista para seguir usandose).
 #'   Tiene metodos \code{print()} y \code{plot()}.
+#' @examples
+#' # Sin API: solo el sesgo de aquiescencia, sin juez LLM ni optimizacion.
+#' \donttest{
+#' st <- estres_escala(semilla_demo, sesgos = "aquiescencia",
+#'                     dosis = list(aquiescencia = c(0.4, 0.8)),
+#'                     dl_juez = "off", optimizar_estres = FALSE,
+#'                     n_rep = 4, n_nucleos = 1, api_key = "",
+#'                     seed = 2026, verbose = FALSE)
+#' st$quiebres
+#' print(st)
+#' }
 #' @seealso \code{\link{simular_estructura}}, \code{\link{compuerta_pre_aplicacion}}
 #' @export
 estres_escala <- function(x, deseabilidad = NULL, similitud = NULL,
@@ -460,7 +495,7 @@ estres_escala <- function(x, deseabilidad = NULL, similitud = NULL,
                           modelo = "gpt-4.1-mini", poblacion = NULL,
                           n_nucleos = NULL,
                           api_key = Sys.getenv("OPENAI_API_KEY"),
-                          seed = 2026, verbose = TRUE) {
+                          seed = NULL, verbose = TRUE) {
   if (!requireNamespace("lavaan", quietly = TRUE)) stop("Necesitas el paquete 'lavaan'.")
   if (!requireNamespace("MASS",  quietly = TRUE)) stop("Necesitas el paquete 'MASS'.")
   t0 <- Sys.time()
@@ -631,7 +666,7 @@ estres_escala <- function(x, deseabilidad = NULL, similitud = NULL,
   n_celdas <- nrow(celdas)
 
   # ---- Nucleos, streams y ETA ------------------------------------------------
-  n_nucleos <- n_nucleos %||% max(1L, parallel::detectCores() - 1L)
+  n_nucleos <- n_nucleos %||% .nucleos_por_defecto()
   n_nucleos <- max(1L, as.integer(n_nucleos))
   seeds <- .semillas_lecuyer(seed, n_celdas * n_rep)
   t_cfa <- 0.4 * (p / 16)^1.7
@@ -709,7 +744,9 @@ estres_escala <- function(x, deseabilidad = NULL, similitud = NULL,
       par_e$prop <- 0
       par_e$pares_ld <- pl2
       par_e$sd_tot <- sqrt(var_theta + g2_e + sd_e^2)
-      sd_esc <- .semillas_lecuyer(seed + 7000L + match(nm, names(esc_defs)), n_rep)
+      sd_esc <- .semillas_lecuyer(
+        if (is.null(seed)) NULL else seed + 7000L + match(nm, names(esc_defs)),
+        n_rep)
       Me <- .ejecutar_reps(sd_esc, .estres_rep, par_e, cl)
       conv_e <- Me[, "conv"] == 1
       limpia_e <- conv_e & Me[, "adm"] == 1 & Me[, "rmsea"] <= umbral_rmsea
@@ -796,7 +833,7 @@ estres_escala <- function(x, deseabilidad = NULL, similitud = NULL,
            "la estructura caeria (",
            paste(sprintf("canal %s: prob %d%%", malos$canal,
                          round(100 * malos$prob_limpia)), collapse = "; "),
-           "); verificar o reescribir los pares señalados antes de aplicar")
+           "); verificar o reescribir los pares se\u00f1alados antes de aplicar")
   } else {
     "LIMPIA (sin defecto de origen detectable desde el fraseo)"
   }
@@ -873,6 +910,33 @@ estres_escala <- function(x, deseabilidad = NULL, similitud = NULL,
   invisible(out)
 }
 
+#' @title Imprimir y graficar una prueba de estres
+#'
+#' @description \code{print()} muestra la linea base, los dos ejes del
+#'   veredicto, el punto de quiebre y la fragilidad de cada sesgo y los items
+#'   que colapsan primero. \code{plot()} dibuja las curvas dosis-respuesta de
+#'   la probabilidad de estructura limpia, con su IC de Wilson y el umbral de
+#'   quiebre.
+#'
+#' @param x Objeto de clase \code{semilla_estres}, devuelto por
+#'   \code{\link{estres_escala}}.
+#' @param ... No se usa; se mantiene por compatibilidad con los genericos.
+#'
+#' @return \code{print()} devuelve \code{x} de forma invisible; se llama por
+#'   su efecto. \code{plot()} devuelve un objeto \code{ggplot} (una faceta
+#'   por sesgo) que se dibuja al imprimirlo.
+#'
+#' @examples
+#' \donttest{
+#' st <- estres_escala(semilla_demo, sesgos = "aquiescencia",
+#'                     dosis = list(aquiescencia = c(0.4, 0.8)),
+#'                     dl_juez = "off", optimizar_estres = FALSE,
+#'                     n_rep = 4, n_nucleos = 1, api_key = "",
+#'                     seed = 2026, verbose = FALSE)
+#' print(st)
+#' plot(st)
+#' }
+#' @rdname semilla_estres-metodos
 #' @export
 print.semilla_estres <- function(x, ...) {
   cat(sprintf(" LINEA BASE (sin sesgos): prob limpia %.0f%% [IC95: %.0f-%.0f%%]\n",
@@ -917,6 +981,7 @@ print.semilla_estres <- function(x, ...) {
   invisible(x)
 }
 
+#' @rdname semilla_estres-metodos
 #' @export
 plot.semilla_estres <- function(x, ...) {
   if (!requireNamespace("ggplot2", quietly = TRUE)) stop("Necesitas 'ggplot2'.")

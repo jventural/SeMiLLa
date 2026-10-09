@@ -17,16 +17,17 @@
 #' @param colores Vector de colores para gradiente (bajo, medio, alto)
 #' @param titulo Titulo del grafico
 #'
-#' @return Objeto ggplot2
+#' @return Objeto de clase \code{ggplot} (ggplot2): un heatmap de la matriz
+#'   de similitud (una celda por par de items, relleno = similitud coseno),
+#'   con lineas que separan las dimensiones cuando
+#'   \code{ordenar_por = "dimension"}. Se dibuja al imprimirlo.
 #'
 #' @examples
-#' \dontrun{
 #' # Heatmap basico
-#' plot_similitud(mi_escala)
+#' plot_similitud(semilla_demo)
 #'
 #' # Con valores numericos
-#' plot_similitud(mi_escala, mostrar_valores = TRUE)
-#' }
+#' plot_similitud(semilla_demo, mostrar_valores = TRUE)
 #'
 #' @export
 plot_similitud <- function(x,
@@ -96,7 +97,10 @@ plot_similitud <- function(x,
   # Agregar valores si se solicita
   if (mostrar_valores && n_items <= 25) {
     sim_df$label <- sprintf("%.2f", sim_df$Similitud)
+    # data = sim_df: la columna 'label' se crea despues de armar 'p', asi que
+    # sin esto la capa no la encontraba y el grafico fallaba al dibujarse.
     p <- p + ggplot2::geom_text(
+      data = sim_df,
       ggplot2::aes(label = label),
       size = 2,
       color = ifelse(sim_df$Similitud > 0.6, "white", "black")
@@ -124,21 +128,29 @@ plot_similitud <- function(x,
 #' coloreando los items por dimension o factor.
 #'
 #' @param x Objeto semilla o semilla_embeddings
-#' @param metodo Metodo de reduccion: "tsne" (default) o "umap"
+#' @param metodo Metodo de reduccion: "tsne" (default, requiere 'Rtsne'),
+#'   "umap" (requiere 'umap'); cualquier otro valor (p. ej. "pca") usa
+#'   componentes principales.
 #' @param colorear_por Variable para colorear: "dimension" o "factor_efa"
 #' @param mostrar_etiquetas Mostrar numero de item
 #' @param perplexity Perplexity para t-SNE (default: 5 o n/4)
-#' @param semilla Semilla para reproducibilidad
+#' @param semilla Semilla (entero) para la proyeccion, o \code{NULL}
+#'   (default). Con \code{NULL} no se fija ninguna semilla y la proyeccion
+#'   t-SNE/UMAP puede variar entre corridas; pase un entero (p. ej.
+#'   \code{42}) para un grafico reproducible.
 #'
-#' @return Objeto ggplot2
+#' @return Objeto de clase \code{ggplot} (ggplot2): un diagrama de
+#'   dispersion de los items en las dos dimensiones de la proyeccion, con
+#'   color por dimension (o cluster), etiquetas con el numero de item y
+#'   elipses por grupo. Se dibuja al imprimirlo.
 #'
 #' @examples
-#' \dontrun{
-#' # Proyeccion t-SNE
-#' plot_embeddings(mi_escala)
+#' # Proyeccion por componentes principales (no requiere paquetes extra)
+#' plot_embeddings(semilla_demo, metodo = "pca")
 #'
-#' # Colorear por factor EFA
-#' plot_embeddings(mi_escala, colorear_por = "factor_efa")
+#' # Proyeccion t-SNE reproducible
+#' if (requireNamespace("Rtsne", quietly = TRUE)) {
+#'   plot_embeddings(semilla_demo, metodo = "tsne", semilla = 42)
 #' }
 #'
 #' @export
@@ -147,7 +159,7 @@ plot_embeddings <- function(x,
                             colorear_por = "dimension",
                             mostrar_etiquetas = TRUE,
                             perplexity = NULL,
-                            semilla = 42) {
+                            semilla = NULL) {
 
   .verificar_ggplot2()
 
@@ -159,7 +171,7 @@ plot_embeddings <- function(x,
   n_items <- nrow(embeddings)
 
   # Reduccion dimensional
-  set.seed(semilla)
+  if (!is.null(semilla)) set.seed(semilla)
 
   if (metodo == "tsne") {
     if (!requireNamespace("Rtsne", quietly = TRUE)) {
@@ -251,12 +263,15 @@ plot_embeddings <- function(x,
 #' @param colorear_por Variable para colorear nodos
 #' @param layout Algoritmo de layout: "fr", "kk", "circle", "star"
 #'
-#' @return Objeto ggplot2
+#' @return Objeto de clase \code{ggplot} (ggplot2): la red de items (nodos
+#'   numerados y coloreados por dimension; aristas entre pares con
+#'   similitud >= \code{umbral}, con transparencia segun el peso). Se dibuja
+#'   al imprimirlo. Requiere el paquete 'igraph'.
 #'
 #' @examples
-#' \dontrun{
-#' # Red con umbral 0.6
-#' plot_red_items(mi_escala, umbral = 0.6)
+#' if (requireNamespace("igraph", quietly = TRUE)) {
+#'   # Red con umbral 0.6
+#'   plot_red_items(semilla_demo, umbral = 0.6, layout = "circle")
 #' }
 #'
 #' @export
@@ -370,7 +385,14 @@ plot_red_items <- function(x,
 #'
 #' @param x Objeto semilla o semilla_efa
 #'
-#' @return Objeto ggplot2
+#' @return Objeto de clase \code{ggplot} (ggplot2): los autovalores de la
+#'   matriz frente a los de parallel analysis, con una linea vertical en el
+#'   numero de factores sugerido. Se dibuja al imprimirlo. Emite siempre un
+#'   aviso de obsolescencia.
+#'
+#' @examples
+#' p <- suppressWarnings(plot_scree(semilla_demo))
+#' p
 #'
 #' @export
 plot_scree <- function(x) {
@@ -460,7 +482,19 @@ plot_scree <- function(x) {
 #' @param ordenar Si TRUE, ordena items por carga dentro de cada factor
 #' @param umbral_carga Umbral para resaltar cargas significativas
 #'
-#' @return Objeto ggplot2
+#' @return Objeto de clase \code{ggplot} (ggplot2): barras horizontales con
+#'   la carga de cada item, un panel por factor y una linea en
+#'   \code{umbral_carga}. Se dibuja al imprimirlo.
+#'
+#' @examples
+#' # Un objeto 'semilla_efa' heredado, construido a mano
+#' efa <- structure(list(asignacion = data.frame(
+#'   item_num   = 1:6,
+#'   item       = semilla_demo$items$item[c(1, 3, 4, 6, 7, 8)],
+#'   factor_EFA = rep(c("F1", "F2"), each = 3),
+#'   carga      = c(0.72, 0.55, 0.38, 0.81, 0.64, 0.47)
+#' )), class = "semilla_efa")
+#' plot_cargas(efa)
 #'
 #' @export
 plot_cargas <- function(x,
@@ -531,9 +565,21 @@ plot_cargas <- function(x,
 #' Visualiza la correspondencia entre dimensiones teoricas y factores EFA
 #' usando un diagrama de flujo (alluvial/Sankey).
 #'
-#' @param x Objeto semilla con EFA
+#' @param x Objeto semilla con estructura calculada en \code{$separabilidad}
+#'   (p. ej. el resultado de \code{precision_clasificacion()}) o con el
+#'   esquema heredado \code{$efa}.
 #'
-#' @return Objeto ggplot2
+#' @return Objeto de clase \code{ggplot} (ggplot2): un diagrama alluvial
+#'   con el flujo de items entre dimensiones teoricas y clusters (o factores)
+#'   empiricos. Se dibuja al imprimirlo. Requiere el paquete 'ggalluvial'.
+#'
+#' @examples
+#' if (requireNamespace("ggalluvial", quietly = TRUE)) {
+#'   esc <- semilla_demo
+#'   esc$separabilidad <- precision_clasificacion(esc, verbose = FALSE,
+#'                                                seed = 1)
+#'   plot_estructura(esc)
+#' }
 #'
 #' @export
 plot_estructura <- function(x) {
@@ -611,7 +657,25 @@ plot_estructura <- function(x) {
 #' @param ordenar Si TRUE, ordena por V de Aiken
 #' @param corte Valor de corte (default: 0.70)
 #'
-#' @return Objeto ggplot2
+#' @return Objeto de clase \code{ggplot} (ggplot2): un punto por item con la
+#'   V de Aiken promedio, su intervalo de confianza como segmento, color segun
+#'   cumpla o no el \code{corte} (V e IC inferior) y la linea de corte. Se
+#'   dibuja al imprimirlo.
+#'
+#' @examples
+#' # Un objeto 'semilla_cv' construido a mano (validez_contenido() lo crea
+#' # consultando un LLM)
+#' cv <- structure(list(
+#'   v_aiken = data.frame(
+#'     numero = 1:4,
+#'     item = semilla_demo$items$item[1:4],
+#'     V_promedio = c(0.93, 0.81, 0.74, 0.62),
+#'     IC_inf = c(0.82, 0.68, 0.60, 0.48),
+#'     IC_sup = c(0.97, 0.89, 0.84, 0.74)
+#'   ),
+#'   metadata = list(confianza = 0.95)
+#' ), class = c("semilla_cv", "list"))
+#' plot_v_aiken(cv)
 #'
 #' @export
 plot_v_aiken <- function(cv,
@@ -673,7 +737,14 @@ plot_v_aiken <- function(cv,
 #'
 #' @param fiab Objeto semilla_fiabilidad de fiabilidad_semantica()
 #'
-#' @return Objeto ggplot2
+#' @return Objeto de clase \code{ggplot} (ggplot2): barras horizontales con
+#'   el alpha semantico de cada dimension, coloreadas por su interpretacion
+#'   (Pobre a Excelente) y rotuladas con el valor y el numero de items. Se
+#'   dibuja al imprimirlo.
+#'
+#' @examples
+#' fiab <- fiabilidad_semantica(semilla_demo, verbose = FALSE)
+#' plot_fiabilidad(fiab)
 #'
 #' @export
 plot_fiabilidad <- function(fiab) {
@@ -737,7 +808,14 @@ plot_fiabilidad <- function(fiab) {
 #'
 #' @param disc Resultado de discriminacion_semantica()
 #'
-#' @return Objeto ggplot2
+#' @return Objeto de clase \code{ggplot} (ggplot2): un punto por item
+#'   (similitud media frente a unicidad) coloreado por la discriminacion
+#'   predicha, con lineas en 0.30 y 0.50 y etiquetas para los items extremos.
+#'   Se dibuja al imprimirlo.
+#'
+#' @examples
+#' disc <- discriminacion_semantica(semilla_demo, verbose = FALSE)
+#' plot_discriminacion(disc)
 #'
 #' @export
 plot_discriminacion <- function(disc) {
@@ -823,7 +901,10 @@ plot_discriminacion <- function(disc) {
 #' @param titulo Titulo del grafico. \code{NULL} (por defecto) lo compone con el
 #'   r (o el AUC) validado por CV.
 #'
-#' @return Objeto ggplot2.
+#' @return Objeto de clase \code{ggplot} (ggplot2): un baston por item con su
+#'   peso (o contribucion) en el modelo, coloreado por signo y con los pesos
+#'   cero como puntos sobre el eje; el titulo informa el r (o AUC) validado
+#'   por CV. Se dibuja al imprimirlo.
 #'
 #' @details
 #' A diferencia de \code{\link{analizar_coherencia}} (,10 / ,15 / ,20) o de
@@ -832,11 +913,16 @@ plot_discriminacion <- function(disc) {
 #' depende del uso previsto de la escala y lo fija quien la aplica.
 #'
 #' @examples
-#' \dontrun{
-#' crit <- validez_criterio_predicha(esc, criterio = puntajes,
-#'                                   respuestas = respuestas_piloto)
-#' plot_criterio(crit)
-#' plot_criterio(crit, top_n = 15)
+#' if (requireNamespace("glmnet", quietly = TRUE)) {
+#'   # Criterio a nivel de item: una valoracion de relevancia por item
+#'   val <- data.frame(numero = 1:15,
+#'                     relevancia = c(0.90, 0.85, 0.70, 0.60, 0.75, 0.80, 0.65,
+#'                                    0.90, 0.55, 0.70, 0.60, 0.85, 0.50,
+#'                                    0.75, 0.80))
+#'   crit <- validez_criterio_predicha(semilla_demo, criterio = val,
+#'                                     folds = 5, verbose = FALSE)
+#'   plot_criterio(crit)
+#'   plot_criterio(crit, top_n = 8)
 #' }
 #'
 #' @seealso \code{\link{validez_criterio_predicha}}
@@ -940,7 +1026,6 @@ plot_criterio <- function(crit, top_n = NULL, titulo = NULL) {
 #'
 #' @return Objeto ggplot2
 #'
-#' @export
 #' @noRd
 plot_irt <- function(irt, mostrar_etiquetas = TRUE) {
 
@@ -996,7 +1081,6 @@ plot_irt <- function(irt, mostrar_etiquetas = TRUE) {
 #'
 #' @return Objeto ggplot2
 #'
-#' @export
 #' @noRd
 plot_jaccard <- function(cs) {
 
@@ -1057,7 +1141,13 @@ plot_jaccard <- function(cs) {
 #' @param fc Resultado de forma_corta()
 #' @param escala_original Objeto semilla original (opcional)
 #'
-#' @return Objeto ggplot2
+#' @return Objeto de clase \code{ggplot} (ggplot2): barras agrupadas con el
+#'   numero de items por dimension en la escala original y en la forma corta.
+#'   Se dibuja al imprimirlo.
+#'
+#' @examples
+#' corta <- forma_corta(semilla_demo, n_items = 9, verbose = FALSE, seed = 1)
+#' plot_forma_corta(corta, escala_original = semilla_demo)
 #'
 #' @export
 plot_forma_corta <- function(fc, escala_original = NULL) {
@@ -1127,7 +1217,17 @@ plot_forma_corta <- function(fc, escala_original = NULL) {
 #' @param cv Resultado de validez_contenido() (opcional)
 #' @param fiab Resultado de fiabilidad_semantica() (opcional)
 #'
-#' @return Objeto combinado de ggplot2 (requiere patchwork)
+#' @return Objeto \code{patchwork} (graficos ggplot2 combinados): el heatmap
+#'   de similitud, la proyeccion de los embeddings, la V de Aiken y el alpha
+#'   por dimension (si se pasan \code{cv} y \code{fiab}) y un panel de texto
+#'   con las metricas. Se dibuja al imprimirlo. Requiere el paquete
+#'   'patchwork'.
+#'
+#' @examples
+#' if (requireNamespace("patchwork", quietly = TRUE)) {
+#'   fiab <- fiabilidad_semantica(semilla_demo, verbose = FALSE)
+#'   plot_resumen(semilla_demo, fiab = fiab)
+#' }
 #'
 #' @export
 plot_resumen <- function(x, cv = NULL, fiab = NULL) {
@@ -1292,13 +1392,13 @@ plot_resumen <- function(x, cv = NULL, fiab = NULL) {
 #' @param colores Vector de 2 colores para intra e inter (default: azul y rojo)
 #' @param titulo Titulo del grafico (default: auto)
 #'
-#' @return Objeto ggplot2
+#' @return Objeto de clase \code{ggplot} (ggplot2): dos cajas (similitudes
+#'   intra e inter dimension) con los puntos individuales superpuestos. Se
+#'   dibuja al imprimirlo.
 #'
 #' @examples
-#' \dontrun{
-#' coh <- analizar_coherencia(mi_escala)
+#' coh <- analizar_coherencia(semilla_demo, verbose = FALSE)
 #' plot_coherencia_boxplot(coh)
-#' }
 #'
 #' @export
 plot_coherencia_boxplot <- function(x,
@@ -1367,17 +1467,17 @@ plot_coherencia_boxplot <- function(x,
 #' @param umbral_minimo Umbral minimo de coherencia (linea de referencia)
 #' @param titulo Titulo del grafico (default: auto)
 #'
-#' @return Objeto ggplot2
+#' @return Objeto de clase \code{ggplot} (ggplot2): un violin por dimension
+#'   con la distribucion de la coherencia de sus items y una linea en
+#'   \code{umbral_minimo}. Se dibuja al imprimirlo.
 #'
 #' @examples
-#' \dontrun{
 #' # Desde objeto semilla
-#' plot_coherencia_violin(mi_escala)
+#' plot_coherencia_violin(semilla_demo)
 #'
 #' # Desde resultado de analizar_coherencia
-#' coherencia <- analizar_coherencia(mi_escala)
+#' coherencia <- analizar_coherencia(semilla_demo, verbose = FALSE)
 #' plot_coherencia_violin(coherencia)
-#' }
 #'
 #' @export
 plot_coherencia_violin <- function(x, umbral_minimo = 0.50, titulo = NULL) {
@@ -1473,13 +1573,13 @@ plot_coherencia_violin <- function(x, umbral_minimo = 0.50, titulo = NULL) {
 #' @param x Objeto semilla_precision (resultado de precision_clasificacion)
 #' @param titulo Titulo del grafico (default: auto)
 #'
-#' @return Objeto ggplot2
+#' @return Objeto de clase \code{ggplot} (ggplot2): barras horizontales con
+#'   la precision de clasificacion (\%) de cada dimension, coloreadas por
+#'   nivel. Se dibuja al imprimirlo.
 #'
 #' @examples
-#' \dontrun{
-#' prec <- precision_clasificacion(mi_escala)
+#' prec <- precision_clasificacion(semilla_demo, verbose = FALSE, seed = 1)
 #' plot_precision(prec)
-#' }
 #'
 #' @export
 plot_precision <- function(x, titulo = NULL) {
@@ -1551,14 +1651,16 @@ plot_precision <- function(x, titulo = NULL) {
 #'   "pares"/"tabla" (top pares individuales por similitud)
 #' @param titulo Titulo del grafico (default: auto)
 #'
-#' @return Objeto ggplot2 (o \code{NULL} invisible si no hay redundancias)
+#' @return Objeto de clase \code{ggplot} (ggplot2): barras con el numero de
+#'   pares redundantes por dimension (\code{tipo = "barras"}) o con la
+#'   similitud de los pares mas redundantes (\code{tipo = "pares"}). Se
+#'   dibuja al imprimirlo. Si no hay redundancias devuelve \code{NULL} de
+#'   forma invisible (con un mensaje).
 #'
 #' @examples
-#' \dontrun{
-#' red <- analizar_redundancia(mi_escala)
+#' red <- analizar_redundancia(semilla_demo, verbose = FALSE)
 #' plot_redundancia(red)              # barras por dimension
 #' plot_redundancia(red, "pares")     # top pares por similitud
-#' }
 #'
 #' @export
 plot_redundancia <- function(x, tipo = "barras", titulo = NULL) {
@@ -1712,17 +1814,17 @@ plot_redundancia <- function(x, tipo = "barras", titulo = NULL) {
 #' @param objetivo Precision objetivo (linea de referencia)
 #' @param titulo Titulo del grafico (default: auto)
 #'
-#' @return Objeto ggplot2
+#' @return Objeto de clase \code{ggplot} (ggplot2): una linea con la
+#'   precision en cada iteracion, rotulada con su valor, y una linea
+#'   horizontal en \code{objetivo}. Se dibuja al imprimirlo.
 #'
 #' @examples
-#' \dontrun{
 #' # Despues de refinamiento iterativo
 #' datos <- data.frame(
 #'   Iteracion = 1:3,
 #'   Precision = c(80, 85, 95)
 #' )
 #' plot_evolucion_precision(datos, objetivo = 90)
-#' }
 #'
 #' @export
 plot_evolucion_precision <- function(datos_iteraciones,
@@ -1782,13 +1884,15 @@ plot_evolucion_precision <- function(datos_iteraciones,
 #' @param x Objeto semilla_precision (resultado de precision_clasificacion)
 #' @param titulo Titulo del grafico (default: auto)
 #'
-#' @return Objeto ggplot2
+#' @return Objeto de clase \code{ggplot} (ggplot2): un diagrama alluvial con
+#'   el flujo de items de cada dimension teorica a su cluster, coloreado
+#'   segun la clasificacion sea correcta o no. Si 'ggalluvial' no esta
+#'   instalado devuelve, con un mensaje, un grafico de barras equivalente.
+#'   Se dibuja al imprimirlo.
 #'
 #' @examples
-#' \dontrun{
-#' prec <- precision_clasificacion(mi_escala)
+#' prec <- precision_clasificacion(semilla_demo, verbose = FALSE, seed = 1)
 #' plot_sankey(prec)
-#' }
 #'
 #' @export
 plot_sankey <- function(x, titulo = NULL) {
@@ -1921,17 +2025,21 @@ plot_sankey <- function(x, titulo = NULL) {
 #' @param subtitulo Subtitulo (default automatico segun items bajo umbral).
 #' @param mostrar_valores Si TRUE, anota el valor de consenso junto a cada punto.
 #'
-#' @return Objeto ggplot2
+#' @return Objeto de clase \code{ggplot} (ggplot2): un baston por item con
+#'   su consenso (0 a 1), agrupado por dimension, con los items bajo
+#'   \code{umbral_consenso} resaltados y una linea en el umbral. Se dibuja al
+#'   imprimirlo.
 #'
 #' @examples
-#' \dontrun{
-#' pr <- precision_clasificacion(mi_escala, metodo = "ensemble")
-#' plot_consenso(pr)                                  # version sin refinar
+#' pr <- precision_clasificacion(semilla_demo, metodo = "ensemble",
+#'                               algoritmos = c("kmeans", "ward"),
+#'                               n_replicas = 3, verbose = FALSE, seed = 1)
+#' plot_consenso(pr)
 #'
-#' ref <- refinar_escala(mi_escala, api_key = api)
-#' pr2 <- precision_clasificacion(ref$escala_final, metodo = "ensemble")
-#' plot_consenso(pr2, titulo = "Consenso por item (refinado)")
-#' }
+#' # Tambien acepta un data.frame con Dimension y Consenso
+#' df <- data.frame(Dimension = rep(c("A", "B"), each = 3),
+#'                  Consenso = c(1, 0.9, 0.5, 1, 0.8, 0.6))
+#' plot_consenso(df, titulo = "Consenso por item")
 #'
 #' @seealso \code{\link{plot_sankey}}, \code{\link{precision_clasificacion}}
 #' @export
@@ -2043,7 +2151,6 @@ plot_consenso <- function(x, umbral_consenso = 0.667, titulo = NULL,
 #' plot_flujo_problematicos(prec)
 #' }
 #'
-#' @export
 #' @noRd
 plot_flujo_problematicos <- function(x, titulo = NULL) {
 
@@ -2202,7 +2309,6 @@ plot_flujo_problematicos <- function(x, titulo = NULL) {
 #' plot_flujo_items(prec, solo_problematicos = TRUE)  # solo problematicos
 #' }
 #'
-#' @export
 #' @noRd
 plot_flujo_items <- function(x, solo_problematicos = FALSE, max_chars = 45, titulo = NULL) {
 
@@ -2414,7 +2520,6 @@ plot_flujo_items <- function(x, solo_problematicos = FALSE, max_chars = 45, titu
 #' plot_items_problematicos(prec)
 #' }
 #'
-#' @export
 #' @noRd
 plot_items_problematicos <- function(x, max_chars = 50, titulo = NULL) {
 

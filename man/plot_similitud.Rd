@@ -24,19 +24,20 @@ plot_similitud(
 \item{titulo}{Titulo del grafico}
 }
 \value{
-Objeto ggplot2
+Objeto de clase \code{ggplot} (ggplot2): un heatmap de la matriz
+de similitud (una celda por par de items, relleno = similitud coseno),
+con lineas que separan las dimensiones cuando
+\code{ordenar_por = "dimension"}. Se dibuja al imprimirlo.
 }
 \description{
 Genera un heatmap de la matriz de similitud coseno entre items,
 agrupados por dimension teorica.
 }
 \examples{
-\dontrun{
 # Heatmap basico
-plot_similitud(mi_escala)
+plot_similitud(semilla_demo)
 
 # Con valores numericos
-plot_similitud(mi_escala, mostrar_valores = TRUE)
-}
+plot_similitud(semilla_demo, mostrar_valores = TRUE)
 
 }

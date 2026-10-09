@@ -24,9 +24,9 @@
 #' alpha, esta funcion da una comparacion homogenea.
 #'
 #' @param x Objeto \code{semilla} o lista con \code{similitud} e \code{items}
-#' @param verbose Mostrar progreso
+#' @param verbose Si \code{TRUE}, imprime en consola el resumen por dimension.
 #'
-#' @return data.frame con columnas:
+#' @return \code{data.frame} con una fila por dimension y columnas:
 #'   - dimension: nombre de la dimension
 #'   - n_items: numero de items
 #'   - omega_semantico: omega de McDonald
@@ -39,12 +39,11 @@
 #' submatriz de similitud. Para k=2 se usa \code{sqrt(|r|)} como aproximacion.
 #' Las cargas se truncan a \code{[0,1]} antes de la formula de McDonald.
 #'
+#'   Si los items comparten plantilla sintactica, el resultado lleva el
+#'   atributo \code{alerta_homogeneidad} y se emite un \code{warning}.
+#'
 #' @examples
-#' \dontrun{
-#' escala <- semilla(fuente = "usuario", archivo = "items.xlsx",
-#'                   api_key = Sys.getenv("OPENAI_API_KEY"))
-#' omega_semantico(escala)
-#' }
+#' omega_semantico(semilla_demo, verbose = FALSE)
 #'
 #' @export
 omega_semantico <- function(x, verbose = TRUE) {
@@ -155,7 +154,8 @@ omega_semantico <- function(x, verbose = TRUE) {
                 mean(res$omega_semantico, na.rm = TRUE),
                 mean(res$alpha_semantico, na.rm = TRUE)))
     cat("  Nota: omega no asume tau-equivalencia (cargas iguales).\n")
-    cat("        Cuando hay heterogeneidad de cargas, omega es preferible.\n")
+    cat("        Con cargas iguales coincide con alpha; la diferencia entre\n")
+    cat("        ambos refleja cuanto se apartan las cargas de ese supuesto.\n")
     cat(strrep("=", 60), "\n\n", sep = "")
   }
 

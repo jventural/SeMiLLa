@@ -7,23 +7,24 @@
 ver_items(x, dimension = NULL)
 }
 \arguments{
-\item{x}{Objeto semilla, semilla_items, o dataframe}
+\item{x}{Objeto \code{semilla}, \code{semilla_items}, o data.frame con una
+columna \code{item} (y \code{dimension}).}
 
-\item{dimension}{Filtrar por dimension (NULL = todas)}
+\item{dimension}{Nombre de una dimension para filtrar (\code{NULL} = todas).}
 }
 \value{
-Dataframe con columnas: factor, item
+Un \code{data.frame} con una fila por item y dos columnas:
+\code{factor} (dimension a la que pertenece el item) e \code{item}
+(texto del item).
 }
 \description{
 Devuelve un dataframe con los items organizados por factor.
 }
 \examples{
-\dontrun{
 # Ver todos los items
-ver_items(mi_escala)
+ver_items(semilla_demo)
 
-# Ver items de una dimension
-ver_items(mi_escala, dimension = "autoeficacia")
-}
+# Ver los items de una dimension
+ver_items(semilla_demo, dimension = "Autoeficacia")
 
 }

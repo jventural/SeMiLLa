@@ -7,11 +7,20 @@
 cargar(archivo)
 }
 \arguments{
-\item{archivo}{Ruta al archivo .rds}
+\item{archivo}{Ruta al archivo \code{.rds}.}
 }
 \value{
-Objeto semilla
+El objeto guardado en el archivo (normalmente de clase
+\code{semilla}), tal como lo devuelve \code{readRDS()}.
 }
 \description{
-Carga un objeto SeMiLLa guardado previamente.
+Carga un objeto SeMiLLa guardado previamente con \code{\link{guardar}}.
+}
+\examples{
+f <- file.path(tempdir(), "semilla_demo")
+ruta <- guardar(semilla_demo, f, verbose = FALSE)
+x <- cargar(ruta)
+class(x)
+unlink(ruta)
+
 }

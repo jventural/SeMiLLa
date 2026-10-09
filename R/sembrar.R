@@ -48,11 +48,33 @@
 #' @param max_palabras Numero maximo de palabras por item (NULL = sin limite).
 #' @param incluir_inversos Logico. Incluir items redactados en sentido inverso
 #'   (default: TRUE).
-#' @param seed Semilla para reproducibilidad. Cuando se especifica, se usa
-#'        temperature=0 en el LLM para mayor consistencia
+#' @param blindaje Logico. Si \code{TRUE} (default), tras generar los items se
+#'   aplican jueces LLM de contexto poblacional y de parafrasis que reescriben
+#'   los items que fallan.
+#' @param contexto_prohibido Vector character opcional con terminos o patrones
+#'   (expresiones regulares) que los items no deben contener; los que los
+#'   contienen se reescriben durante el blindaje. \code{NULL} por defecto.
+#' @param instrucciones_estilo Cadena opcional con instrucciones de estilo de
+#'   redaccion que se agregan al prompt de generacion y de reescritura.
+#'   \code{NULL} por defecto.
+#' @param modelo_jueces Modelo LLM usado por los jueces del blindaje
+#'   (default \code{"gpt-4.1-mini"}).
+#' @param seed Entero o \code{NULL} (default). Si se especifica, se fija la
+#'        semilla de R y se usa temperature = 0 y la semilla de la API del LLM
+#'        (opciones que se restauran al salir) para mayor consistencia. Con
+#'        \code{NULL} el resultado puede variar entre corridas.
 #' @param verbose Mostrar progreso
 #'
-#' @return Objeto de clase 'semilla_items' con items generados
+#' @return Objeto de clase \code{semilla_items} (lista) con:
+#' \itemize{
+#'   \item \code{items}: data.frame con columnas \code{numero},
+#'     \code{dimension}, \code{caracteristica} e \code{item}.
+#'   \item \code{concepto}: lista con la definicion del constructo, sus
+#'     dimensiones y caracteristicas (y referencias en el modo cientifico).
+#'   \item \code{metadata}: lista con los parametros de la generacion
+#'     (idioma, poblacion, modelo, numero de items, reglas linguisticas,
+#'     reporte del blindaje, fecha).
+#' }
 #'
 #' @details
 #' \strong{Modo Conocimiento del LLM (fuente="llm")}:
@@ -75,6 +97,7 @@
 #' Requiere conexion a internet y puede tomar mas tiempo.
 #'
 #' @examples
+#' # Requiere una clave de API de OpenAI (variable OPENAI_API_KEY).
 #' \dontrun{
 #' # ===== MODO 1: CONOCIMIENTO DEL LLM =====
 #' # El modelo usa su base de conocimiento para conceptualizar
@@ -603,7 +626,6 @@ generar_escala <- function(concepto,
 #' fiabilidad_semantica(escala_rp)
 #' }
 #'
-#' @export
 #' @noRd
 validar_escala <- function(nombre,
                            definicion,
@@ -908,19 +930,20 @@ validar_escala <- function(nombre,
 #' @description
 #' Devuelve un dataframe con los items organizados por factor.
 #'
-#' @param x Objeto semilla, semilla_items, o dataframe
-#' @param dimension Filtrar por dimension (NULL = todas)
+#' @param x Objeto \code{semilla}, \code{semilla_items}, o data.frame con una
+#'   columna \code{item} (y \code{dimension}).
+#' @param dimension Nombre de una dimension para filtrar (\code{NULL} = todas).
 #'
-#' @return Dataframe con columnas: factor, item
+#' @return Un \code{data.frame} con una fila por item y dos columnas:
+#'   \code{factor} (dimension a la que pertenece el item) e \code{item}
+#'   (texto del item).
 #'
 #' @examples
-#' \dontrun{
 #' # Ver todos los items
-#' ver_items(mi_escala)
+#' ver_items(semilla_demo)
 #'
-#' # Ver items de una dimension
-#' ver_items(mi_escala, dimension = "autoeficacia")
-#' }
+#' # Ver los items de una dimension
+#' ver_items(semilla_demo, dimension = "Autoeficacia")
 #'
 #' @export
 ver_items <- function(x, dimension = NULL) {
@@ -1004,11 +1027,20 @@ ver_items <- function(x, dimension = NULL) {
 #'        La comparacion incluye items de TODAS las dimensiones.
 #' @param max_intentos_redundancia Intentos maximos para generar item no redundante (default: 3)
 #' @param modelo Modelo de OpenAI para generar nuevos items
-#' @param exportar_excel Exportar historial a Excel (default: TRUE)
-#' @param carpeta_salida Carpeta para guardar resultados
+#' @param exportar_excel Logico. Exportar el historial a Excel (default:
+#'        \code{FALSE}). Requiere el paquete \pkg{openxlsx} y
+#'        \code{carpeta_salida}.
+#' @param carpeta_salida Carpeta donde guardar el Excel cuando
+#'        \code{exportar_excel = TRUE} (sin valor por defecto; p. ej.
+#'        \code{tempdir()}). Se crea si no existe.
+#' @param max_reescrituras_item Entero. Tope de veces que un mismo item puede
+#'        reescribirse en toda la corrida (default: 2). Un item que no converge
+#'        en ese numero de intentos se deja como esta.
+#' @param devolver_mejor Logico. Si \code{TRUE} (default), devuelve la mejor
+#'        iteracion vista y no necesariamente la ultima.
 #' @param verbose Mostrar progreso en consola (default: TRUE)
 #'
-#' @return Lista con:
+#' @return Lista de clase \code{semilla_refinamiento} con, entre otros:
 #' \itemize{
 #'   \item \code{escala_final}: Objeto semilla con la escala refinada
 #'   \item \code{historial}: Dataframe con items reemplazados por iteracion
@@ -1018,9 +1050,21 @@ ver_items <- function(x, dimension = NULL) {
 #'   \item \code{evolucion}: Dataframe (\code{Iteracion}, \code{Precision}) con
 #'     la precision en cada paso del refinamiento; apto para
 #'     \code{plot_evolucion_precision()}
+#'   \item \code{concordancia}: lista con la re-verificacion del eje 1 de la
+#'     compuerta (facetas y pares redundantes antes/despues, nucleos vetados
+#'     que reaparecen y \code{concuerda}), o \code{NULL} si no habia compuerta.
+#'   \item \code{items_no_convergentes}, \code{textos_intentados},
+#'     \code{veces_reescrito}: diagnostico de los items que no encajaron.
+#'   \item \code{iteracion_elegida}, \code{sin_mejora}, \code{score_inicial},
+#'     \code{score_entregado}: que iteracion se entrego y por que.
+#'   \item \code{rechazos_redundancia}, \code{rechazos_detalle}: reemplazos
+#'     descartados por parecerse a items existentes.
+#'   \item \code{cobertura}: auditoria de cobertura de facetas de la escala
+#'     final (o \code{NULL}).
 #' }
 #'
 #' @examples
+#' # Requiere una clave de API de OpenAI (variable OPENAI_API_KEY).
 #' \dontrun{
 #' # Crear escala inicial
 #' escala <- semilla("resiliencia infantil", api_key = Sys.getenv("OPENAI_API_KEY"))
@@ -1043,7 +1087,7 @@ refinar_escala <- function(escala,
                            max_intentos_redundancia = 3,
                            heredar_compuerta = TRUE,
                            modelo = "gpt-4.1-mini",
-                           exportar_excel = TRUE,
+                           exportar_excel = FALSE,
                            carpeta_salida = NULL,
                            # v2.9.29 ------------------------------------------------
                            # max_reescrituras_item: tope de veces que un MISMO item
@@ -1140,12 +1184,15 @@ refinar_escala <- function(escala,
   # Configurar OpenAI
   openai <- .configurar_openai(api_key)
 
-  # Carpeta de salida
-  if (is.null(carpeta_salida)) {
-    carpeta_salida <- getwd()
-  }
-  if (!dir.exists(carpeta_salida)) {
-    dir.create(carpeta_salida, recursive = TRUE)
+  # Carpeta de salida: solo se exige (y se crea) si se pide exportar.
+  if (isTRUE(exportar_excel)) {
+    if (is.null(carpeta_salida)) {
+      stop("Para exportar_excel = TRUE indica 'carpeta_salida' ",
+           "(p. ej. carpeta_salida = tempdir()).")
+    }
+    if (!dir.exists(carpeta_salida)) {
+      dir.create(carpeta_salida, recursive = TRUE)
+    }
   }
 
   # Obtener informacion del concepto
@@ -2036,9 +2083,15 @@ refinar_escala <- function(escala,
 #'     \item forced_choice \code{->} \code{?generar_escala_forcedchoice}
 #'   }
 #'
-#' @return Objeto del tipo correspondiente.
+#' @return El objeto que devuelve la funcion subyacente: \code{semilla_items}
+#'   (\code{"likert"}), \code{semilla_historias} (\code{"historias"}),
+#'   \code{semilla_guttman} (\code{"guttman"}), \code{semilla_prueba_objetiva}
+#'   (\code{"objetiva"}), \code{semilla_test_cognitivo} (\code{"cognitivo"}) o
+#'   \code{semilla_forcedchoice} (\code{"forced_choice"}). Su estructura se
+#'   describe en la ayuda de cada una de esas funciones.
 #'
 #' @examples
+#' # Requiere una clave de API de OpenAI (variable OPENAI_API_KEY).
 #' \dontrun{
 #' # Likert clasico
 #' esc <- generar_items(tipo = "likert",

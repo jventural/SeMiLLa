@@ -7,16 +7,25 @@
 plot_coherencia(x, tipo = c("boxplot", "violin"), ...)
 }
 \arguments{
-\item{x}{Resultado de \code{analizar_coherencia()}}
+\item{x}{Resultado de \code{\link{analizar_coherencia}} (objeto
+\code{semilla_coherencia}).}
 
-\item{tipo}{"boxplot" (default) o "violin"}
+\item{tipo}{\code{"boxplot"} (por defecto) o \code{"violin"}.}
 
-\item{...}{Argumentos adicionales pasados a la funcion subyacente}
+\item{...}{Argumentos adicionales pasados a
+\code{\link{plot_coherencia_boxplot}} o
+\code{\link{plot_coherencia_violin}} (p. ej. \code{titulo}).}
 }
 \value{
-Objeto ggplot
+Objeto \code{ggplot} con la distribucion de la similitud intra- e
+inter-dimension de los items, tal como lo devuelve la funcion subyacente.
 }
 \description{
 Despacha a \code{plot_coherencia_boxplot()} o
 \code{plot_coherencia_violin()} segun el argumento \code{tipo}.
+}
+\examples{
+coh <- analizar_coherencia(semilla_demo, verbose = FALSE)
+plot_coherencia(coh)
+plot_coherencia(coh, tipo = "violin")
 }

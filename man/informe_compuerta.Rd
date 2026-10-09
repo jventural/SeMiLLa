@@ -2,23 +2,20 @@
 % (roxygenise reescribe el NAMESPACE y se pierden exports).
 \name{informe_compuerta}
 \alias{informe_compuerta}
-\alias{guardar_informe_compuerta}
 \title{Informe de la compuerta, el mismo que muestra la aplicacion}
 \usage{
 informe_compuerta(escala, local = NULL, origen = NULL)
-
-guardar_informe_compuerta(lineas, ruta)
 }
 \arguments{
 \item{escala}{Objeto \code{semilla} con \code{$compuerta} ya calculada.}
 \item{local}{Resultados del analisis local (\code{$sim}, \code{$estres}), si los
 hay. Anaden las secciones de estructura completa y resistencia.}
 \item{origen}{Texto libre sobre de donde salio el resultado.}
-\item{lineas}{Salida de \code{informe_compuerta}.}
-\item{ruta}{Fichero de destino.}
 }
 \value{
-Un vector de caracteres, una linea por elemento.
+Vector de caracteres con el informe, una linea por elemento (cabecera,
+titular con el escenario, controles 1 a 4, resistencia e items). No escribe
+nada en disco; para guardarlo use \code{\link{guardar_informe_compuerta}}.
 }
 \description{
 Devuelve en texto el volcado COMPLETO de la compuerta: los tres controles con
@@ -38,8 +35,10 @@ falsos negativos a instrumentos publicados que funcionan y no debe presentarse
 como el resultado.
 }
 \examples{
-\dontrun{
-cat(informe_compuerta(escala), sep = "\n")
-guardar_informe_compuerta(informe_compuerta(escala), "compuerta.txt")
-}
+# Compuerta minima construida a mano sobre la escala de demostracion
+# (normalmente sale de compuerta_pre_aplicacion(), que requiere API).
+escala <- semilla_demo
+escala$compuerta <- list(escenario = "ROBUSTA")
+lineas <- informe_compuerta(escala)
+cat(head(lineas, 20), sep = "\n")
 }

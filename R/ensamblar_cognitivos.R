@@ -14,12 +14,36 @@
 #' @param subtitulo Subtitulo opcional.
 #' @param autor Autor.
 #' @param version Version.
-#' @param archivo Ruta SIN extension.
-#' @param formato Vector con: "md", "docx", "xlsx", "shiny".
-#' @param idioma "es" o "en".
+#' @param archivo Ruta SIN extension (default \code{NULL}). Sin ruta no se
+#'   escribe ningun archivo; con ruta se generan
+#'   `<archivo>_aplicable`, `<archivo>_clave`, `<archivo>_banco.xlsx` y
+#'   `<archivo>_app.R` segun \code{formato}.
+#' @param formato Vector con: "md", "docx", "xlsx", "shiny" ("docx" requiere
+#'   \pkg{officer} y \pkg{flextable}, o \pkg{rmarkdown}; "xlsx" requiere
+#'   \pkg{openxlsx}).
+#' @param idioma "es" o "en". Si es \code{NULL} (default) se toma del objeto.
 #' @param verbose Mostrar progreso.
 #'
-#' @return Lista con clase \code{semilla_test_cognitivo_multi}.
+#' @return Lista de clase \code{c("semilla_test_cognitivo_multi", "list")}
+#'   con \code{nombre_test}, \code{archivos} (rutas de los archivos escritos;
+#'   vacio si \code{archivo = NULL}) y \code{paradigma}.
+#'
+#' @examples
+#' tc <- structure(list(
+#'   paradigma = "ospan", idioma = "es",
+#'   trials = data.frame(n_trial = c(1, 1),
+#'                       operacion_str = c("(2 x 3) - 1", "(8 / 2) + 1"),
+#'                       valor_dado = c(5, 6), es_verdadera = c(TRUE, FALSE),
+#'                       estimulo_memoria = c("F", "K")),
+#'   trials_resumen = data.frame(n_trial = 1, set_size = 2,
+#'                               nivel_dificultad = 1,
+#'                               secuencia_estimulos = "F K")),
+#'   class = c("semilla_test_cognitivo", "list"))
+#' f <- file.path(tempdir(), "ospan")
+#' r <- ensamblar_test_cognitivo(tc, archivo = f, formato = "md",
+#'                               verbose = FALSE)
+#' r
+#' unlink(r$archivos)
 #'
 #' @export
 ensamblar_test_cognitivo <- function(
@@ -578,6 +602,25 @@ ensamblar_test_cognitivo <- function(
 # Print method
 # =============================================================================
 
+#' @title Imprimir un test cognitivo ensamblado
+#'
+#' @description Muestra el paradigma, el nombre del test y los archivos
+#'   generados por \code{\link{ensamblar_test_cognitivo}}.
+#'
+#' @param x Objeto de clase \code{semilla_test_cognitivo_multi}.
+#' @param ... No se usa; se mantiene por compatibilidad con
+#'   \code{\link[base]{print}}.
+#'
+#' @return Devuelve \code{x} de forma invisible; se llama por su efecto
+#'   (imprimir en la consola).
+#'
+#' @examples
+#' x <- structure(list(nombre_test = "Test cognitivo procedural - OSPAN",
+#'                     archivos = c("ospan_aplicable.md", "ospan_clave.md"),
+#'                     paradigma = "ospan"),
+#'                class = c("semilla_test_cognitivo_multi", "list"))
+#' print(x)
+#'
 #' @export
 print.semilla_test_cognitivo_multi <- function(x, ...) {
   cat("\n")

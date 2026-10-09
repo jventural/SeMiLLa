@@ -2,6 +2,7 @@
 % Please edit documentation in R/guttman.R
 \name{generar_escala_guttman}
 \alias{generar_escala_guttman}
+\alias{print.semilla_guttman}
 \title{Generar escala con formato de respuesta Guttman}
 \usage{
 generar_escala_guttman(
@@ -13,11 +14,13 @@ generar_escala_guttman(
   items_por_faceta = NULL,
   idioma = c("es", "en"),
   modelo = "gpt-4.1-mini-2025-04-14",
-  seed = 2026,
+  seed = NULL,
   max_palabras_stem = 18L,
   max_palabras_alternativa = 22L,
   verbose = TRUE
 )
+
+\method{print}{semilla_guttman}(x, ...)
 }
 \arguments{
 \item{concepto}{Cadena con la definicion del constructo.}
@@ -46,13 +49,19 @@ se distribuyen uniformemente.}
 
 \item{modelo}{Modelo OpenAI.}
 
-\item{seed}{Semilla para reproducibilidad.}
+\item{seed}{Semilla que se envia al LLM (opcion \code{SeMiLLa.seed}, que se
+restaura al salir). Con \code{NULL} (por defecto) no se fija ninguna
+semilla y los items pueden variar entre corridas.}
 
 \item{max_palabras_stem}{Limite de palabras del stem.}
 
 \item{max_palabras_alternativa}{Limite por alternativa.}
 
 \item{verbose}{Mostrar progreso.}
+
+\item{x}{Objeto de clase \code{semilla_guttman}.}
+
+\item{...}{No se usa.}
 }
 \value{
 Objeto \code{semilla_guttman} con:
@@ -61,8 +70,12 @@ Objeto \code{semilla_guttman} con:
 \item \code{items}: data.frame (n_item, faceta, stem)
 \item \code{alternativas}: data.frame en formato largo
 (n_item, nivel_idx, nivel_nombre, alternativa)
-\item \code{concepto}, \code{idioma}, \code{metadata}
+\item \code{concepto}, \code{idioma}, \code{facetas}
+\item \code{metadata}: lista con \code{modelo}, \code{seed},
+\code{fecha}, \code{n_items} y \code{K} (numero de niveles).
 }
+El metodo \code{print()} devuelve \code{x} de forma invisible; se llama
+por su efecto.
 }
 \description{
 Genera un instrumento donde cada item tiene un stem (raiz) y un conjunto
@@ -93,6 +106,7 @@ Cada respondiente elige UNA alternativa. El analisis posterior se hace
 con un Partial Credit Model (PCM, Rasch politomico).
 }
 \examples{
+# Requiere clave de API (los stems y alternativas los redacta un LLM).
 \dontrun{
 construct_map <- list(
   "Nivel 0" = "Desconocimiento del rol del investigador",
@@ -102,8 +116,8 @@ construct_map <- list(
   "Nivel 4" = "Integracion plena de la identidad"
 )
 g <- generar_escala_guttman(
-  concepto = "identidad investigadora...",
-  api_key  = api_key,
+  concepto = "identidad investigadora en estudiantes de posgrado",
+  api_key  = Sys.getenv("OPENAI_API_KEY"),
   construct_map = construct_map,
   n_items = 12L
 )

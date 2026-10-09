@@ -2,9 +2,12 @@
 % Please edit documentation in R/detectar_ilustracion.R
 \name{detectar_necesidad_ilustracion}
 \alias{detectar_necesidad_ilustracion}
+\alias{print.semilla_deteccion_ilustracion}
 \title{Detectar que items se benefician de una ilustracion}
 \usage{
 detectar_necesidad_ilustracion(escala, umbral_senales = 2L, verbose = TRUE)
+
+\method{print}{semilla_deteccion_ilustracion}(x, ...)
 }
 \arguments{
 \item{escala}{Objeto \code{semilla}, \code{semilla_items},
@@ -14,11 +17,20 @@ detectar_necesidad_ilustracion(escala, umbral_senales = 2L, verbose = TRUE)
 interlocutor) para marcar el item como ilustrable (default 2).}
 
 \item{verbose}{Mostrar resumen.}
+
+\item{x}{Objeto de clase \code{semilla_deteccion_ilustracion}.}
+
+\item{...}{En el metodo \code{print()}, se pasa a
+\code{print.data.frame()} cuando el objeto ya no tiene las columnas
+esperadas; si no, no se usa.}
 }
 \value{
-Data.frame de clase \code{semilla_deteccion_ilustracion} con
-columnas: \code{n_item}, \code{dimension}, \code{item},
-\code{necesita_ilustracion}, \code{criterio}, \code{gatillos}.
+Data.frame de clase \code{semilla_deteccion_ilustracion}, con una
+fila por item y las columnas \code{n_item} (numero del item),
+\code{dimension}, \code{item} (texto), \code{necesita_ilustracion}
+(logico), \code{criterio} (regla que decidio) y \code{gatillos} (raices
+lexicas encontradas, o \code{NA}). El metodo \code{print()} devuelve
+\code{x} de forma invisible; se llama por su efecto.
 }
 \description{
 Analiza cada item y decide, con una heuristica lexica (sin llamadas al
@@ -54,14 +66,14 @@ Cada decision es trazable: se reportan los gatillos encontrados y el
 criterio aplicado.
 }
 \examples{
-\dontrun{
-det <- detectar_necesidad_ilustracion(mi_escala)
-subset(det, necesita_ilustracion)
-
-# Ilustrar solo los items detectados
-seleccion <- mi_escala$items[det$necesita_ilustracion, ]
-p <- prompts_ilustracion(seleccion, api_key = api_key)
-}
+items <- data.frame(
+  dimension = c("Social", "Social", "Autoestima"),
+  item = c("Juego con mis amigos en el recreo",
+           "Comparto mi comida con mis companeros en el aula",
+           "Pienso que soy una buena persona"))
+det <- detectar_necesidad_ilustracion(items)
+det
+det$necesita_ilustracion
 
 }
 \seealso{

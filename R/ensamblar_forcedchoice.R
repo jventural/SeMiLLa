@@ -32,7 +32,30 @@
 #' @param idioma "es" o "en".
 #' @param verbose Mostrar progreso.
 #'
-#' @return Objeto \code{semilla_test_forcedchoice}.
+#' @return Objeto de clase \code{semilla_test_forcedchoice} (lista) con
+#'   \code{nombre_test} (titulo usado), \code{archivos} (vector de rutas de los
+#'   archivos escritos; vacio si \code{archivo = NULL}) y \code{metodo}
+#'   (formato de respuesta de los bloques). Con \code{archivo = NULL} no se
+#'   escribe nada en disco. El metodo \code{print()} devuelve \code{x} de forma
+#'   invisible; se llama por su efecto.
+#'
+#' @examples
+#' # Objeto forced-choice minimo construido a mano (normalmente sale de
+#' # generar_forcedchoice()).
+#' fc <- structure(list(
+#'   concepto = "Estilo de trabajo", idioma = "es",
+#'   config = list(metodo = "most_least"),
+#'   bloques = data.frame(
+#'     block_id = rep(1:2, each = 3),
+#'     texto_item = c("Planifico mis tareas", "Ayudo a mis colegas",
+#'                    "Propongo ideas nuevas", "Cumplo los plazos",
+#'                    "Escucho a los demas", "Pruebo metodos distintos"))),
+#'   class = c("semilla_forcedchoice", "list"))
+#' f <- file.path(tempdir(), "fc_demo")
+#' res <- ensamblar_test_forcedchoice(fc, archivo = f, formato = "md",
+#'                                    verbose = FALSE)
+#' res
+#' unlink(res$archivos)
 #'
 #' @export
 ensamblar_test_forcedchoice <- function(
@@ -507,6 +530,9 @@ ensamblar_test_forcedchoice <- function(
 }
 
 
+#' @rdname ensamblar_test_forcedchoice
+#' @param x Objeto de clase \code{semilla_test_forcedchoice}.
+#' @param ... No se usa.
 #' @export
 print.semilla_test_forcedchoice <- function(x, ...) {
   cat("\n")

@@ -58,23 +58,28 @@
 #'   \code{"contexto_dependiente"} (default 3).
 #' @param idioma "es", "en" o "pt".
 #' @param modelo Modelo OpenAI.
-#' @param seed Semilla para reproducibilidad.
+#' @param seed Semilla que se envia a la API del LLM (best-effort; la opcion
+#'   \code{SeMiLLa.seed} se restaura al salir). Por defecto \code{NULL}: sin
+#'   semilla, el resultado puede variar entre corridas.
 #' @param verbose Mostrar progreso.
 #'
-#' @return Objeto \code{semilla_prueba_objetiva} con:
+#' @return Objeto de clase \code{c("semilla_prueba_objetiva", "list")} con:
 #' \itemize{
-#'   \item \code{dominio}, \code{tabla_especificacion}.
+#'   \item \code{dominio}, \code{tabla_especificacion}, \code{idioma}.
 #'   \item \code{items}: data.frame (n_item, tema, nivel_bloom, formato,
 #'         enunciado, instruccion_extra).
 #'   \item \code{opciones}: data.frame en formato largo (n_item, n_opcion,
 #'         etiqueta, texto_opcion, es_correcta).
-#'   \item \code{emparejamientos}: data.frame para items de emparejamiento.
+#'   \item \code{emparejamientos}: data.frame para items de emparejamiento
+#'         (n_item, premisa, respuesta); vacio si no hay.
 #'   \item \code{contextos}: data.frame con textos base de
-#'         items contexto-dependientes.
-#'   \item \code{metadata}.
+#'         items contexto-dependientes (n_item, contexto); vacio si no hay.
+#'   \item \code{metadata}: lista con \code{modelo}, \code{seed},
+#'         \code{fecha} y \code{n_items}.
 #' }
 #'
 #' @examples
+#' # Requiere una clave de API de OpenAI (los items los redacta el LLM).
 #' \dontrun{
 #' tabla <- data.frame(
 #'   tema        = c("Validez", "Fiabilidad", "IRT"),
@@ -84,9 +89,10 @@
 #' )
 #' p <- generar_prueba_objetiva(
 #'   dominio = "psicometria introductoria",
-#'   api_key = api_key,
+#'   api_key = Sys.getenv("OPENAI_API_KEY"),
 #'   tabla_especificacion = tabla
 #' )
+#' print(p)
 #' }
 #'
 #' @export
@@ -100,7 +106,7 @@ generar_prueba_objetiva <- function(
   k_contexto_dependiente    = 3L,
   idioma                    = c("es", "en", "pt"),
   modelo                    = "gpt-4.1-mini-2025-04-14",
-  seed                      = 2026,
+  seed                      = NULL,
   verbose                   = TRUE
 ) {
 
@@ -123,7 +129,10 @@ generar_prueba_objetiva <- function(
   if (any(!tabla_especificacion$nivel_bloom %in% bloom_validos))
     stop("Niveles Bloom validos: ", paste(bloom_validos, collapse = ", "))
 
-  if (!is.null(seed)) options(SeMiLLa.seed = as.integer(seed))
+  if (!is.null(seed)) {
+    .op_prev <- options(SeMiLLa.seed = as.integer(seed))
+    on.exit(options(.op_prev), add = TRUE)
+  }
 
   if (verbose) {
     cat("\n[generar_prueba_objetiva] Configurando OpenAI...\n")
@@ -527,6 +536,43 @@ generar_prueba_objetiva <- function(
 # Print method
 # =============================================================================
 
+#' @title Imprimir una prueba objetiva
+#'
+#' @description Muestra el dominio, el numero de items, la distribucion por
+#'   formato y por nivel de Bloom, el estado de la verificacion de la clave y
+#'   el primer item como ejemplo (con la opcion correcta marcada).
+#'
+#' @param x Objeto de clase \code{semilla_prueba_objetiva}, devuelto por
+#'   \code{\link{generar_prueba_objetiva}}.
+#' @param ... No se usa; se mantiene por compatibilidad con
+#'   \code{\link[base]{print}}.
+#'
+#' @return Devuelve \code{x} de forma invisible; se llama por su efecto
+#'   (imprimir en la consola).
+#'
+#' @examples
+#' p <- structure(list(
+#'   dominio = "psicometria introductoria",
+#'   items = data.frame(
+#'     n_item = 1:2, tema = c("Fiabilidad", "Validez"),
+#'     nivel_bloom = "Comprender", formato = "usual",
+#'     enunciado = c("Que estima el coeficiente alfa?",
+#'                   "Que evidencia aporta un analisis factorial confirmatorio?"),
+#'     instruccion_extra = NA_character_, stringsAsFactors = FALSE),
+#'   opciones = data.frame(
+#'     n_item = rep(1:2, each = 3), n_opcion = rep(1:3, 2),
+#'     etiqueta = rep(letters[1:3], 2),
+#'     texto_opcion = c("La consistencia interna de las puntuaciones",
+#'                      "La validez de criterio", "La dificultad del item",
+#'                      "Estructura interna", "Contenido",
+#'                      "Relacion con otras variables"),
+#'     es_correcta = c(TRUE, FALSE, FALSE, TRUE, FALSE, FALSE),
+#'     stringsAsFactors = FALSE),
+#'   emparejamientos = data.frame(), contextos = data.frame(),
+#'   idioma = "es", metadata = list(n_items = 2)),
+#'   class = c("semilla_prueba_objetiva", "list"))
+#' print(p)
+#'
 #' @export
 print.semilla_prueba_objetiva <- function(x, ...) {
   cat("\n")
