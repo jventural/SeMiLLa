@@ -105,20 +105,11 @@
 # en el orden de unique(x$items$dimension). NULL si ningun lector respondio.
 #' @keywords internal
 #' @noRd
-.estimar_phi_pares <- function(x, api_key, modelo = "gpt-4.1-mini", n_ejemplos = 4L) {
-  dims <- unique(as.character(x$items$dimension)); K <- length(dims)
-  if (K < 2L) return(NULL)
-  defs <- x$concepto$dimensiones
-  describir <- function(d) {
-    ej <- utils::head(x$items$item[x$items$dimension == d], n_ejemplos)
-    def <- if (is.list(defs) && is.character(defs[[d]])) paste0(" (", defs[[d]], ")") else ""
-    paste0("\"", gsub("_", " ", d), "\"", def, ". Items de ejemplo: ", paste(ej, collapse = " | "))
-  }
-  pares <- utils::combn(K, 2, simplify = FALSE)
-  enunciado <- function(pr) paste0(
-    "En una muestra grande de adultos, que tan fuerte seria la correlacion entre los puntajes de ",
-    "estas dos dimensiones de un cuestionario (fuerza absoluta, sin importar el signo)?\n",
-    "Dimension A: ", describir(dims[pr[1]]), "\nDimension B: ", describir(dims[pr[2]]))
+.estimar_phi_pares <- function(x, api_key, modelo = "gpt-4.1-mini", n_ejemplos = 4L,
+                               resp_juez = NULL) {
+  pp <- .prompts_phi(x, n_ejemplos)
+  if (is.null(pp)) return(NULL)
+  dims <- pp$dims; K <- length(dims); pares <- pp$pares; enunciado <- pp$enunciado
   est <- list()
 
   if (.decision_disponible(api_key)) {
@@ -132,12 +123,13 @@
         sum(.probs_decision(a, as.character(seq_along(.VALORES_PHI) - 1L)) * .VALORES_PHI)
     }, numeric(1))
   }
-  # El modelo de juicio (Haiku con OpenRouter), un par por llamada en paralelo
-  prompts <- vapply(pares, function(pr) paste0(enunciado(pr),
-    "\nResponde SOLO un objeto JSON {\"r\": <numero entre 0 y 1>}."), character(1))
-  resp <- tryCatch(.chat_en_paralelo(prompts, api_key, modelo, max_tokens = 100L,
-                                     temperature = 0, razonamiento = "low"),
-                   error = function(e) NULL)
+  # El modelo de juicio (Haiku con OpenRouter), un par por llamada en paralelo.
+  # 16-10-2026: la compuerta puede traer estas respuestas ya hechas (resp_juez),
+  # enviadas en la misma tanda que los otros jueces.
+  resp <- resp_juez %||% tryCatch(
+    .chat_en_paralelo(pp$prompts, api_key, modelo, max_tokens = 100L,
+                      temperature = 0, razonamiento = "low"),
+    error = function(e) NULL)
   if (!is.null(resp)) est$juez <- vapply(resp, function(t) {
     if (is.null(t)) return(NA_real_)
     m <- regmatches(t, regexpr("[01]?\\.[0-9]+|\\b[01]\\b", t))
@@ -153,6 +145,29 @@
   dimnames(Phi) <- list(dims, dims)
   attr(Phi, "lectores") <- names(est)
   .phi_definida_positiva(Phi)
+}
+
+# Pares de dimensiones y prompts del juez para .estimar_phi_pares(). NULL con
+# una sola dimension.
+#' @keywords internal
+#' @noRd
+.prompts_phi <- function(x, n_ejemplos = 4L) {
+  dims <- unique(as.character(x$items$dimension)); K <- length(dims)
+  if (K < 2L) return(NULL)
+  defs <- x$concepto$dimensiones
+  describir <- function(d) {
+    ej <- utils::head(x$items$item[x$items$dimension == d], n_ejemplos)
+    def <- if (is.list(defs) && is.character(defs[[d]])) paste0(" (", defs[[d]], ")") else ""
+    paste0("\"", gsub("_", " ", d), "\"", def, ". Items de ejemplo: ", paste(ej, collapse = " | "))
+  }
+  pares <- utils::combn(K, 2, simplify = FALSE)
+  enunciado <- function(pr) paste0(
+    "En una muestra grande de adultos, que tan fuerte seria la correlacion entre los puntajes de ",
+    "estas dos dimensiones de un cuestionario (fuerza absoluta, sin importar el signo)?\n",
+    "Dimension A: ", describir(dims[pr[1]]), "\nDimension B: ", describir(dims[pr[2]]))
+  prompts <- vapply(pares, function(pr) paste0(enunciado(pr),
+    "\nResponde SOLO un objeto JSON {\"r\": <numero entre 0 y 1>}."), character(1))
+  list(dims = dims, pares = pares, enunciado = enunciado, prompts = prompts)
 }
 
 # Una matriz de correlaciones estimada par a par puede no ser definida

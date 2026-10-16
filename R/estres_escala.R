@@ -112,6 +112,11 @@
   do.call(rbind, res)
 }
 
+# Cluster que la compuerta abre una vez y presta a sus simular_estructura()
+# (16-10-2026). Vacio fuera de la compuerta; ella lo cierra al salir.
+#' @keywords internal
+.cl_compartido <- new.env(parent = emptyenv())
+
 # Cluster PSOCK con lavaan/MASS precargados. NULL si n_nucleos <= 1.
 #' @keywords internal
 .cluster_estres <- function(n_nucleos, verbose = TRUE) {

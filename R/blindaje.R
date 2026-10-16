@@ -32,6 +32,26 @@
                       razon = character(0), stringsAsFactors = FALSE)
   n <- nrow(items_df)
   if (n < 2) return(vacio)
+  prompt <- .prompt_parafrasis(items_df)
+
+  # Un fallo de la llamada devuelve el data.frame vacio MARCADO con el motivo
+  # (attr "fallo_llm"): sin esa marca, "la API fallo" era indistinguible de
+  # "el juez corrio y no hallo gemelos" y el canal se apagaba en silencio.
+  err <- NULL
+  raw <- tryCatch(
+    .llamar_openai(openai,
+                   messages = list(list(role = "user", content = prompt)),
+                   modelo = modelo, max_tokens = 2000L, temperature = 0),
+    error = function(e) { err <<- conditionMessage(e); NULL })
+  .parsear_parafrasis(raw, n, err)
+}
+
+# 16-10-2026: el prompt y la lectura de la respuesta van aparte de la llamada, para
+# que la compuerta pueda mandar las pasadas del juez en paralelo y junto con
+# los otros jueces (.chat_en_paralelo_lotes). El texto del prompt no cambio.
+#' @keywords internal
+.prompt_parafrasis <- function(items_df) {
+  n <- nrow(items_df)
   dims <- if (!is.null(items_df$dimension)) as.character(items_df$dimension)
           else rep("(unica)", n)
   lista <- paste0(seq_len(n), ". [", dims, "] ", items_df$item, collapse = "\n")
@@ -116,16 +136,13 @@
     "{\"gemelos\": [{\"items\": [3, 7], \"razon\": \"...\"}]}\n",
     "Si no hay gemelos: {\"gemelos\": []}"
   )
+  prompt
+}
 
-  # Un fallo de la llamada devuelve el data.frame vacio MARCADO con el motivo
-  # (attr "fallo_llm"): sin esa marca, "la API fallo" era indistinguible de
-  # "el juez corrio y no hallo gemelos" y el canal se apagaba en silencio.
-  err <- NULL
-  raw <- tryCatch(
-    .llamar_openai(openai,
-                   messages = list(list(role = "user", content = prompt)),
-                   modelo = modelo, max_tokens = 2000L, temperature = 0),
-    error = function(e) { err <<- conditionMessage(e); NULL })
+#' @keywords internal
+.parsear_parafrasis <- function(raw, n, err = NULL) {
+  vacio <- data.frame(item1 = integer(0), item2 = integer(0),
+                      razon = character(0), stringsAsFactors = FALSE)
   if (is.null(raw))
     return(.marcar_fallo_llm(vacio, err %||% "la llamada al LLM no devolvio texto"))
   parsed <- tryCatch(
@@ -177,19 +194,43 @@
 #' @keywords internal
 .juzgar_parafrasis_votado <- function(items_df, openai, modelo = "gpt-4.1-mini",
                                       idioma = "es", n_pasadas = 3,
-                                      verbose = FALSE) {
+                                      verbose = FALSE, api_key = NULL,
+                                      respuestas = NULL) {
   n_pasadas <- max(1L, as.integer(n_pasadas))
-  if (n_pasadas == 1L)
+  if (n_pasadas == 1L && is.null(respuestas))
     return(.juzgar_parafrasis_llm(items_df, openai, modelo = modelo, idioma = idioma))
+
+  # 16-10-2026: las pasadas son la MISMA consulta repetida y no dependen unas de
+  # otras, pero se hacian en serie, cada una de hasta 2000 tokens. Con api_key
+  # se mandan a la vez; con 'respuestas' la compuerta ya las trajo junto con
+  # los demas jueces. Con la cache de disco activa se mantiene la ruta en serie,
+  # que es la que la consulta (y la que da el mismo resultado de siempre).
+  n_items <- nrow(items_df)
+  if (is.null(respuestas) && !is.null(api_key) && n_items >= 2 &&
+      !.cache_enabled()) {
+    seed_api <- getOption("SeMiLLa.seed", NULL)
+    respuestas <- .chat_en_paralelo(
+      rep(.prompt_parafrasis(items_df), n_pasadas), api_key, modelo,
+      max_tokens = 2000L, temperature = 0, razonamiento = NULL,
+      seed = seed_api,
+      top_p = getOption("SeMiLLa.top_p", if (!is.null(seed_api)) 1 else NULL),
+      max_paralelo = getOption("SeMiLLa.max_paralelo", 6L))
+  }
 
   pasadas <- vector("list", n_pasadas)
   fallos  <- character(0)
   for (k in seq_len(n_pasadas)) {
-    d <- .juzgar_parafrasis_llm(items_df, openai, modelo = modelo, idioma = idioma)
+    d <- if (!is.null(respuestas)) {
+      if (n_items < 2) .parsear_parafrasis("{\"gemelos\": []}", n_items)
+      else .parsear_parafrasis(respuestas[[k]], n_items,
+                               if (is.null(respuestas[[k]]))
+                                 "la llamada al LLM no devolvio texto")
+    } else .juzgar_parafrasis_llm(items_df, openai, modelo = modelo, idioma = idioma)
     f <- attr(d, "fallo_llm")
     if (!is.null(f)) fallos <- c(fallos, f)
     pasadas[[k]] <- d
   }
+  if (n_pasadas == 1L) return(pasadas[[1]])
   # Si TODAS las pasadas fallaron, el canal esta caido: hay que decirlo, no
   # devolver "no hay gemelos" (misma razon por la que existe .marcar_fallo_llm).
   vacio <- data.frame(item1 = integer(0), item2 = integer(0),

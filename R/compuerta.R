@@ -284,6 +284,46 @@ compuerta_pre_aplicacion <- function(x,
   }
 
   # ---------------------------------------------------------------------------
+  # LOS JUECES LLM EN UNA SOLA TANDA (16-10-2026)
+  # ---------------------------------------------------------------------------
+  # Los tres jueces -gemelos (eje 1), deseabilidad (eje 2) y correlacion entre
+  # dimensiones (eje 3)- no dependen unos de otros, pero corrian uno detras de
+  # otro, y el de gemelos hacia ademas sus 3 consultas en serie (cada una de
+  # hasta 2000 tokens). Ahora se arman todos los prompts y se mandan juntos: la
+  # espera es la de la llamada mas lenta, no la suma. Los prompts, el barajado
+  # de la deseabilidad y la lectura de cada respuesta son los mismos de antes.
+  # Con la cache de disco activa se conserva la ruta de siempre, que la usa.
+  pre <- NULL
+  quiere_phi <- is.null(list(...)$phi_teorico) && .decision_disponible(api_key)
+  if (!.cache_enabled() && nrow(x$items) >= 2) {
+    pl_des <- .plan_deseabilidad(x, poblacion = poblacion, n_pasadas = n_pasadas)
+    pp_phi <- if (quiere_phi) .prompts_phi(x) else NULL
+    n_gem  <- max(1L, as.integer(n_pasadas_gemelos))
+    seed_api <- getOption("SeMiLLa.seed", NULL)
+    lotes <- list(
+      list(prompts = rep(.prompt_parafrasis(x$items), n_gem),
+           max_tokens = 2000L, temperature = 0, razonamiento = NULL,
+           seed = seed_api,
+           top_p = getOption("SeMiLLa.top_p", if (!is.null(seed_api)) 1 else NULL)),
+      list(prompts = pl_des$prompts, max_tokens = 300L, temperature = 0.3,
+           razonamiento = "low"),
+      list(prompts = if (!is.null(pp_phi)) pp_phi$prompts else character(0),
+           max_tokens = 100L, temperature = 0, razonamiento = "low"))
+    # Las consultas de gemelos son las mas largas: se les suman sus propios
+    # hilos para que no ocupen los de la deseabilidad. Con la opcion en 1 se
+    # respeta la ruta secuencial.
+    mp <- as.integer(getOption("SeMiLLa.max_paralelo", 6L))
+    if (mp > 1L) mp <- mp + n_gem
+    if (verbose) cat("\n  (jueces LLM: ", sum(lengths(lapply(lotes, `[[`, "prompts"))),
+                     " consultas en paralelo, ", mp, " a la vez)\n", sep = "")
+    r <- tryCatch(.chat_en_paralelo_lotes(lotes, api_key, modelo, max_paralelo = mp),
+                  error = function(e) NULL)
+    if (!is.null(r) && length(r) == 3L)
+      pre <- list(gemelos = r[[1]], deseab = r[[2]],
+                  phi = if (!is.null(pp_phi)) r[[3]] else NULL, pl_des = pl_des)
+  }
+
+  # ---------------------------------------------------------------------------
   # PASO 1/3: REDACCION (pares + facetas + sintaxis)
   # ---------------------------------------------------------------------------
   if (verbose) cat("\n", .color_azul("[COMPUERTA 1/3] REDACCION"), "\n", sep = "")
@@ -300,7 +340,8 @@ compuerta_pre_aplicacion <- function(x,
   gemelos_llm <- tryCatch(
     .juzgar_parafrasis_votado(x$items, .configurar_openai(api_key),
                               modelo = modelo,
-                              n_pasadas = n_pasadas_gemelos, verbose = verbose),
+                              n_pasadas = n_pasadas_gemelos, verbose = verbose,
+                              api_key = api_key, respuestas = pre$gemelos),
     error = function(e) NULL)
   n_gemelos_llm <- if (!is.null(gemelos_llm)) nrow(gemelos_llm) else 0L
 
@@ -418,9 +459,12 @@ compuerta_pre_aplicacion <- function(x,
   # ---------------------------------------------------------------------------
   if (verbose) cat("\n", .color_azul("[COMPUERTA 2/3] DESEABILIDAD"), "\n", sep = "")
   deseab <- tryCatch(
-    calificar_deseabilidad(x, api_key = api_key, modelo = modelo,
-                           poblacion = poblacion, n_pasadas = n_pasadas,
-                           verbose = verbose),
+    if (!is.null(pre))
+      .resumir_deseabilidad(.llenar_deseabilidad(pre$pl_des, pre$deseab),
+                            pre$pl_des$dims, verbose = verbose)
+    else calificar_deseabilidad(x, api_key = api_key, modelo = modelo,
+                                poblacion = poblacion, n_pasadas = n_pasadas,
+                                verbose = verbose),
     error = function(e) e
   )
   # Robustez: si el juicio del LLM es INESTABLE entre pasadas (r < .70), el
@@ -432,14 +476,25 @@ compuerta_pre_aplicacion <- function(x,
     # Recalifica con el DOBLE de pasadas de las que se acaban de usar: con un
     # 8 fijo, llamar a la compuerta con n_pasadas = 8 repetia lo ya hecho.
     n_pas2 <- max(8L, as.integer(n_pasadas) * 2L)
+    # 16-10-2026: se SUMAN pasadas a las que ya hay en vez de empezar de cero. Antes
+    # se tiraban las 4 hechas y se pedian 8 nuevas; ahora se piden solo las 4
+    # que faltan y se promedian las 8. Mismo numero de pasadas, mitad de
+    # llamadas.
+    n_ya    <- if (is.matrix(deseab$pasadas)) ncol(deseab$pasadas) else 0L
+    n_extra <- n_pas2 - n_ya
     if (verbose) cat("  (estabilidad r=", sprintf("%.2f", deseab$estabilidad),
-                     " < .70: recalificando con ", n_pas2, " pasadas...)\n", sep = "")
-    deseab2 <- tryCatch(
-      calificar_deseabilidad(x, api_key = api_key, modelo = modelo,
-                             poblacion = poblacion, n_pasadas = n_pas2,
-                             verbose = verbose),
-      error = function(e) NULL
-    )
+                     " < .70: recalificando con ", n_pas2, " pasadas (",
+                     n_extra, " nuevas)...)\n", sep = "")
+    deseab2 <- tryCatch({
+      pl2 <- .plan_deseabilidad(x, poblacion = poblacion, n_pasadas = n_extra)
+      r2  <- .chat_en_paralelo(pl2$prompts, api_key, modelo, max_tokens = 300L,
+                               temperature = 0.3, razonamiento = "low",
+                               max_paralelo = getOption("SeMiLLa.max_paralelo", 6L),
+                               verbose = verbose)
+      m <- .llenar_deseabilidad(pl2, r2)
+      if (n_ya > 0) m <- cbind(deseab$pasadas, m)
+      .resumir_deseabilidad(m, pl2$dims, verbose = verbose)
+    }, error = function(e) NULL)
     if (!is.null(deseab2)) deseab <- deseab2
   }
   if (inherits(deseab, "error")) {
@@ -487,7 +542,8 @@ compuerta_pre_aplicacion <- function(x,
   dots <- list(...)
   phi_estimado <- NULL
   if (is.null(dots$phi_teorico) && .decision_disponible(api_key)) {
-    phi_estimado <- tryCatch(.estimar_phi_pares(x, api_key, modelo), error = function(e) NULL)
+    phi_estimado <- tryCatch(.estimar_phi_pares(x, api_key, modelo, resp_juez = pre$phi),
+                             error = function(e) NULL)
     if (!is.null(phi_estimado) && identical(phi_simulacion, "estimado")) {
       dots$phi_teorico <- phi_estimado
       if (verbose) cat("  Correlacion entre dimensiones estimada por par (Jev + juez): ",
@@ -495,7 +551,24 @@ compuerta_pre_aplicacion <- function(x,
                        "\n", sep = "")
     }
   }
-  .simular <- function(...) do.call(simular_estructura, c(list(...), dots))
+  .simular <- function(..., .dots = dots) do.call(simular_estructura, c(list(...), .dots))
+
+  # 16-10-2026: UN solo cluster para toda la compuerta. Cada simular_estructura()
+  # abria y cerraba el suyo, y la primera ronda de un cluster nuevo tarda ~4 s
+  # mas (cada trabajador carga SeMiLLa y sus dependencias al recibir la primera
+  # replica). La compuerta simula 1 + n_banda veces: en el modo Rapido de la
+  # App eran ~20 de sus 26 s de simulacion (medido 16-10-2026, 8 nucleos).
+  n_nuc <- max(1L, as.integer(n_nucleos %||% .nucleos_por_defecto()))
+  if (n_nuc > 1L && is.null(.cl_compartido$cl)) {
+    .cl_compartido$cl <- .cluster_estres(n_nuc)
+    .cl_compartido$n  <- n_nuc
+    on.exit({
+      if (!is.null(.cl_compartido$cl)) parallel::stopCluster(.cl_compartido$cl)
+      .cl_compartido$cl <- NULL; .cl_compartido$n <- NULL
+    }, add = TRUE)
+  }
+  n_nucleos <- n_nuc
+
   estructura <- tryCatch(
     .simular(x,
              deseabilidad = if (!is.null(deseab)) deseab$deseabilidad else NULL,
@@ -525,6 +598,21 @@ compuerta_pre_aplicacion <- function(x,
       if (verbose) cat("  (banda: re-simulando con ", n_banda,
                        " vectores del juez...)\n", sep = "")
       n_rep_b <- max(10L, round(n_rep / 3))
+      # 16-10-2026: de cada re-simulacion de la banda solo se usa prob_limpia, que
+      # sale del escenario CENTRAL de fuerza de deseabilidad; los otros
+      # escenarios se calculaban y se tiraban (con 3 fuerzas, 272 de los 408
+      # CFAs de la banda). Se simula solo el central, con la MISMA semilla que
+      # simular_estructura() le daba dentro de la lista completa (seed + (i - 1)
+      # * 1000), asi que la banda sale identica. Igual con un rango de phi: se
+      # pasa solo el valor central, que es el que decide prob_limpia.
+      dots_b <- dots
+      f_todas <- estructura$sensibilidad$fuerza_deseabilidad   # ya ordenadas
+      i_c_b <- match(estructura$fuerza_central, f_todas)
+      dots_b$fuerza_deseabilidad <- estructura$fuerza_central
+      phi_d <- dots_b$phi_teorico
+      if (!is.null(phi_d) && !is.matrix(phi_d) && length(phi_d) > 1)
+        dots_b$phi_teorico <- if (length(phi_d) == 2) mean(phi_d) else phi_d[ceiling(length(phi_d) / 2)]
+      seed_b <- if (is.null(seed)) NULL else seed + (i_c_b - 1L) * 1000L
       probs_b <- vapply(seq_len(n_banda), function(b) {
         if (!is.null(seed)) set.seed(seed + 1000L + b)
         cols <- sample.int(ncol(pas), ncol(pas), replace = TRUE)
@@ -535,8 +623,8 @@ compuerta_pre_aplicacion <- function(x,
                                similitud = x$similitud,
                                n = n, n_rep = n_rep_b,
                                n_nucleos = n_nucleos,
-                               api_key = api_key, seed = seed,
-                               verbose = FALSE),
+                               api_key = api_key, seed = seed_b,
+                               verbose = FALSE, .dots = dots_b),
                       error = function(e) NULL)
         if (is.null(s)) NA_real_ else s$prob_limpia
       }, numeric(1))

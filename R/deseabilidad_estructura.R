@@ -79,67 +79,12 @@ calificar_deseabilidad <- function(x, api_key = Sys.getenv("OPENAI_API_KEY"),
                                     lector = c("chat", "jev", "auto"),
                                     verbose = TRUE) {
   lector <- match.arg(lector)
-  items <- x$items
-  if (is.null(items) || is.null(items$item)) stop("x debe tener $items con columna 'item'.")
-  concepto <- x$concepto %||% "constructo psicologico"
-  # En objetos semilla $concepto es una lista anidada; al prompt va solo la
-  # definicion (evita inyectar estructuras deparseadas tipo 'list(...)').
-  if (is.list(concepto)) {
-    concepto <- concepto$definicion %||%
-      Filter(is.character, concepto)[[1]] %||% "constructo psicologico"
-  }
-  dims <- items$dimension %||% rep("General", nrow(items))
-  txt  <- items$item
-  p <- length(txt)
-  if (is.null(poblacion) && !is.null(x$metadata$poblacion)) poblacion <- x$metadata$poblacion
-  if (is.null(poblacion)) poblacion <- "poblacion general"
-  # Colapsar a UN string (evita que paste0 genere un prompt vectorizado -> error 400)
-  concepto  <- paste(concepto,  collapse = " ")
-  poblacion <- paste(poblacion, collapse = " ")
-  n_pasadas <- max(1L, as.integer(n_pasadas))
-
-  .parse_des <- function(cont, k) {
-    cont <- trimws(gsub("```json|```", "", cont))
-    m <- regmatches(cont, regexpr("\\[[^]]*\\]", cont))   # array entre corchetes
-    if (length(m) == 1) {
-      v <- suppressWarnings(as.numeric(strsplit(gsub("[\\[\\] ]", "", m), ",")[[1]]))
-      if (length(v) == k && !any(is.na(v))) return(v)
-    }
-    nums <- suppressWarnings(as.numeric(regmatches(cont, gregexpr("[0-9]*\\.?[0-9]+", cont))[[1]]))
-    nums <- nums[!is.na(nums) & nums >= 0 & nums <= 1]
-    if (length(nums) >= k) nums[seq_len(k)] else NULL
-  }
-  .prompt_chunk <- function(idx) {
-    lista <- paste(sprintf("%d. %s", seq_along(idx), txt[idx]), collapse = "\n")
-    paste0(
-      "Eres experto en deseabilidad social.\nCONSTRUCTO: ", concepto, "\nPOBLACION: ", poblacion, "\n\n",
-      "Para CADA item da un numero 0-1: cuan socialmente deseable es estar de acuerdo/endosarlo\n",
-      "(0 = quedaria mal visto admitirlo, 0.5 = neutro, 1 = quedaria muy bien visto).\n",
-      "DIFERENCIA de verdad entre items segun su contenido. Ejemplo de calibracion:\n",
-      "'Ayudo a un companero'=0.9 ; 'Doy ordenes para que me obedezcan'=0.35 ; 'Busco emociones fuertes'=0.6.\n\n",
-      "ITEMS:\n", lista, "\n\nResponde SOLO el JSON: {\"d\": [",
-      paste(rep("x", length(idx)), collapse = ","), "]} con ", length(idx), " numeros 0-1.")
-  }
-
-  # Calificar por LOTES pequenos con ejemplo-ancla (evita la respuesta perezosa
-  # de "todo 0" que da el modelo cuando se le pasan 32 items de golpe). Los
-  # items se BARAJAN por pasada: los lotes secuenciales coinciden con las
-  # dimensiones (los items llegan agrupados) y cualquier deriva de escala entre
-  # lotes sesgaria sd_entre_dim, que es justo el numero del diagnostico.
-  #
-  # PRIMERO se arman TODOS los lotes de TODAS las pasadas, en el mismo orden de
-  # siempre: asi el generador aleatorio se consume exactamente igual que en la
-  # version secuencial y el barajado sale identico. DESPUES se envian las
-  # llamadas a la vez. Antes eran n_pasadas x ceil(p/6) llamadas una detras de
-  # otra -24 con 33 items- cada una esperando a la anterior.
-  if (!is.null(seed)) set.seed(seed)
+  pl <- .plan_deseabilidad(x, poblacion = poblacion, n_pasadas = n_pasadas,
+                           seed = seed)
+  concepto <- pl$concepto; poblacion <- pl$poblacion
+  dims <- pl$dims; txt <- pl$txt; p <- pl$p
+  n_pasadas <- pl$n_pasadas; plan <- pl$plan
   des_mat <- matrix(NA_real_, nrow = p, ncol = n_pasadas)
-  plan <- list()
-  for (pas in seq_len(n_pasadas)) {
-    orden  <- sample.int(p)
-    chunks <- split(orden, ceiling(seq_along(orden) / 6))
-    for (ch in chunks) plan[[length(plan) + 1L]] <- list(pas = pas, idx = ch)
-  }
 
   # 2.12.0: con lector = "jev" (o "auto" con clave de OpenRouter) el juez es Jev, un modelo de DECISION.
   # En vez de pedir un numero (que el modelo de chat cambiaba de 0.20 a 0.60
@@ -175,7 +120,7 @@ calificar_deseabilidad <- function(x, api_key = Sys.getenv("OPENAI_API_KEY"),
     }
   }
   respuestas <- if (usar_jev) list() else .chat_en_paralelo(
-    prompts      = vapply(plan, function(z) .prompt_chunk(z$idx), character(1)),
+    prompts      = pl$prompts,
     api_key      = api_key,
     modelo       = modelo,
     max_tokens   = 300L,
@@ -183,12 +128,103 @@ calificar_deseabilidad <- function(x, api_key = Sys.getenv("OPENAI_API_KEY"),
     razonamiento = "low",
     max_paralelo = getOption("SeMiLLa.max_paralelo", 6L),
     verbose      = verbose)
+  if (!usar_jev) des_mat <- .llenar_deseabilidad(pl, respuestas)
+  .resumir_deseabilidad(des_mat, dims, umbral_uniforme = umbral_uniforme,
+                        max_imputados = max_imputados, verbose = verbose)
+}
 
-  if (!usar_jev) for (k in seq_along(plan)) {
-    v <- if (is.null(respuestas[[k]])) NULL else
+# 16-10-2026: calificar_deseabilidad() se parte en tres piezas (plan, llenado y
+# resumen) para que la compuerta pueda (a) mandar estas llamadas junto con las
+# de los otros jueces, en una sola tanda, y (b) SUMAR pasadas cuando la
+# estabilidad sale baja, en vez de tirar las que ya tiene y empezar de cero.
+# El calculo es el mismo de antes, sin cambios.
+
+# Plan de lotes y prompts. Calificar por LOTES pequenos con ejemplo-ancla (evita
+# la respuesta perezosa de "todo 0" que da el modelo cuando se le pasan 32 items
+# de golpe). Los items se BARAJAN por pasada: los lotes secuenciales coinciden
+# con las dimensiones (los items llegan agrupados) y cualquier deriva de escala
+# entre lotes sesgaria sd_entre_dim, que es justo el numero del diagnostico.
+#
+# PRIMERO se arman TODOS los lotes de TODAS las pasadas, en el mismo orden de
+# siempre: asi el generador aleatorio se consume exactamente igual que en la
+# version secuencial y el barajado sale identico. DESPUES se envian las
+# llamadas a la vez. Antes eran n_pasadas x ceil(p/6) llamadas una detras de
+# otra -24 con 33 items- cada una esperando a la anterior.
+#' @keywords internal
+.plan_deseabilidad <- function(x, poblacion = NULL, n_pasadas = 4, seed = NULL) {
+  items <- x$items
+  if (is.null(items) || is.null(items$item)) stop("x debe tener $items con columna 'item'.")
+  concepto <- x$concepto %||% "constructo psicologico"
+  # En objetos semilla $concepto es una lista anidada; al prompt va solo la
+  # definicion (evita inyectar estructuras deparseadas tipo 'list(...)').
+  if (is.list(concepto)) {
+    concepto <- concepto$definicion %||%
+      Filter(is.character, concepto)[[1]] %||% "constructo psicologico"
+  }
+  dims <- items$dimension %||% rep("General", nrow(items))
+  txt  <- items$item
+  p <- length(txt)
+  if (is.null(poblacion) && !is.null(x$metadata$poblacion)) poblacion <- x$metadata$poblacion
+  if (is.null(poblacion)) poblacion <- "poblacion general"
+  # Colapsar a UN string (evita que paste0 genere un prompt vectorizado -> error 400)
+  concepto  <- paste(concepto,  collapse = " ")
+  poblacion <- paste(poblacion, collapse = " ")
+  n_pasadas <- max(1L, as.integer(n_pasadas))
+
+  .prompt_chunk <- function(idx) {
+    lista <- paste(sprintf("%d. %s", seq_along(idx), txt[idx]), collapse = "\n")
+    paste0(
+      "Eres experto en deseabilidad social.\nCONSTRUCTO: ", concepto, "\nPOBLACION: ", poblacion, "\n\n",
+      "Para CADA item da un numero 0-1: cuan socialmente deseable es estar de acuerdo/endosarlo\n",
+      "(0 = quedaria mal visto admitirlo, 0.5 = neutro, 1 = quedaria muy bien visto).\n",
+      "DIFERENCIA de verdad entre items segun su contenido. Ejemplo de calibracion:\n",
+      "'Ayudo a un companero'=0.9 ; 'Doy ordenes para que me obedezcan'=0.35 ; 'Busco emociones fuertes'=0.6.\n\n",
+      "ITEMS:\n", lista, "\n\nResponde SOLO el JSON: {\"d\": [",
+      paste(rep("x", length(idx)), collapse = ","), "]} con ", length(idx), " numeros 0-1.")
+  }
+  if (!is.null(seed)) set.seed(seed)
+  plan <- list()
+  for (pas in seq_len(n_pasadas)) {
+    orden  <- sample.int(p)
+    chunks <- split(orden, ceiling(seq_along(orden) / 6))
+    for (ch in chunks) plan[[length(plan) + 1L]] <- list(pas = pas, idx = ch)
+  }
+  list(plan = plan,
+       prompts = vapply(plan, function(z) .prompt_chunk(z$idx), character(1)),
+       concepto = concepto, poblacion = poblacion, dims = dims, txt = txt,
+       p = p, n_pasadas = n_pasadas)
+}
+
+# Respuestas del modelo -> matriz p x n_pasadas (NA donde la llamada fallo).
+#' @keywords internal
+.llenar_deseabilidad <- function(pl, respuestas) {
+  .parse_des <- function(cont, k) {
+    cont <- trimws(gsub("```json|```", "", cont))
+    m <- regmatches(cont, regexpr("\\[[^]]*\\]", cont))   # array entre corchetes
+    if (length(m) == 1) {
+      v <- suppressWarnings(as.numeric(strsplit(gsub("[\\[\\] ]", "", m), ",")[[1]]))
+      if (length(v) == k && !any(is.na(v))) return(v)
+    }
+    nums <- suppressWarnings(as.numeric(regmatches(cont, gregexpr("[0-9]*\\.?[0-9]+", cont))[[1]]))
+    nums <- nums[!is.na(nums) & nums >= 0 & nums <= 1]
+    if (length(nums) >= k) nums[seq_len(k)] else NULL
+  }
+  des_mat <- matrix(NA_real_, nrow = pl$p, ncol = pl$n_pasadas)
+  plan <- pl$plan
+  for (k in seq_along(plan)) {
+    v <- if (k > length(respuestas) || is.null(respuestas[[k]])) NULL else
       .parse_des(respuestas[[k]], length(plan[[k]]$idx))
     if (!is.null(v)) des_mat[plan[[k]]$idx, plan[[k]]$pas] <- v
   }
+  des_mat
+}
+
+# Matriz de pasadas -> diagnostico (media, contraste entre e intra dimension,
+# estabilidad, halo). Es lo que devuelve calificar_deseabilidad().
+#' @keywords internal
+.resumir_deseabilidad <- function(des_mat, dims, umbral_uniforme = 0.05,
+                                  max_imputados = 0.25, verbose = TRUE) {
+  p <- nrow(des_mat); n_pasadas <- ncol(des_mat)
   des <- rowMeans(des_mat, na.rm = TRUE)   # NaN si el item fallo en todas las pasadas
 
   # Fallo de API: abortar si quedo demasiado sin calificar (imputarlo todo a 0.5
@@ -483,8 +519,15 @@ simular_estructura <- function(x, deseabilidad = NULL, similitud = NULL,
   # dejaba 23 de 24 nucleos parados en cada llamada, incluidas las que hace
   # compuerta_pre_aplicacion() por dentro.
   n_nucleos <- max(1L, as.integer(n_nucleos %||% .nucleos_por_defecto()))
-  cl <- .cluster_estres(n_nucleos)
-  if (!is.null(cl)) on.exit(parallel::stopCluster(cl), add = TRUE)
+  # 16-10-2026: si la compuerta ya abrio un cluster del mismo tamano, se reutiliza
+  # (y lo cierra ella). Ver .cl_compartido en R/estres_escala.R.
+  if (n_nucleos > 1L && !is.null(.cl_compartido$cl) &&
+      identical(.cl_compartido$n, n_nucleos)) {
+    cl <- .cl_compartido$cl
+  } else {
+    cl <- .cluster_estres(n_nucleos)
+    if (!is.null(cl)) on.exit(parallel::stopCluster(cl), add = TRUE)
+  }
 
   # ---- Un escenario (una fuerza de deseabilidad), n_rep replicas ----
   #  v2.8.0: las replicas usan streams L'Ecuyer independientes (una por
@@ -760,8 +803,16 @@ simular_estructura <- function(x, deseabilidad = NULL, similitud = NULL,
                   stats::rnorm(n, 0, par$sd_e[j])) / par$sd_tot[j],
                  par$taus) + 1L)
   D <- as.data.frame(Y); names(D) <- par$its
+  # 16-10-2026: sin errores estandar, sin modelo base y sin revisar el gradiente.
+  # La replica solo lee convergencia, admisibilidad, RMSEA escalado, SRMR y la
+  # correlacion entre factores; ninguno de ellos usa esas tres cosas. Medido el
+  # 16-10-2026 (lavaan 0.6-21): 23-25 % menos por CFA con 15, 18 y 30 items, y
+  # RMSEA y phi identicos al decimal. Lo unico que se pierde es el CFI de cada
+  # replica, que no entra en ninguna decision (queda NA en $resumen).
   fit <- tryCatch(lavaan::cfa(par$syn, data = D, ordered = par$its,
-                              estimator = "WLSMV", std.lv = TRUE),
+                              estimator = "WLSMV", std.lv = TRUE,
+                              se = "none", baseline = FALSE,
+                              check.gradient = FALSE),
                   error = function(e) NULL)
   conv <- !is.null(fit) && isTRUE(tryCatch(lavaan::lavInspect(fit, "converged"),
                                            error = function(e) FALSE))
@@ -773,7 +824,7 @@ simular_estructura <- function(x, deseabilidad = NULL, similitud = NULL,
   # estructura, no una replica valida.
   adm <- isTRUE(tryCatch(suppressWarnings(lavaan::lavInspect(fit, "post.check")),
                          error = function(e) FALSE))
-  fm <- lavaan::fitMeasures(fit, c("cfi.scaled", "rmsea.scaled", "srmr"))
+  fm <- c(NA_real_, lavaan::fitMeasures(fit, c("rmsea.scaled", "srmr")))
   phi <- NA_real_; phi_par <- numeric(0)
   if (K > 1) {
     R <- lavaan::lavInspect(fit, "cor.lv")

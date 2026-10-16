@@ -1,4 +1,27 @@
 # SeMiLLa 2.12.0 (2026-10-09)
+## Compuerta mas rapida, mismo resultado (2026-10-16)
+
+`compuerta_pre_aplicacion()` tarda menos de la mitad. Medido con `semilla_demo`
+(15 items), 8 nucleos y `seed = 2026`: con jueces fijos, modo completo 62 -> 32 s
+y modo Rapido 26 -> 9 s, con veredicto, semaforo, acciones, banda, mapa de
+fusion y replicas identicos; con LLM real (gpt-4.1-mini), modo Rapido
+22,7 -> 9,7 s, mismo veredicto y semaforo.
+
+* La banda del eje 3 simula solo el escenario central de fuerza de
+  deseabilidad, que es el unico que usa, con la misma semilla que tenia dentro
+  de la lista completa: con 3 fuerzas, 136 CFAs en vez de 408.
+* Un solo cluster para toda la compuerta. Cada `simular_estructura()` abria el
+  suyo y su primera ronda tarda ~4 s mas; eran 1 + `n_banda` clusteres.
+* Las replicas ajustan el CFA sin errores estandar, sin modelo base y sin
+  revisar el gradiente: 23-25 % menos por CFA, RMSEA y phi identicos. El CFI de
+  cada replica, que no entraba en ninguna decision, queda `NA` en `$resumen`.
+* Los tres jueces LLM (gemelos, deseabilidad y phi por par) se envian en una
+  sola tanda en paralelo; las 3 consultas del juez de gemelos ya no van en
+  serie. Con la cache de disco activa se mantiene la ruta de siempre.
+* Si la estabilidad de la deseabilidad sale baja, se SUMAN las pasadas que
+  faltan en vez de repetir las 8 desde cero.
+* Las llamadas en paralelo ahora quedan en el registro de modelos usados.
+
 ## OpenRouter y modelos baratos
 
 * `usar_proveedor("openrouter", modelo_generacion, modelo_juicio)`: una sola
