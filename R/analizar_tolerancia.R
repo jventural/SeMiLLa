@@ -48,7 +48,7 @@
 #'   defecto 60).
 #' @param n_rep_pronostico Replicas Monte Carlo del pronostico del paso 3
 #'   (\code{simular_estructura()}; por defecto 100, como hasta ahora).
-#' @param n_nucleos Nucleos a usar. Por defecto (\code{NULL}) todos menos uno
+#' @param n_nucleos Nucleos a usar. Por defecto (\code{NULL}) todos menos uno, hasta 8
 #'   (como maximo 2 durante \code{R CMD check}).
 #' @param seed Semilla global (streams por replica derivados de ella; con un
 #'   valor dado el resultado es identico con 1 o N nucleos). Con \code{NULL}

@@ -379,7 +379,7 @@ calificar_deseabilidad <- function(x, api_key = Sys.getenv("OPENAI_API_KEY"),
 #'   categorias ordinales. \code{n_rep} por defecto 100 (con 40 el semaforo
 #'   cambia de color por ruido Monte Carlo de +-8 puntos).
 #' @param n_nucleos Nucleos para paralelizar las replicas (v2.8.0). Default
-#'   \code{NULL} = todos menos uno (v2.9.31; antes era 1), como maximo 2
+#'   \code{NULL} = todos menos uno, hasta 8 (v2.9.31; antes era 1), como maximo 2
 #'   durante \code{R CMD check}. Use \code{1} en servidores compartidos
 #'   como Connect Cloud. Con el mismo \code{seed}, el resultado es IDENTICO
 #'   con 1 o con N nucleos (streams L'Ecuyer por replica).
@@ -515,7 +515,7 @@ simular_estructura <- function(x, deseabilidad = NULL, similitud = NULL,
 
   # Cluster opcional (n_nucleos > 1): mismo resultado que secuencial gracias
   # a los streams por replica; default 1 para servidores compartidos.
-  # v2.9.31: NULL = todos menos uno, igual que estres_escala(). El default 1
+  # v2.9.31: NULL = todos menos uno, hasta 8, igual que estres_escala(). El default 1
   # dejaba 23 de 24 nucleos parados en cada llamada, incluidas las que hace
   # compuerta_pre_aplicacion() por dentro.
   n_nucleos <- max(1L, as.integer(n_nucleos %||% .nucleos_por_defecto()))

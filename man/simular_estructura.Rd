@@ -88,7 +88,7 @@ no se aviso. Bajar a 0.60 tampoco vale: ahi el NPI pasaria de 7 factores a
 2, un aviso catastrofico y falso.}
 
 \item{n_nucleos}{Nucleos para paralelizar las replicas (v2.8.0). Default
-\code{NULL} = todos menos uno (v2.9.31; antes era 1), como maximo 2
+\code{NULL} = todos menos uno, hasta 8 (v2.9.31; antes era 1), como maximo 2
 durante \code{R CMD check}. Use \code{1} en servidores compartidos
 como Connect Cloud. Con el mismo \code{seed}, el resultado es IDENTICO
 con 1 o con N nucleos (streams L'Ecuyer por replica).}

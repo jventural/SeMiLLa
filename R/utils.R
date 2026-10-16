@@ -2668,11 +2668,19 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
 
 # Nucleos por defecto para las simulaciones en paralelo. Durante R CMD check
 # (y en CRAN) _R_CHECK_LIMIT_CORES_ esta definida y la politica permite 2 como
-# maximo; fuera del check se usan todos menos uno, como hasta ahora.
+# maximo; fuera del check se usan todos menos uno, hasta 8.
+#
+# 16-10-2026: tope de 8. Medido en una PC de 24 nucleos logicos (12 fisicos)
+# con semilla_demo y seed = 2026: la compuerta en modo Rapido tardo 8,4 s con
+# 8 nucleos, 11,6 con 16 y 15,9 con 23 (el default de entonces); en modo
+# completo, 24,4 s con 8 y 26,0 con 23. Cada nucleo extra es un proceso de R
+# que hay que arrancar y cargar, y con escalas de este tamano ese arranque
+# cuesta mas de lo que se reparte. El resultado no cambia: cada replica lleva
+# su propio stream de semilla. Quien quiera mas, lo pide con n_nucleos.
 
 #' @keywords internal
 .nucleos_por_defecto <- function() {
-  n <- max(1L, parallel::detectCores() - 1L, na.rm = TRUE)
+  n <- max(1L, min(8L, parallel::detectCores() - 1L), na.rm = TRUE)
   lim <- Sys.getenv("_R_CHECK_LIMIT_CORES_", "")
   if (nzchar(lim) && !identical(toupper(lim), "FALSE")) n <- min(n, 2L)
   n

@@ -386,7 +386,7 @@
 #' }
 #'
 #' PENSADA PARA CORRER EN LA PC DEL USUARIO (no en un servidor compartido):
-#' por defecto usa todos los nucleos menos uno. Los streams RNG son POR
+#' por defecto usa todos los nucleos menos uno, hasta 8. Los streams RNG son POR
 #' REPLICA (L'Ecuyer-CMRG), asi que con el mismo \code{seed} el resultado es
 #' IDENTICO con 1 o con N nucleos: sirve para verificar la paridad entre la
 #' app Shiny y el script local.
@@ -421,7 +421,7 @@
 #' @param umbral_rmsea,umbral_phi Criterios de estructura limpia.
 #' @param umbral_quiebre Probabilidad bajo la cual se declara el punto de
 #'   quiebre. Por defecto 0.50.
-#' @param n_nucleos Nucleos a usar. Por defecto (\code{NULL}) todos menos uno
+#' @param n_nucleos Nucleos a usar. Por defecto (\code{NULL}) todos menos uno, hasta 8
 #'   (como maximo 2 durante \code{R CMD check}).
 #'   Use \code{1} en servidores compartidos (p. ej. Connect Cloud).
 #' @param optimizar_estres Logico (default \code{TRUE}). Si la escala resulta

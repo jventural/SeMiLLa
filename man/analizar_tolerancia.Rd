@@ -71,7 +71,7 @@ defecto 60).}
 \item{n_rep_pronostico}{Replicas Monte Carlo del pronostico del paso 3
 (\code{simular_estructura()}; por defecto 100, como hasta ahora).}
 
-\item{n_nucleos}{Nucleos a usar. Por defecto (\code{NULL}) todos menos uno
+\item{n_nucleos}{Nucleos a usar. Por defecto (\code{NULL}) todos menos uno, hasta 8
 (como maximo 2 durante \code{R CMD check}).}
 
 \item{seed}{Semilla global (streams por replica derivados de ella; con un

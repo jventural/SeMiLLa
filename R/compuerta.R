@@ -82,7 +82,7 @@
 #'   otros. Use 1 para volver al comportamiento de una sola consulta.
 #' @param modelo Modelo LLM para calificar deseabilidad.
 #' @param n_nucleos Nucleos para el eje 3 (la simulacion). Por defecto
-#'   (\code{NULL}) todos menos uno, igual que \code{\link{estres_escala}}.
+#'   (\code{NULL}) todos menos uno, hasta 8, igual que \code{\link{estres_escala}}.
 #'   Hasta 2.9.30 la compuerta no exponia este parametro y
 #'   \code{\link{simular_estructura}} corria en 1 solo nucleo: medido el
 #'   2026-08-20 en la misma maquina, la compuerta tardaba 12.0 min (432 CFAs,

@@ -21,6 +21,9 @@ fusion y replicas identicos; con LLM real (gpt-4.1-mini), modo Rapido
 * Si la estabilidad de la deseabilidad sale baja, se SUMAN las pasadas que
   faltan en vez de repetir las 8 desde cero.
 * Las llamadas en paralelo ahora quedan en el registro de modelos usados.
+* Por defecto se usan todos los nucleos menos uno, hasta 8. En una PC de 24
+  nucleos, la compuerta en modo Rapido tardaba 15,9 s con 23 y tarda 8,4 s con
+  8, con el mismo resultado. Quien quiera mas, lo pide con `n_nucleos`.
 
 ## OpenRouter y modelos baratos
 
