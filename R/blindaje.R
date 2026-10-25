@@ -20,6 +20,49 @@
   df
 }
 
+# Negacion o contraste encubierto en un item. En una escala sin inversos el
+# prompt ya lo prohibe, pero los modelos se lo saltan (caso 2026-10-14: "Reconozco
+# que mis calificaciones no definen mi valor", "Mantengo la carrera que elijo
+# aunque mi pareja me presione"); por eso se controla tambien por regex.
+#' @keywords internal
+.negacion_encubierta <- function(txt) {
+  grepl("(^|[^[:alpha:]])(no|nunca|jam\u00e1s|jamas|sin|aunque|ni|a pesar de)([^[:alpha:]]|$)",
+        tolower(txt))
+}
+
+# Supuesto de tiempo en la carrera ("cada ciclo", "desde que inicie la
+# carrera"): el item no aplica igual a quien recien empieza. El estilo ya pedia
+# items que respondiera "tambien el de primer ciclo", pero el consejo de la v4
+# (2026-10-15) encontro "Cada ciclo descubro..." y "...desde que inicie la
+# carrera"; por eso se controla por regex, en cualquier escala.
+#' @keywords internal
+.supuesto_temporal <- function(txt) {
+  grepl(paste0("cada (ciclo|semestre|periodo|per\u00edodo|a\u00f1o)|",
+               "desde que (inici|empec|ingres|entr)|",
+               "(ciclos|semestres|periodos|per\u00edodos) anteriores|",
+               "a lo largo de (la|mi) carrera|(he|hemos) (cursado|avanzado)|",
+               "con los (ciclos|semestres|a\u00f1os)"), tolower(txt))
+}
+
+# Registro abstracto o tecnico: cuenta nominalizaciones (-cion, -idad, -ncia,
+# -miento...) y adjetivos de ambito ("academico", "universitario", "formativo",
+# "estudiantil"). En un item de 10 palabras, 3 o mas suenan a documento
+# institucional, no a lo que diria un estudiante. Calibrado con la v5 de
+# bienestar psicologico academico (2026-10-15): los 3 items con 3 o mas
+# ("necesidades formativas", "identidad estudiantil", "exigencias de mis
+# estudios universitarios") recibieron notas bajas de claridad del consejo.
+#' @keywords internal
+.registro_abstracto <- function(txt) {
+  vapply(txt, function(t) {
+    w <- strsplit(tolower(gsub("[[:punct:]]", "", t)), "\\s+")[[1]]
+    sum(nchar(w) > 5 & grepl("(ci\u00f3n|si\u00f3n|idad|idades|ncia|ncias|miento|mientos|ivas?|ivos?|ismo)$", w)) +
+      sum(grepl("^(acad\u00e9mic|academic|universitari|estudiantil|formativ|institucional|curricular)", w))
+  }, numeric(1), USE.NAMES = FALSE)
+}
+
+#' @keywords internal
+.jerga_abstracta <- function(txt, umbral = 3) .registro_abstracto(txt) >= umbral
+
 # Juez LLM de parafrasis-gemelas. Devuelve data.frame(item1, item2, razon)
 # con indices de fila de items_df (pares; los grupos de k items se expanden
 # a pares consecutivos con el primero como referencia). Si la consulta al LLM
@@ -479,6 +522,29 @@
           stringsAsFactors = FALSE))
       }
     }
+    if (!isTRUE(incluir_inversos)) {
+      idx_n <- setdiff(which(.negacion_encubierta(items_df$item)), ctx$numero)
+      if (length(idx_n)) {
+        ctx <- rbind(ctx, data.frame(
+          numero = idx_n,
+          problema = "negacion o contraste encubierto (no, sin, aunque, ni) en una escala directa",
+          stringsAsFactors = FALSE))
+      }
+    }
+    idx_t <- setdiff(which(.supuesto_temporal(items_df$item)), ctx$numero)
+    if (length(idx_t)) {
+      ctx <- rbind(ctx, data.frame(
+        numero = idx_t,
+        problema = "supone tiempo en la carrera (cada ciclo, desde que inicie): no aplica a quien recien empieza",
+        stringsAsFactors = FALSE))
+    }
+    idx_j <- setdiff(which(.jerga_abstracta(items_df$item)), ctx$numero)
+    if (length(idx_j)) {
+      ctx <- rbind(ctx, data.frame(
+        numero = idx_j,
+        problema = "registro abstracto o tecnico: usa palabras cotidianas de la poblacion, no de un documento institucional",
+        stringsAsFactors = FALSE))
+    }
     par <- .juzgar_parafrasis_llm(items_df, openai, modelo_jueces, idioma)
     if (!is.null(par_cos)) {
       clave_p <- if (nrow(par)) paste(pmin(par$item1, par$item2),
@@ -563,7 +629,9 @@
             tolower(txt) %in% tolower(rechazados)) {
           rechazados <- unique(c(rechazados, txt)); next
         }
-        if (!is.null(pat_veto) && grepl(pat_veto, txt, ignore.case = TRUE)) {
+        if ((!is.null(pat_veto) && grepl(pat_veto, txt, ignore.case = TRUE)) ||
+            (!isTRUE(incluir_inversos) && .negacion_encubierta(txt)) ||
+            .supuesto_temporal(txt) || .jerga_abstracta(txt)) {
           rechazados <- unique(c(rechazados, txt)); next
         }
         # El candidato se juzga ANTES de aceptarse: sin este paso el propio
@@ -629,7 +697,9 @@
           tolower(txt) %in% tolower(items_df$item)) {
         rechazados <- unique(c(rechazados, txt)); next
       }
-      if (!is.null(pat_veto) && grepl(pat_veto, txt, ignore.case = TRUE)) {
+      if ((!is.null(pat_veto) && grepl(pat_veto, txt, ignore.case = TRUE)) ||
+          (!isTRUE(incluir_inversos) && .negacion_encubierta(txt)) ||
+            .supuesto_temporal(txt) || .jerga_abstracta(txt)) {
         rechazados <- unique(c(rechazados, txt)); next
       }
       ctx_cand <- .juzgar_contexto_llm(

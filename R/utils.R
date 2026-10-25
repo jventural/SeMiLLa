@@ -1188,6 +1188,11 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
       "que la institucion se llame 'escuela' NO la convierte en un colegio de ninos.\n",
       "- Cuidado con la vida personal: no introduzcas 'mi pareja', 'mi jefe', 'mis hijos' u ",
       "otros roles que no correspondan salvo que sean pertinentes al constructo y la poblacion.\n",
+      "- Cada item debe poder responderlo TODA la poblacion: no lo hagas depender de ",
+      "actividades opcionales, recursos materiales o economicos, tramites puntuales, una ",
+      "situacion familiar concreta o de haber avanzado en la etapa (quien recien empieza ",
+      "tambien responde).
+",
       "- Ajusta el vocabulario, los ejemplos y el registro al nivel y contexto de esta ",
       "poblacion, sin sacar al respondiente de su situacion real."
     )
@@ -1443,10 +1448,27 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
       "  'No me preocupa', 'No tengo'), ni items que describan la AUSENCIA del\n",
       "  comportamiento o rasgo. Cada item debe afirmar la PRESENCIA del\n",
       "  comportamiento, conducta o experiencia que define la dimension.\n",
+      "- PROHIBIDAS tambien las negaciones ENCUBIERTAS y los contrastes: 'sin + verbo'\n",
+      "  ('sin culparme', 'sin juzgar'), 'aunque', 'a pesar de', 'cuando no', 'ni'.\n",
+      "  Agregan una segunda idea y una negacion que funciona como un item inverso.\n",
       "- En el campo 'caracteristica' NO uses etiquetas como 'inverso', 'inv.',\n",
       "  'ausencia de', 'falta de'.\n"
     )
   }
+
+  # Un indicador por item (2026-10-15). Con la lista de indicadores en la
+  # definicion, el modelo elegia los mas prototipicos y repetia facetas (v5:
+  # cuatro items de Proposito casi iguales). Si hay tantos indicadores como
+  # items pedidos, se asigna uno a cada item.
+  indicadores <- .indicadores_definicion(definicion_dim)
+  asignacion_texto <- if (n_items > 1 && is.null(faceta_objetivo) &&
+                          length(indicadores) >= n_items) {
+    paste0(
+      "\nASIGNACION OBLIGATORIA: escribe UN item por cada uno de estos indicadores, en este ",
+      "orden, y pon el indicador en el campo 'caracteristica'. Expresa el indicador con ",
+      "otras palabras, mas simples, sin copiarlo; ningun item repite el contenido de otro.\n",
+      paste0(seq_len(n_items), ". ", indicadores[seq_len(n_items)], collapse = "\n"), "\n")
+  } else ""
 
   prompt <- paste0(
     "Genera exactamente ", n_items, " items psicometricos para medir:\n\n",
@@ -1455,6 +1477,7 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
     "Definicion: ", definicion_dim, "\n",
     caract_texto, "\n\n",
     faceta_texto,      # v2.9.29: que faceta NO se puede perder
+    asignacion_texto,  # 2026-10-15: un indicador por item
     instrucciones_idioma, "\n",
     poblacion_texto,
     contexto_texto,    # v2.9.29: que items ya existen, desde el primer intento
@@ -1469,6 +1492,10 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
     "FORMATO:\n",
     "- Afirmaciones en primera persona\n",
     "- Apropiados para escala Likert (sin cuantificadores en el enunciado)\n",
+    "- Cada item mide la dimension en el MISMO nivel en que la define su definicion: si es\n",
+    "  una capacidad, sensacion, percepcion o actitud, el item expresa como la persona la vive\n",
+    "  o la ejerce; NO un habito, una rutina, una tecnica, un tramite ni un resultado de\n",
+    "  rendimiento, que son antecedentes o correlatos de la dimension.\n",
     linea_inversos, "\n",
     "Responde en formato JSON:\n",
     "{\n",
@@ -2703,4 +2730,17 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
   u <- numeric(k)
   for (i in seq_len(k)) { x <- (48271 * x) %% m; u[i] <- x }
   order(u)
+}
+
+
+# Indicadores escritos en la definicion de una dimension tras "Se manifiesta
+# en:" (formato que exporta POLEN), separados por punto y coma.
+#' @keywords internal
+.indicadores_definicion <- function(definicion) {
+  d <- paste(definicion, collapse = " ")
+  if (!grepl("(?i)se manifiesta en\\s*:", d, perl = TRUE)) return(character(0))
+  d <- sub("(?is)^.*se manifiesta en\\s*:", "", d, perl = TRUE)
+  d <- sub("(?is)\\s*no incluye\\s*:.*$", "", d, perl = TRUE)
+  ind <- trimws(gsub("\\.+$", "", trimws(strsplit(d, ";")[[1]])))
+  ind[nzchar(ind)]
 }

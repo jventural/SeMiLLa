@@ -37,6 +37,12 @@
 #'        metadata para que la optimizacion/refinamiento mantengan el mismo nivel.
 #' @param max_palabras Numero maximo de palabras por item. Si NULL, se deriva del
 #'        nivel: minimo=10, basico=12, intermedio=18, avanzado=25.
+#' @param incluir_inversos Logico. Si \code{FALSE}, todos los items se redactan
+#'        en sentido directo y la polaridad se conserva en el refinamiento, la
+#'        optimizacion y el blindaje. Default \code{TRUE}.
+#' @param tipo_escala_respuesta Tipo de escala de respuesta que se pasa a
+#'        \code{\link{generar_escala}} (por ejemplo \code{"frecuencia"} o
+#'        \code{"acuerdo"}). Default \code{"frecuencia"}.
 #' @param blindaje Logico. Si \code{TRUE} (default), tras generar los items se
 #'        aplican jueces LLM de contexto poblacional y de parafrasis que
 #'        reescriben los items que fallan, y al final del pipeline se repite
@@ -216,6 +222,8 @@ semilla <- function(concepto = NULL,
                     dimensiones = NULL,
                     complejidad_linguistica = "intermedio",
                     max_palabras = NULL,
+                    incluir_inversos = TRUE,
+                    tipo_escala_respuesta = "frecuencia",
                     blindaje = TRUE,
                     contexto_prohibido = NULL,
                     instrucciones_estilo = NULL,
@@ -295,6 +303,9 @@ semilla <- function(concepto = NULL,
   }
   .validar_api_key(api_key)
   .validar_idioma(idioma)
+  # Marca del registro de llamadas: al final se guardan los modelos que de verdad
+  # respondieron (con OpenRouter, 'modelo' es solo el nombre por defecto).
+  marca_modelos <- .marca_registro()
 
   # Nombre del modo de conceptualizacion
 
@@ -375,6 +386,8 @@ semilla <- function(concepto = NULL,
       dimensiones = dimensiones,
       complejidad_linguistica = complejidad_linguistica,
       max_palabras = max_palabras,
+      incluir_inversos = incluir_inversos,
+      tipo_escala_respuesta = tipo_escala_respuesta,
       blindaje = blindaje,
       contexto_prohibido = contexto_prohibido,
       instrucciones_estilo = instrucciones_estilo,
@@ -455,6 +468,11 @@ semilla <- function(concepto = NULL,
       complejidad_linguistica =
         items_result$metadata$complejidad_linguistica %||% complejidad_linguistica,
       max_palabras = items_result$metadata$max_palabras %||% max_palabras,
+      # La polaridad tambien se hereda: sin esto, refinar_escala() y el
+      # blindaje volvian a admitir inversos aunque se pidiera escala directa.
+      incluir_inversos = items_result$metadata$incluir_inversos %||% incluir_inversos,
+      contexto_prohibido = items_result$metadata$contexto_prohibido %||% contexto_prohibido,
+      instrucciones_estilo = items_result$metadata$instrucciones_estilo %||% instrucciones_estilo,
       tipo_escala_respuesta = items_result$metadata$tipo_escala_respuesta,
       fecha = Sys.time()
     )
@@ -718,6 +736,7 @@ semilla <- function(concepto = NULL,
     cat(.linea(), "\n")
   }
 
+  resultado$metadata$modelos_usados <- .modelos_usados(marca_modelos)
   return(resultado)
 }
 
@@ -846,7 +865,10 @@ print.semilla <- function(x, ...) {
   # Metadata
   cat(.linea("="), "\n")
   cat("  Generado: ", format(x$metadata$fecha, "%Y-%m-%d %H:%M"), "\n", sep = "")
-  cat("  Modelo: ", x$metadata$modelo, " | Idioma: ", .nombre_idioma(x$metadata$idioma), "\n", sep = "")
+  mu <- x$metadata$modelos_usados
+  modelos_txt <- if (is.data.frame(mu) && nrow(mu))
+    paste(unique(mu$modelo_real %||% mu$modelo_pedido), collapse = ", ") else x$metadata$modelo
+  cat("  Modelo: ", modelos_txt, " | Idioma: ", .nombre_idioma(x$metadata$idioma), "\n", sep = "")
   cat("  Guia: Ferrando et al. (2025) Psicothema\n")
   cat(.linea("="), "\n\n")
 

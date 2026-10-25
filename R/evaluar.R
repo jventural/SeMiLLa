@@ -156,6 +156,8 @@ validez_contenido <- function(x,
 
   # Construir contexto para el LLM
   contexto <- .construir_contexto_validez(concepto, concepto_original, criterios)
+  # La poblacion llega a los jueces: sin ella no pueden juzgar si todos pueden responder el item.
+  contexto$poblacion <- if (is.list(x) && !is.data.frame(x)) x$metadata$poblacion %||% "" else ""
 
   # Detectar columna de items invertidos (si existe)
   col_invertido <- intersect(c("invertido", "inverso", "direccion_inversa"),
@@ -224,6 +226,13 @@ validez_contenido <- function(x,
                        drop = FALSE]
   sin_evaluar <- va$numero[is.na(va$V_promedio)]
   incompletos <- va$numero[!is.na(va$V_promedio) & va$n_jueces_validos < n_jueces]
+  # Si ningun item recibio calificaciones, casi siempre fallo la API (sin
+  # credito, clave invalida, limite de uso): se detiene con un mensaje claro en
+  # vez de seguir con NA y caer mas abajo con "valor ausente" (2026-10-14).
+  if (nrow(va) > 0 && length(sin_evaluar) == nrow(va))
+    stop("Ningun item recibio calificaciones de los jueces. Revisa la clave y el ",
+         "credito del proveedor (", if (.es_openrouter()) "OpenRouter" else "OpenAI",
+         "): las llamadas fallaron o no devolvieron respuestas legibles.", call. = FALSE)
   if (length(sin_evaluar))
     warning(length(sin_evaluar), " item(s) sin evaluacion legible quedaron en NA: ",
             paste(sin_evaluar, collapse = ", "), call. = FALSE)
@@ -296,7 +305,7 @@ validez_contenido <- function(x,
     cat("  V de Aiken por criterio:\n")
     for (crit in criterios) {
       v_crit <- resultados_v$v_aiken_escala[[crit]]
-      status <- if (v_crit >= 0.70) .color_check() else .color_warning()
+      status <- if (isTRUE(v_crit >= 0.70)) .color_check() else .color_warning()
       cat("    - ", crit, ": ", sprintf("%.3f", v_crit), " ", status, "\n", sep = "")
     }
 
@@ -718,8 +727,14 @@ fiabilidad_semantica <- function(x,
   criterios_texto <- paste(sapply(criterios, function(c) {
     switch(c,
       "relevancia" = "RELEVANCIA: Grado en que el item es importante y debe ser incluido en la medicion del constructo",
-      "representatividad" = "REPRESENTATIVIDAD: Grado en que el item representa el constructo que se pretende medir",
-      "claridad" = "CLARIDAD: Grado en que el item es claro, comprensible y sin ambiguedades",
+      "representatividad" = paste0("REPRESENTATIVIDAD: Grado en que el item representa SU dimension tal como esta definida, ",
+                                   "y no un habito, una habilidad, un antecedente, un correlato, un resultado de rendimiento ",
+                                   "u otro constructo cercano"),
+      "claridad" = paste0("CLARIDAD: Grado en que el item es claro y sin ambiguedades para cualquier persona de la ",
+                          "poblacion, con una sola idea y sin negaciones encubiertas ('sin...', 'aunque...'), ",
+                          "y con palabras que esa persona usaria. Penaliza el registro abstracto o tecnico ",
+                          "(sustantivos como 'necesidades formativas', 'identidad estudiantil', 'recursos ",
+                          "academicos') y las frases vagas cuyo sentido cada quien interpretaria distinto"),
       c
     )
   }), collapse = "\n")
@@ -748,7 +763,12 @@ fiabilidad_semantica <- function(x,
   prompt <- paste0(
     "Actua como un panel de ", n_jueces, " jueces expertos en psicometria evaluando items de una escala psicologica.\n\n",
     "CONSTRUCTO: ", contexto$concepto, "\n",
-    "DEFINICION: ", contexto$definicion, "\n\n",
+    "DEFINICION: ", contexto$definicion, "\n",
+    if (nzchar(contexto$poblacion %||% "")) paste0(
+      "POBLACION: ", contexto$poblacion, ". Penaliza en relevancia el item que no todas las personas ",
+      "de esta poblacion pueden responder (depende de actividades opcionales, recursos, tramites o de la etapa).\n")
+    else "",
+    "\n",
     "DIMENSION DEL ITEM: ", dimension, "\n",
     "DEFINICION DE LA DIMENSION: ", definicion_dimension, "\n",
     caract_block,
@@ -1035,7 +1055,7 @@ print.semilla_cv <- function(x, ...) {
   cat(.color_azul("V de Aiken por criterio:"), "\n")
   for (crit in x$metadata$criterios) {
     v_crit <- x$v_aiken_escala[[crit]]
-    status <- if (v_crit >= 0.70) .color_check() else .color_warning()
+    status <- if (isTRUE(v_crit >= 0.70)) .color_check() else .color_warning()
     cat("  ", crit, ": ", sprintf("%.3f", v_crit), " ", status, "\n", sep = "")
   }
 

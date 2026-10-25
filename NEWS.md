@@ -25,6 +25,104 @@ fusion y replicas identicos; con LLM real (gpt-4.1-mini), modo Rapido
   nucleos, la compuerta en modo Rapido tardaba 15,9 s con 23 y tarda 8,4 s con
   8, con el mismo resultado. Quien quiera mas, lo pide con `n_nucleos`.
 
+## Claridad, jerga y un indicador por item (2026-10-15, tras el consejo de la v5)
+
+* `ajustar_validez_contenido()` usa por defecto `umbral = 0.80` y
+  `criterios = c("relevancia", "representatividad", "claridad")`, y juzga cada
+  item por su criterio mas bajo. En la v5 de bienestar psicologico academico,
+  12 de los 13 items con V < .80 recibieron notas bajas de un consejo externo;
+  con .70 pasaban. Ademas, los jueces internos no median la claridad, que fue
+  lo que mas cayo.
+* El criterio de claridad de `validez_contenido()` penaliza el registro
+  abstracto o tecnico y las frases vagas.
+* Nuevo verificador `.registro_abstracto()` / `.jerga_abstracta()`: 3 o mas
+  nominalizaciones o adjetivos de ambito ("necesidades formativas",
+  "identidad estudiantil") en un item. Lo usan el blindaje, los reemplazos,
+  `converger_escala()` y `ajustar_validez_contenido()`.
+* Un indicador por item: si la definicion trae tantos indicadores ("Se
+  manifiesta en:", formato de POLEN) como items pedidos, la generacion asigna
+  uno a cada item. Y `ajustar_validez_contenido()` pasa la faceta del item que
+  sale (`faceta_objetivo`): antes el reemplazo "elegia otra faceta", volvia al
+  nucleo y repetia contenido (v5: cuatro items de Proposito casi iguales).
+
+## `converger_escala()` ya reemplaza los items de baja validez (2026-10-15)
+
+* Con `no_empeorar`, el umbral de redundancia parte tambien del parecido
+  tipico entre los items de la dimension (percentil 75, tope 0.80). Antes un
+  item periferico fijaba un umbral bajo (0.59) y todo candidato que volvia al
+  nucleo de la dimension se rechazaba como redundante.
+* En una escala sin inversos, el bloque de deseabilidad ya no pide "algo que
+  incomoda reconocer" (empujaba al polo opuesto, que luego se rechaza): pide
+  algo especifico, en el polo positivo.
+* `.reemplazar_item_dirigido()` hace hasta 5 intentos (antes 3) y, con
+  `options(semilla.traza = TRUE)`, imprime por que rechaza cada candidato.
+  `converger_escala()` muestra los errores en vez de silenciarlos.
+* Nueva `ajustar_validez_contenido()`: reescribe los items con V de Aiken
+  bajo un umbral (o con negacion encubierta en una escala sin inversos),
+  vuelve a juzgar SOLO esos items y revierte los que no mejoran. Complementa
+  a `converger_escala()`, cuyo puntaje lo domina la estructura: en la v4 de
+  bienestar psicologico academico descarto las rondas que mejoraban la V y
+  dejo items con V = .38.
+* Nuevo verificador `.supuesto_temporal()` ("cada ciclo", "desde que inicie
+  la carrera"...): el blindaje lo marca, los reemplazos que lo traen se
+  rechazan y `ajustar_validez_contenido()` y `converger_escala()` reescriben
+  esos items. El estilo ya pedia items para "tambien el de primer ciclo", pero
+  el consejo de la v4 encontro dos que no cumplian.
+
+## Polaridad y escala de respuesta en `semilla()` (2026-10-14)
+
+* `semilla()` acepta `incluir_inversos` y `tipo_escala_respuesta` y los pasa a
+  `generar_escala()`. Antes no los pasaba: la generacion quedaba con inversos
+  aunque se pidiera una escala directa, y el refinamiento los reintroducia.
+  La polaridad, el `contexto_prohibido` y las `instrucciones_estilo` quedan en
+  el metadata para que el refinamiento y el blindaje los respeten.
+* `ensamblar_test()`: la linea de datos del participante ya no se parte en el
+  .docx, y la frase sobre la escala de respuesta es impersonal (sirve con
+  instrucciones en tu o en usted).
+
+## Reglas de contenido tras la revision de un consejo de jueces LLM (2026-10-14)
+
+En un caso real (bienestar psicologico academico) un consejo externo de jueces
+encontro problemas que la generacion y los jueces de SeMiLLa no veian. Se
+convirtieron en reglas generales:
+
+* Generacion: cada item mide la dimension en el nivel en que esta definida (si
+  es una capacidad, sensacion o actitud, no un habito, una tecnica, un tramite
+  ni un resultado de rendimiento); cada item debe poder responderlo toda la
+  poblacion (sin depender de actividades opcionales, recursos, tramites o de la
+  etapa); y, si no se piden inversos, quedan prohibidas tambien las negaciones
+  encubiertas ("sin + verbo", "aunque", "a pesar de", "cuando no").
+* `validez_contenido()`: los jueces reciben la poblacion y penalizan el item que
+  no todos pueden responder; la representatividad se juzga frente a SU
+  dimension (no un habito, antecedente, correlato u otro constructo) y la
+  claridad exige una sola idea y ninguna negacion encubierta. Los valores de V
+  de Aiken no son comparables con los de corridas anteriores.
+* Optimizacion guiada por la compuerta (`.reemplazar_item_dirigido()`): en el
+  mismo caso, 18 reemplazos rompieron las reglas que la generacion inicial si
+  cumplia ("Me abruma la cantidad de pendientes", "Siento alivio al resolver
+  dificultades de matricula"). Ahora los reemplazos reciben las
+  `instrucciones_estilo`; si la dimension se define como capacidad, percepcion
+  o actitud, se pide otra faceta de la definicion en ese mismo nivel (y no una
+  reaccion fisica, una emocion suelta o una conducta con costo); y en una
+  escala sin inversos se rechaza el candidato que describe el polo opuesto.
+  `.tipo_dimension()` lee solo la definicion: los indicadores ("Siento que
+  manejo...") volvian "afectiva" a una dimension definida como competencia.
+* Escala sin inversos: las negaciones y contrastes encubiertos (no, nunca, sin,
+  aunque, ni, a pesar de) se controlan tambien por regex, porque los modelos se
+  saltan la regla del prompt ("Reconozco que mis calificaciones no definen mi
+  valor"). El blindaje los marca y rechaza esos candidatos, la optimizacion
+  rechaza esos reemplazos y `converger_escala()` los marca para reescribir.
+* `converger_escala()`: cuando un item se marca por validez de contenido,
+  deseabilidad o redaccion (no por redundancia), el reemplazo solo debe no ser
+  mas redundante que el item que sustituye (`no_empeorar`). Con el umbral
+  adaptativo menos 0.03, en una escala contextualizada 12 de 14 items quedaban
+  "sin reemplazo viable" y seguian los de V = .38.
+* `semilla()` guarda en `metadata$modelos_usados` los modelos que de verdad
+  respondieron, y el resumen los muestra (con OpenRouter decia "gpt-4.1-mini").
+* `validez_contenido()`: si ningun item recibe calificaciones (la API fallo:
+  sin credito, clave invalida, limite de uso), se detiene con un mensaje que lo
+  dice, en vez de caer con "valor ausente" al imprimir el resumen.
+
 ## OpenRouter y modelos baratos
 
 * `usar_proveedor("openrouter", modelo_generacion, modelo_juicio)`: una sola

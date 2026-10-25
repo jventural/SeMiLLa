@@ -475,6 +475,11 @@ optimizar_para_campo <- function(x,
 
 #' @keywords internal
 .tipo_dimension <- function(nombre, definicion = "") {
+  # Solo cuenta la definicion: los indicadores ("Se manifiesta en: Siento que
+  # manejo...") y lo que la dimension "No incluye" volvian "afectiva" a una
+  # dimension definida como competencia (caso 2026-10-14).
+  definicion <- sub("(?i)\\s*(no incluye|se manifiesta en)\\s*:.*$", "",
+                    paste(definicion, collapse = " "), perl = TRUE)
   t <- tolower(paste(nombre, definicion))
   t <- chartr("\u00E1\u00E9\u00ED\u00F3\u00FA\u00FC\u00F1",
               "aeiouun", t)
@@ -906,7 +911,7 @@ balance_optimizacion <- function(g0, g1) .balance_optimizacion(g0, g1)
 
 
 #' @keywords internal
-.bloque_exposicion <- function(deseabilidad_objetivo, otras = NULL) {
+.bloque_exposicion <- function(deseabilidad_objetivo, otras = NULL, solo_directos = FALSE) {
   if (length(deseabilidad_objetivo) != 1 || is.na(deseabilidad_objetivo))
     return("")
   # Medido el 2026-08-06 sobre los 6 constructos del curso: pedir solo "parecete
@@ -930,7 +935,10 @@ balance_optimizacion <- function(g0, g1) .balance_optimizacion(g0, g1)
     " en escala 0-1 (0 = admitirlo deja mal, 1 = admitirlo queda bien). ",
     "El nuevo item debe costar admitirlo APROXIMADAMENTE LO MISMO que los ",
     "demas items de su dimension: ",
-    if (deseabilidad_objetivo < 0.40)
+    if (deseabilidad_objetivo < 0.40 && solo_directos)
+      paste0("algo especifico y concreto que no todos podrian afirmar, redactado ",
+             "en el polo POSITIVO de la dimension (sin negaciones ni malestar).\n")
+    else if (deseabilidad_objetivo < 0.40)
       "algo que a la persona le incomoda reconocer, pero sin convertirlo en una confesion grave.\n"
     else if (deseabilidad_objetivo > 0.60)
       "algo que no compromete a quien lo admite, en la misma linea que el resto.\n"
@@ -967,8 +975,40 @@ balance_optimizacion <- function(g0, g1) .balance_optimizacion(g0, g1)
                                       embeddings_existentes = NULL,
                                       items_dimension_conservados = character(0),
                                       deseabilidad_objetivo = NA_real_,
-                                      deseabilidad_otras = NULL) {
+                                      deseabilidad_otras = NULL,
+                                      no_empeorar = FALSE,
+                                      faceta_objetivo = NULL) {
+  # faceta_objetivo: la faceta (indicador) que cubria el item que sale. Al
+  # reescribir por validez de contenido sin ella, el reemplazo "elegia otra
+  # faceta" y volvia al nucleo de la dimension: en la v5 de bienestar
+  # psicologico academico, cuatro items de Proposito quedaron casi iguales
+  # (2026-10-15). Con ella, cambia la redaccion y se conserva la faceta.
+  if (!is.null(faceta_objetivo) && (is.na(faceta_objetivo) || !nzchar(trimws(faceta_objetivo))))
+    faceta_objetivo <- NULL
   dim_nombre <- x$items$dimension[idx_item]
+  # no_empeorar = TRUE (el item se reemplaza por validez de contenido o por
+  # redaccion, NO por redundancia): basta con que el candidato no sea mas
+  # redundante que el item que sustituye. Con el umbral adaptativo menos 0.03
+  # de converger_escala(), en una escala contextualizada (todos los items
+  # hablan de "la universidad") casi ningun candidato pasaba: 12 de 14 items
+  # quedaron "sin reemplazo viable" y siguieron los de V = .38 (2026-10-14).
+  if (isTRUE(no_empeorar) && !is.null(embeddings_existentes) &&
+      nrow(embeddings_existentes) == nrow(x$items) && nrow(x$items) > 1) {
+    E <- embeddings_existentes / sqrt(rowSums(embeddings_existentes^2))
+    s0 <- max(E[-idx_item, , drop = FALSE] %*% E[idx_item, ])
+    # Un item periferico (justo el que los jueces califican bajo) tiene s0
+    # bajo, asi que s0 solo no basta: el umbral parte tambien del parecido
+    # TIPICO entre los items de su dimension (percentil 75). Sin esto, todo
+    # candidato que volvia al nucleo de la dimension se rechazaba como
+    # redundante y solo pasaban items perifericos (traza v4, 2026-10-15).
+    hermanos <- setdiff(which(x$items$dimension == dim_nombre), idx_item)
+    s_dim <- if (length(hermanos) > 1) {
+      S <- E[hermanos, , drop = FALSE] %*% t(E[hermanos, , drop = FALSE])
+      stats::quantile(S[upper.tri(S)], 0.75, names = FALSE)
+    } else NA_real_
+    s_ref <- max(s0, s_dim, na.rm = TRUE)
+    if (is.finite(s_ref)) umbral_redundancia <- max(umbral_redundancia, min(s_ref, 0.80))
+  }
   def_dim <- if (is.list(x$concepto$dimensiones))
                x$concepto$dimensiones[[dim_nombre]] %||% dim_nombre
              else dim_nombre
@@ -978,7 +1018,18 @@ balance_optimizacion <- function(g0, g1) .balance_optimizacion(g0, g1)
   idioma <- x$metadata$idioma %||% "es"
 
   conductas_prohibidas <- conductas_prohibidas[nzchar(conductas_prohibidas)]
+  # 2026-10-14: el tipo de dimension decide hacia donde se buscan facetas nuevas
+  # y como se combate el halo. Si la dimension se define como capacidad,
+  # percepcion o actitud ("general"), empujar a reacciones fisicas, emociones o
+  # conductas con costo produjo items fuera de nivel ("Siento alivio al resolver
+  # dificultades de matricula", "Me abruma la cantidad de pendientes").
+  tipo_dim <- .tipo_dimension(dim_nombre, def_dim)
+  estilo <- x$metadata$instrucciones_estilo
   extra <- paste0(
+    # Las instrucciones de estilo del usuario valen tambien para los reemplazos
+    # (antes solo llegaban a la generacion inicial y al blindaje).
+    if (is.character(estilo) && length(estilo) == 1L && nzchar(estilo))
+      paste0("ESTILO DE REDACCION (obligatorio): ", estilo, "\n") else "",
     "CONTEXTO DE CORRECCION: el item que reemplazas fue eliminado por '",
     motivo, "'.\n",
     if (length(conductas_prohibidas) > 0) paste0(
@@ -998,21 +1049,34 @@ balance_optimizacion <- function(g0, g1) .balance_optimizacion(g0, g1)
     # FACETAS YA CUBIERTAS: sin esta lista los reemplazos de una dimension
     # derivan todos hacia la misma manifestacion (caso 2026-08-03: 9 de 15
     # reemplazos acabaron siendo variantes de "dejar preguntas en blanco").
-    if (length(items_dimension_conservados) > 0) paste0(
+    if (length(items_dimension_conservados) > 0 && !is.null(faceta_objetivo)) paste0(
+      "ITEMS QUE YA EXISTEN en esta dimension (no repitas su contenido ni su ",
+      "redaccion; cada uno cubre otra faceta):
+",
+      paste0("  - ", items_dimension_conservados, collapse = "
+"), "
+")
+    else if (length(items_dimension_conservados) > 0) paste0(
       "MANIFESTACIONES YA CUBIERTAS en esta dimension (el nuevo item debe ",
       "medir una DISTINTA de todas ellas, no una variante):\n",
       paste0("  - ", items_dimension_conservados, collapse = "\n"), "\n",
-      "Elige otra via de expresion de la misma dimension: si las cubiertas ",
-      "son conductas, considera una reaccion fisica o un pensamiento; si son ",
-      "reacciones fisicas, considera una conducta o una anticipacion.\n") else "",
+      if (tipo_dim %in% c("afectiva", "conductual"))
+        paste0("Elige otra via de expresion de la misma dimension: si las cubiertas ",
+               "son conductas, considera una reaccion fisica o un pensamiento; si son ",
+               "reacciones fisicas, considera una conducta o una anticipacion.\n")
+      else
+        paste0("Elige otra faceta de la DEFINICION de la dimension, en el mismo nivel ",
+               "en que esta definida (si es una capacidad, percepcion o actitud, otra ",
+               "capacidad, percepcion o actitud). No la conviertas en una emocion ",
+               "suelta, una reaccion fisica, un habito, una tecnica ni un tramite.\n")) else "",
     # POLARIDAD DE DESEABILIDAD: mantener al nuevo item en el mismo nivel de
     # "cuanto cuesta admitirlo" que el que sustituye. Mezclar items
     # comprometedores con items inocuos DENTRO de una dimension abre varianza
     # de metodo y la parte en dos (alerta_intra de la compuerta).
-    .bloque_exposicion(deseabilidad_objetivo, deseabilidad_otras),
+    .bloque_exposicion(deseabilidad_objetivo, deseabilidad_otras,
+                       solo_directos = isFALSE(x$metadata$incluir_inversos)),
     if (anti_halo) {
-      tipo <- .tipo_dimension(dim_nombre, def_dim)
-      switch(tipo,
+      switch(tipo_dim,
         "cognitiva" = paste0(
           "RESTRICCION DE DESEABILIDAD (dimension COGNITIVA): redacta una ",
           "CREENCIA o JUICIO especifico sobre una consecuencia DISTINTA a ",
@@ -1025,6 +1089,14 @@ balance_optimizacion <- function(g0, g1) .balance_optimizacion(g0, g1)
           "EMOCION especifica y DIFERENCIADA de las ya cubiertas, ante una ",
           "situacion concreta distinta. PROHIBIDO convertir el item en una ",
           "conducta o accion: debe seguir siendo una reaccion emocional.\n"),
+        "general" = paste0(
+          "RESTRICCION DE DESEABILIDAD: redacta una manifestacion ESPECIFICA de ",
+          "la dimension en una situacion concreta, en el MISMO nivel en que esta ",
+          "definida (capacidad, percepcion o actitud; no un habito, una tecnica, ",
+          "un tramite ni una emocion suelta), con un matiz que una persona ",
+          "razonable pueda no suscribir del todo. EVITA autoatribuciones globales ",
+          "halagadoras. Mantente en el polo POSITIVO de la dimension salvo que se ",
+          "pida un item inverso.\n"),
         paste0(
           "RESTRICCION DE DESEABILIDAD: redacta una CONDUCTA ESPECIFICA y ",
           "observable que implique un costo personal real (tiempo, esfuerzo, ",
@@ -1049,7 +1121,7 @@ balance_optimizacion <- function(g0, g1) .balance_optimizacion(g0, g1)
 
   items_evitar <- unique(x$items$item)
   intentos <- 0L
-  while (intentos < 3L) {
+  while (intentos < 5L) {
     intentos <- intentos + 1L
     df <- tryCatch(
       .generar_items_dimension(
@@ -1068,11 +1140,12 @@ balance_optimizacion <- function(g0, g1) .balance_optimizacion(g0, g1)
         evitar_cuantificadores = TRUE,
         max_palabras = rango_palabras[2],
         incluir_inversos = isTRUE(es_inverso),
-        instruccion_extra = extra
+        instruccion_extra = extra,
+        faceta_objetivo = faceta_objetivo
       ),
       error = function(e) NULL
     )
-    if (is.null(df) || nrow(df) == 0) next
+    if (is.null(df) || nrow(df) == 0) { .traza_reemplazo("generacion vacia", ""); next }
     candidato <- trimws(df$item[1])
     if (!nzchar(candidato) ||
         tolower(candidato) %in% tolower(items_evitar)) {
@@ -1095,6 +1168,7 @@ balance_optimizacion <- function(g0, g1) .balance_optimizacion(g0, g1)
       }
     }
     if (reintroduce) {
+      .traza_reemplazo("veto", candidato)
       items_evitar <- unique(c(items_evitar, candidato))
       next
     }
@@ -1102,6 +1176,18 @@ balance_optimizacion <- function(g0, g1) .balance_optimizacion(g0, g1)
     if (isTRUE(es_inverso) &&
         isFALSE(.clasificar_direccion_llm(openai, modelo, candidato,
                                           dim_nombre, def_dim))) {
+      .traza_reemplazo("direccion inverso", candidato)
+      items_evitar <- unique(c(items_evitar, candidato))
+      next
+    }
+    # Y al reves: en una escala pedida sin inversos, un reemplazo que describe
+    # el polo opuesto se rechaza (caso 2026-10-14: "Me abruma la cantidad de
+    # pendientes academicos" entro como directo en Dominio del entorno).
+    if (!isTRUE(es_inverso) && isFALSE(x$metadata$incluir_inversos) &&
+        (.negacion_encubierta(candidato) || .supuesto_temporal(candidato) || .jerga_abstracta(candidato) ||
+         isTRUE(.clasificar_direccion_llm(openai, modelo, candidato,
+                                          dim_nombre, def_dim)))) {
+      .traza_reemplazo("negacion o polo opuesto", candidato)
       items_evitar <- unique(c(items_evitar, candidato))
       next
     }
@@ -1121,6 +1207,7 @@ balance_optimizacion <- function(g0, g1) .balance_optimizacion(g0, g1)
     if (!check$redundante) {
       return(list(item = candidato, emb = check$embedding_nuevo))
     }
+      .traza_reemplazo(sprintf("redundante (umbral %.2f)", umbral_redundancia), candidato)
     items_evitar <- unique(c(items_evitar, candidato, check$items_similares))
   }
   NULL
@@ -1169,4 +1256,15 @@ balance_optimizacion <- function(g0, g1) .balance_optimizacion(g0, g1)
   d <- tryCatch(tolower(jsonlite::fromJSON(.extraer_json_llm(r))$direccion),
                 error = function(e) tolower(r))
   if (grepl("inverso", d)) TRUE else if (grepl("directo", d)) FALSE else NA
+}
+
+
+# Traza de rechazos de .reemplazar_item_dirigido(): se activa con
+# options(semilla.traza = TRUE). Sirve para saber POR QUE un item queda
+# "sin reemplazo viable" (caso v4 2026-10-15).
+#' @keywords internal
+.traza_reemplazo <- function(motivo, candidato) {
+  if (isTRUE(getOption("semilla.traza")))
+    cat(sprintf("      [rechazo: %s] %s\n", motivo, candidato))
+  invisible(NULL)
 }

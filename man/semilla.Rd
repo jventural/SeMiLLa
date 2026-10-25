@@ -17,6 +17,8 @@ semilla(
   dimensiones = NULL,
   complejidad_linguistica = "intermedio",
   max_palabras = NULL,
+  incluir_inversos = TRUE,
+  tipo_escala_respuesta = "frecuencia",
   blindaje = TRUE,
   contexto_prohibido = NULL,
   instrucciones_estilo = NULL,
@@ -86,6 +88,14 @@ metadata para que la optimizacion/refinamiento mantengan el mismo nivel.}
 
 \item{max_palabras}{Numero maximo de palabras por item. Si NULL, se deriva del
 nivel: minimo=10, basico=12, intermedio=18, avanzado=25.}
+
+\item{incluir_inversos}{Logico. Si \code{FALSE}, todos los items se redactan
+en sentido directo y la polaridad se conserva en el refinamiento, la
+optimizacion y el blindaje. Default \code{TRUE}.}
+
+\item{tipo_escala_respuesta}{Tipo de escala de respuesta que se pasa a
+\code{\link{generar_escala}} (por ejemplo \code{"frecuencia"} o
+\code{"acuerdo"}). Default \code{"frecuencia"}.}
 
 \item{blindaje}{Logico. Si \code{TRUE} (default), tras generar los items se
 aplican jueces LLM de contexto poblacional y de parafrasis que

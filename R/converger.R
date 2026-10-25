@@ -225,8 +225,14 @@ converger_escala <- function(x,
         umbral_redundancia = u_ac, embeddings_existentes = emb,
         items_dimension_conservados = conservados,
         deseabilidad_objetivo = .desea_dimension(desea, x$items, j),
-        deseabilidad_otras    = .desea_otras_dim(desea, x$items, j)),
-        error = function(e) NULL)
+        deseabilidad_otras    = .desea_otras_dim(desea, x$items, j),
+        # Si el item no se marco por redundancia, el reemplazo solo debe no
+        # empeorarla (ver .reemplazar_item_dirigido).
+        no_empeorar = !grepl("faceta|parafrasis|unicidad", mk$motivo[r])),
+        error = function(e) {
+          if (verbose) cat(sprintf("    I%-3d error: %s\n", j, conditionMessage(e)))
+          NULL
+        })
 
       emb_new <- NULL
       if (is.list(nuevo)) { emb_new <- nuevo$emb; nuevo <- nuevo$item }
@@ -398,6 +404,16 @@ converger_escala <- function(x,
                                             fuente = fuente,
                                             stringsAsFactors = FALSE))
   }
+
+  # Escala pedida sin inversos: una negacion o contraste encubierto se reescribe
+  # aunque los jueces no lo vean (control por regex, 2026-10-14).
+  if (isFALSE(x$metadata$incluir_inversos))
+    add(which(.negacion_encubierta(x$items$item)),
+        "negacion o contraste encubierto en una escala directa", "redaccion")
+  add(which(.supuesto_temporal(x$items$item)),
+      "supone tiempo en la carrera (no aplica a quien recien empieza)", "redaccion")
+  add(which(.jerga_abstracta(x$items$item)),
+      "registro abstracto o tecnico (palabras de documento institucional)", "redaccion")
 
   fac <- g$redaccion$facetas_repetidas
   if (!is.null(fac) && nrow(fac) > 0) {

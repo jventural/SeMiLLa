@@ -636,7 +636,7 @@ ensamblar_test <- function(escala,
     recordatorio   = if (idioma == "en")
                        "Use the following response scale for all items:"
                      else
-                       "Use la siguiente escala de respuesta para todos los \u00EDtems:"
+                       "Para todos los \u00EDtems se usa la siguiente escala de respuesta:"
   )
 
   out <- character(0)
@@ -974,7 +974,7 @@ ensamblar_test <- function(escala,
     labels <- .etiquetas_demograficas(d$datos_solicitados, d$idioma)
     df_demo <- data.frame(
       label = unname(labels),
-      linea = strrep("_", 45),
+      linea = strrep("_", 38),
       stringsAsFactors = FALSE
     )
     ft <- flx("flextable")(df_demo)
@@ -1005,7 +1005,7 @@ ensamblar_test <- function(escala,
       if (es_en) "Response options" else "Opciones de respuesta")
     doc <- add_par(doc,
       if (es_en) "Use the following response scale for all items:"
-      else "Use la siguiente escala de respuesta para todos los \u00EDtems:",
+      else "Para todos los \u00EDtems se usa la siguiente escala de respuesta:",
       align = "left", pad_top = 2, pad_bot = 6)
 
     df_anc <- data.frame(
