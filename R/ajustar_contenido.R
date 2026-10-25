@@ -48,7 +48,9 @@ ajustar_validez_contenido <- function(x, api_key, validez = NULL, umbral = 0.80,
   # Una validez previa sin todos los criterios (p. ej., sin claridad) se recalcula.
   if (is.null(validez) || !all(paste0("V_", criterios) %in% names(validez$v_aiken)))
     validez <- validez_contenido(x, api_key = api_key, criterios = criterios, n_jueces = n_jueces)
-  openai <- .configurar_openai(api_key, modelo = modelo)
+  # El cliente se configura solo si hay items que reescribir: una escala sin
+  # nada que corregir no necesita Python ni el modulo 'openai'.
+  openai <- NULL
   rango  <- .rango_palabras_escala(x$items$item)
   sin_inversos <- isFALSE(x$metadata$incluir_inversos)
   registro <- data.frame(ronda = integer(0), item = integer(0), V_antes = numeric(0),
@@ -63,6 +65,7 @@ ajustar_validez_contenido <- function(x, api_key, validez = NULL, umbral = 0.80,
                    .supuesto_temporal(x$items$item) | jerga)
     if (verbose) cat(sprintf("\n[Ronda %d] %d items a reescribir\n", ronda, length(malos)))
     if (length(malos) == 0) break
+    if (is.null(openai)) openai <- .configurar_openai(api_key, modelo = modelo)
     previos <- list(items = x$items$item, emb = x$embeddings)
     for (j in malos) {
       conservados <- setdiff(x$items$item[x$items$dimension == x$items$dimension[j]],
