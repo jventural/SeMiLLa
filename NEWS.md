@@ -1,3 +1,20 @@
+# SeMiLLa 2.12.1 (2026-10-26)
+
+## La compuerta veia la similitud de items que ya no estaban
+
+* `ajustar_validez_contenido()` actualizaba la fila de `$embeddings` de cada
+  item reescrito pero no recalculaba `$similitud`. La compuerta del posproceso
+  leia esa matriz vieja: en la v4 y la v6 de bienestar psicologico academico
+  diferia hasta .44 de la similitud de los items finales. Con la matriz
+  correcta, la v6 pasa de "cada item se parece mas a su dimension" a 4 items
+  mal asignados. Ahora la similitud se recalcula desde `$embeddings` al cerrar
+  el ajuste (sin llamar a la API).
+* `compuerta_pre_aplicacion()` comprueba que `$similitud` sea el coseno de
+  `$embeddings`; si no lo es (objetos guardados antes de esta version), la
+  rehace y avisa. Los resultados de compuertas corridas sobre objetos
+  ajustados con 2.12.0 deben repetirse.
+* Funcion interna `.sincronizar_similitud()` y dos pruebas nuevas.
+
 # SeMiLLa 2.12.0 (2026-10-09)
 ## Compuerta mas rapida, mismo resultado (2026-10-16)
 

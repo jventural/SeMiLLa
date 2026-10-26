@@ -193,6 +193,9 @@ compuerta_pre_aplicacion <- function(x,
     x$similitud  <- emb$similitud
     x$embeddings <- emb$embeddings
   }
+  # Un objeto guardado antes de 2.12.1 puede traer la similitud de items ya
+  # reescritos (ver .sincronizar_similitud): se rehace desde $embeddings.
+  x <- .sincronizar_similitud(x, avisar = TRUE)
 
   # 2.9.36: cuatro ejes. El cuarto (asignacion) se anade al FINAL para no mover
   # los indices 1-3, sobre los que ramifica el resto de la funcion.

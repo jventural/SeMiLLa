@@ -116,6 +116,9 @@ ajustar_validez_contenido <- function(x, api_key, validez = NULL, umbral = 0.80,
       cat(sprintf("  %d aceptados, %d revertidos\n",
                   sum(!registro$revertido[filas]), sum(registro$revertido[filas])))
   }
+  # Los reemplazos solo actualizaron filas de $embeddings: la similitud se
+  # recalcula para que la compuerta y la redundancia vean los items finales.
+  x <- .sincronizar_similitud(x)
   # Medicion completa final, para informar la escala tal como queda.
   if (nrow(registro) > 0 && any(!registro$revertido))
     validez <- validez_contenido(x, api_key = api_key, criterios = criterios, n_jueces = n_jueces)

@@ -1555,6 +1555,29 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
   return(similitud)
 }
 
+# $similitud debe ser el coseno de $embeddings. Quien reescribe items y solo
+# actualiza filas de $embeddings deja la matriz desfasada: en la v4 y la v6 de
+# bienestar psicologico academico (2026-10-26) la compuerta se corrio con una
+# similitud que diferia hasta .44 de la de los items finales. Recalcula la
+# matriz desde $embeddings cuando no coincide; no llama a ninguna API.
+#' @keywords internal
+.sincronizar_similitud <- function(x, tol = 1e-6, avisar = FALSE) {
+  E <- x$embeddings
+  if (is.null(E) || !is.matrix(E) || is.null(x$items) || nrow(E) != nrow(x$items))
+    return(x)
+  s <- .calcular_similitud_coseno(E)
+  S <- x$similitud
+  if (!is.null(S) && identical(dim(S), dim(s)) && max(abs(unname(S) - unname(s))) <= tol)
+    return(x)
+  if (avisar && !is.null(S))
+    warning("$similitud no correspondia a $embeddings (items reescritos sin ",
+            "recalcularla); se recalculo desde $embeddings.", call. = FALSE)
+  nombres <- paste0("item_", seq_len(nrow(E)))
+  dimnames(s) <- list(nombres, nombres)
+  x$similitud <- s
+  x
+}
+
 
 # -----------------------------------------------------------------------------
 # FUNCIONES DE DISPLAY

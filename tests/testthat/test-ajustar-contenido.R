@@ -11,6 +11,36 @@ test_that("ajustar_validez_contenido no toca una escala sin items que corregir",
   expect_equal(nrow(r$registro), 0)
 })
 
+test_that("la similitud se rehace cuando no corresponde a los embeddings", {
+  E <- rbind(c(1, 0, 0), c(0.9, 0.1, 0), c(0, 0, 1))
+  vieja <- SeMiLLa:::.calcular_similitud_coseno(rbind(c(1, 0, 0), c(0, 1, 0), c(0, 0, 1)))
+  x <- structure(list(
+    items = data.frame(dimension = c("A", "A", "B"), item = c("Elijo mis cursos.", "Defino mis metas.",
+                       "Confio en mis companeros."), stringsAsFactors = FALSE),
+    metadata = list(incluir_inversos = FALSE), embeddings = E, similitud = vieja),
+    class = c("semilla", "list"))
+  y <- SeMiLLa:::.sincronizar_similitud(x)
+  expect_equal(unname(y$similitud), unname(SeMiLLa:::.calcular_similitud_coseno(E)))
+  expect_warning(SeMiLLa:::.sincronizar_similitud(x, avisar = TRUE), "no correspondia")
+  expect_silent(SeMiLLa:::.sincronizar_similitud(y, avisar = TRUE))
+  # Sin embeddings no hay con que comparar: el objeto queda igual.
+  x$embeddings <- NULL
+  expect_identical(SeMiLLa:::.sincronizar_similitud(x), x)
+})
+
+test_that("ajustar_validez_contenido devuelve la similitud de los items finales", {
+  E <- rbind(c(1, 0), c(0.6, 0.8))
+  x <- structure(list(
+    items = data.frame(dimension = c("A", "A"), item = c("Elijo mis cursos.", "Defino mis metas."),
+                       stringsAsFactors = FALSE),
+    metadata = list(incluir_inversos = FALSE), embeddings = E, similitud = diag(2)),
+    class = c("semilla", "list"))
+  vc <- list(v_aiken = data.frame(V_promedio = c(0.9, 0.85), V_relevancia = c(0.9, 0.85),
+                                  V_representatividad = c(0.9, 0.85), V_claridad = c(0.9, 0.9)))
+  r <- ajustar_validez_contenido(x, api_key = "x", validez = vc, verbose = FALSE)
+  expect_equal(unname(r$escala$similitud), unname(SeMiLLa:::.calcular_similitud_coseno(E)))
+})
+
 test_that("una negacion encubierta se marca aunque la V sea alta", {
   expect_true(SeMiLLa:::.negacion_encubierta("Mis notas no definen mi valor."))
   expect_false(SeMiLLa:::.negacion_encubierta("Defino mis prioridades academicas."))
