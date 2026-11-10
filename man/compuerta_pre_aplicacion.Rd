@@ -20,6 +20,9 @@ compuerta_pre_aplicacion(
   seed = NULL,
   verbose = TRUE,
   phi_simulacion = c("supuesto", "estimado"),
+  phi_objetivo = c(0.25, 0.45),
+  halo_exige_phi = NULL,
+  pertenencia = TRUE,
   ...
 )
 }
@@ -91,6 +94,34 @@ siempre; \code{"estimado"} simula con ella. Medido el 09-10-2026 en 9
 escalas reales: la phi estimada se acerca mas a la real, pero usarla en la
 simulacion empeoro el acierto de la compuerta frente a la realidad.}
 
+\item{phi_objetivo}{Banda objetivo de la correlacion entre dimensiones,
+\code{c(minimo, maximo)}, EN LA ESCALA DE LA PHI ESTIMADA (por defecto
+\code{c(0.25, 0.45)}). Cada par se clasifica como \code{"dentro"},
+\code{"alta"} (podrian no separarse) o \code{"baja"} (apenas se
+relacionan) en \code{$relacion_dimensiones}, y los pares fuera de la banda
+suman una accion recomendada. La estimacion ordena bien los pares pero
+esta comprimida: medido el 10-11-2026 contra 72 pares reales (9 escalas,
+n = 1500), los pares con correlacion real de .70 o mas recibieron
+estimaciones de .30 a .70. Por eso los cortes no son .30 y .70: una
+estimacion mayor que .45 detecto los pares reales de .70 o mas con
+sensibilidad .71 y especificidad .95, y una menor que .25 detecto los de
+menos de .30 con .85 y .92. No cambia el veredicto: orienta, no
+pronostica. \code{NULL} la desactiva. Requiere la phi estimada (clave de
+OpenRouter).}
+
+\item{halo_exige_phi}{\code{NULL} (por defecto) o un numero entre 0 y 1. Con
+un numero, el mapa de fusion solo une por "halo local" dos dimensiones
+igual de deseables si ademas su phi estimada llega a ese valor. Sirve en
+constructos donde todo es deseable, en los que el halo anticipa un solo
+factor casi siempre. No esta validado contra escalas reales: uselo como
+analisis de sensibilidad.}
+
+\item{pertenencia}{Si \code{TRUE} (por defecto), el eje de asignacion suma
+una segunda lectura con \code{\link{probabilidad_pertenencia}}: los items
+a los que los lectores de texto dan menos de .50 en su dimension y asignan
+a otra se informan como items puente (\code{$items_puente}) y dejan el eje
+en advertencia.}
+
 \item{...}{Argumentos adicionales para \code{\link{simular_estructura}}
 (p. ej. \code{umbral_ld}, \code{carga_propia}, \code{k_cat}).}
 }
@@ -118,6 +149,13 @@ campo con ambos modelos declarados y contrastarlos como rivales.
 \item \code{banda_estructura}: lista con las probabilidades re-simuladas
 (\code{probs}, \code{mediana}, \code{min}, \code{max},
 \code{n_rep_banda}), o \code{NULL}.
+\item \code{phi_estimado}: matriz de la correlacion estimada por par de
+dimensiones (o \code{NULL}); \code{relacion_dimensiones}: data.frame
+con cada par frente a \code{phi_objetivo} (\code{dimension_a},
+\code{dimension_b}, \code{phi_estimado}, \code{estado}), o \code{NULL}.
+\item \code{pertenencia}: resultado de
+\code{\link{probabilidad_pertenencia}} (o \code{NULL}) e
+\code{items_puente}: posiciones de los items puente (o \code{NULL}).
 \item \code{parametros}: lista con los umbrales, \code{n}, \code{n_rep},
 \code{n_banda} y la fecha.
 }

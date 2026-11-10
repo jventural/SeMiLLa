@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Entrevista cognitiva</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:wght@400;600;700&family=Source+Serif+4:opsz,wght@8..60,500;8..60,600&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --fondo: #f6f4ef; --tarjeta: #ffffff; --tinta: #1f2a2e; --suave: #5d6b70;
+    --acento: #2f6f62; --acento-claro: #e3efeb; --borde: #d9d6cc; --alerta: #b4532a;
+    --sombra: 0 10px 30px rgba(31, 42, 46, .08);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; background: var(--fondo); color: var(--tinta);
+    font-family: "Source Sans 3", "Segoe UI", system-ui, sans-serif; font-size: 17px; line-height: 1.5; }
+  .barra { position: fixed; top: 0; left: 0; right: 0; height: 5px; background: var(--borde); z-index: 5; }
+  .barra > div { height: 100%; width: 0; background: var(--acento); transition: width .4s ease; }
+  main { min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 40px 16px; }
+  .pantalla { width: 100%; max-width: 680px; animation: entra .35s ease; }
+  @keyframes entra { from { opacity: 0; transform: translateY(14px); } to { opacity: 1; transform: none; } }
+  .tarjeta { background: var(--tarjeta); border: 1px solid var(--borde); border-radius: 14px;
+    padding: 28px 26px; box-shadow: var(--sombra); }
+  h1 { font-family: "Source Serif 4", Georgia, serif; font-weight: 600; font-size: 1.7rem; line-height: 1.25; margin: 0 0 14px; }
+  h2 { font-size: 1.05rem; margin: 26px 0 8px; }
+  p { margin: 0 0 12px; }
+  .contador { color: var(--suave); font-size: .9rem; font-weight: 600; letter-spacing: .03em; margin-bottom: 10px; }
+  .item { font-family: "Source Serif 4", Georgia, serif; font-size: 1.55rem; line-height: 1.35; font-weight: 500;
+    text-align: center; background: var(--acento-claro); border-left: 5px solid var(--acento);
+    border-radius: 10px; padding: 26px 22px; margin: 0 0 6px; }
+  .sonda { margin-top: 24px; }
+  .sonda label.titulo { display: block; font-weight: 700; margin-bottom: 10px; }
+  .opciones { display: flex; flex-wrap: wrap; gap: 10px; }
+  .opcion { flex: 1 1 150px; border: 1.5px solid var(--borde); background: #fff; color: var(--tinta);
+    border-radius: 10px; padding: 12px 14px; font: inherit; cursor: pointer; text-align: center; transition: all .15s; }
+  .opcion:hover { border-color: var(--acento); }
+  .opcion.elegida { border-color: var(--acento); background: var(--acento); color: #fff; font-weight: 600; }
+  textarea, input[type=text], input[type=number], select { width: 100%; font: inherit; color: var(--tinta);
+    border: 1.5px solid var(--borde); border-radius: 10px; padding: 11px 13px; background: #fff; }
+  textarea { min-height: 92px; resize: vertical; }
+  textarea:focus, input:focus, select:focus { outline: none; border-color: var(--acento); box-shadow: 0 0 0 3px var(--acento-claro); }
+  .ayuda { color: var(--suave); font-size: .9rem; margin-top: 6px; }
+  .aviso { color: var(--alerta); font-size: .92rem; margin-top: 10px; min-height: 1.3em; }
+  .acciones { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: 24px; }
+  button.principal { background: var(--acento); color: #fff; border: 0; border-radius: 10px; padding: 13px 26px;
+    font: inherit; font-weight: 700; cursor: pointer; }
+  button.principal:disabled { opacity: .45; cursor: not-allowed; }
+  button.secundario { background: none; border: 0; color: var(--suave); font: inherit; cursor: pointer; padding: 10px 4px; }
+  .campo { margin-bottom: 16px; }
+  .campo label { display: block; font-weight: 600; margin-bottom: 6px; }
+  .fila { display: flex; gap: 14px; flex-wrap: wrap; }
+  .fila .campo { flex: 1 1 180px; }
+  .ejemplo { border: 1px dashed var(--borde); border-radius: 10px; padding: 14px 16px; margin: 12px 0; background: #fbfaf7; }
+  .ejemplo b { color: var(--acento); }
+  .check { display: flex; gap: 10px; align-items: flex-start; margin-top: 16px; }
+  .check input { width: 20px; height: 20px; margin-top: 3px; accent-color: var(--acento); }
+  .motivo { background: #fbefe8; border-left: 4px solid var(--alerta); border-radius: 8px;
+    padding: 10px 14px; margin-bottom: 12px; font-size: .95rem; }
+  .oculto { display: none; }
+  @media (max-width: 520px) {
+    .tarjeta { padding: 22px 16px; } h1 { font-size: 1.4rem; } .item { font-size: 1.25rem; padding: 20px 14px; }
+    .opcion { flex-basis: 100%; }
+  }
+</style>
+</head>
+<body>
+<div class="barra"><div id="progreso"></div></div>
+<main><div id="app"></div></main>
+
+<script>
+// Ítems de la prueba en el orden de aplicación. Los inserta armar_formulario.R desde el protocolo final.
+const ITEMS = /*__ITEMS__*/[];
+const CLAVE_LOCAL = "__CLAVE__";
+const OPC_CLARIDAD = ["Sí, se entiende", "Más o menos", "No se entiende"];
+
+let E = cargar() || { id: nuevoId(), inicio: new Date().toISOString(), paso: "bienvenida", i: 0,
+                      perfil: {}, resp: {}, comentario: "" };
+let t0 = Date.now();
+
+function nuevoId() { return "P" + Date.now().toString(36).toUpperCase() + Math.random().toString(36).slice(2, 6).toUpperCase(); }
+function guardarLocal() { try { localStorage.setItem(CLAVE_LOCAL, JSON.stringify(E)); } catch (e) {} }
+function cargar() { try { return JSON.parse(localStorage.getItem(CLAVE_LOCAL)); } catch (e) { return null; } }
+function esc(s) { return String(s ?? "").replace(/[&<>"]/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c])); }
+function palabras(s) { return (s || "").trim().split(/\s+/).filter(Boolean).length; }
+const $ = id => document.getElementById(id);
+
+function avance() {
+  const total = ITEMS.length + 3;
+  const pos = { bienvenida: 0, datos: 1, ejemplo: 2, item: 3 + E.i, cierre: total, fin: total }[E.paso];
+  $("progreso").style.width = (100 * pos / total) + "%";
+}
+
+function pintar() {
+  avance(); guardarLocal(); window.scrollTo(0, 0); t0 = Date.now();
+  ({ bienvenida, datos, ejemplo, item, cierre, fin })[E.paso]();
+}
+
+function bienvenida() {
+  $("app").innerHTML = `<section class="pantalla tarjeta">
+    <h1>Ayúdanos a revisar unas frases</h1>
+    <p>__DESCRIPCION__
+       Antes de usarlo, necesitamos saber si sus frases se entienden bien.</p>
+    <p>Verás <b>${ITEMS.length} frases</b>, una por una. En cada una te preguntaremos si se entiende y
+       qué entiendes tú al leerla. <b>No tienes que decir si estás de acuerdo con la frase</b>: solo nos
+       interesa cómo la entiendes. No hay respuestas correctas ni incorrectas.</p>
+    <p>Te tomará unos __MINUTOS__ minutos. Tu participación es voluntaria y anónima: no pedimos tu nombre.
+       Puedes dejarlo en cualquier momento; si cierras la página, al volver seguirás donde te quedaste.</p>
+    <label class="check"><input type="checkbox" id="acepto">
+      <span>Leí esta información y acepto participar.</span></label>
+    <div class="acciones"><span></span><button class="principal" id="ir" disabled>Comenzar</button></div>
+  </section>`;
+  $("acepto").checked = !!E.consentimiento;
+  $("ir").disabled = !E.consentimiento;
+  $("acepto").onchange = e => { E.consentimiento = e.target.checked; $("ir").disabled = !e.target.checked; };
+  $("ir").onclick = () => { E.paso = "datos"; pintar(); };
+}
+
+function datos() {
+  const p = E.perfil;
+  $("app").innerHTML = `<section class="pantalla tarjeta">
+    <h1>Unos datos sobre ti</h1>
+    <div class="fila">
+      <div class="campo"><label for="edad">Edad (años)</label><input type="number" id="edad" min="16" max="70" value="${esc(p.edad)}"></div>
+      <div class="campo"><label for="sexo">Sexo</label><select id="sexo">
+        ${["", "Mujer", "Hombre", "Otro", "Prefiero no decirlo"].map(o => `<option ${p.sexo === o ? "selected" : ""}>${o}</option>`).join("")}</select></div>
+    </div>
+    <div class="fila">
+      <div class="campo"><label for="carrera">Carrera</label><input type="text" id="carrera" value="${esc(p.carrera)}"></div>
+      <div class="campo"><label for="ciclo">Ciclo que cursas</label><input type="number" id="ciclo" min="1" max="14" value="${esc(p.ciclo)}"></div>
+    </div>
+    <div class="aviso" id="aviso"></div>
+    <div class="acciones"><button class="secundario" id="atras">← Atrás</button><button class="principal" id="ir">Continuar</button></div>
+  </section>`;
+  $("atras").onclick = () => { E.paso = "bienvenida"; pintar(); };
+  $("ir").onclick = () => {
+    const v = { edad: $("edad").value, sexo: $("sexo").value, carrera: $("carrera").value.trim(), ciclo: $("ciclo").value };
+    if (!v.edad || !v.sexo || !v.carrera || !v.ciclo) { $("aviso").textContent = "Completa los cuatro datos para continuar."; return; }
+    E.perfil = v; E.paso = "ejemplo"; pintar();
+  };
+}
+
+function ejemplo() {
+  $("app").innerHTML = `<section class="pantalla tarjeta">
+    <h1>Así funciona</h1>
+    <p>Para cada frase te haremos dos preguntas. Mira este ejemplo, que no es parte del cuestionario:</p>
+    <div class="ejemplo">
+      <p><b>Frase:</b> "Llego temprano a mis clases."</p>
+      <p><b>¿Se entiende con claridad?</b> Sí, se entiende.</p>
+      <p style="margin:0"><b>Con tus palabras, ¿qué te está preguntando?</b> "Si soy puntual, si llego a la hora o antes a las clases."</p>
+    </div>
+    <p>Si una frase <b>no</b> se entiende del todo, también te preguntaremos qué palabra o parte te pareció rara o difícil.</p>
+    <p>Escribe con tus propias palabras, como se lo explicarías a un compañero. No copies la frase.</p>
+    <div class="acciones"><button class="secundario" id="atras">← Atrás</button><button class="principal" id="ir">Empezar con las frases</button></div>
+  </section>`;
+  $("atras").onclick = () => { E.paso = "datos"; pintar(); };
+  $("ir").onclick = () => { E.paso = "item"; pintar(); };
+}
+
+// Aviso sobre la pregunta 3 que recuerda al estudiante por qué se le pide: lo que marcó en la pregunta 1.
+function motivo(claridad) {
+  if (claridad === "Más o menos") return `Marcaste que esta frase se entiende <b>más o menos</b>. Ayúdanos a ubicar qué parte le quita claridad.`;
+  if (claridad === "No se entiende") return `Marcaste que esta frase <b>no se entiende</b>. Ayúdanos a ubicar qué parte la vuelve difícil.`;
+  return "";
+}
+
+function item() {
+  const it = ITEMS[E.i];
+  const r = E.resp[it.n] || (E.resp[it.n] = { claridad: "", parafraseo: "", confuso: "", segundos: 0 });
+  $("app").innerHTML = `<section class="pantalla tarjeta">
+    <div class="contador">FRASE ${E.i + 1} DE ${ITEMS.length}</div>
+    <div class="item">"${esc(it.item)}"</div>
+    <div class="sonda">
+      <label class="titulo">1. ¿Esta frase se entiende con claridad?</label>
+      <div class="opciones">${OPC_CLARIDAD.map(o => `<button class="opcion ${r.claridad === o ? "elegida" : ""}" data-v="${o}">${o}</button>`).join("")}</div>
+    </div>
+    <div class="sonda">
+      <label class="titulo" for="parafraseo">2. Con tus palabras, ¿qué te está preguntando esta frase?</label>
+      <textarea id="parafraseo" placeholder="Escribe lo que entiendes al leerla...">${esc(r.parafraseo)}</textarea>
+    </div>
+    <div class="sonda ${r.claridad && r.claridad !== OPC_CLARIDAD[0] ? "" : "oculto"}" id="bloque-confuso">
+      <div class="motivo" id="motivo">${motivo(r.claridad)}</div>
+      <label class="titulo" for="confuso">3. ¿Qué palabra o parte de la frase te resultó rara, difícil o confusa?</label>
+      <textarea id="confuso" placeholder="Por ejemplo, una palabra que no se usa entre estudiantes...">${esc(r.confuso)}</textarea>
+    </div>
+    <div class="aviso" id="aviso"></div>
+    <div class="acciones"><button class="secundario" id="atras">← Atrás</button><button class="principal" id="ir">${E.i + 1 < ITEMS.length ? "Siguiente" : "Terminar"}</button></div>
+  </section>`;
+  document.querySelectorAll(".opcion").forEach(b => b.onclick = () => {
+    r.claridad = b.dataset.v;
+    document.querySelectorAll(".opcion").forEach(x => x.classList.toggle("elegida", x === b));
+    $("bloque-confuso").classList.toggle("oculto", r.claridad === OPC_CLARIDAD[0]);
+    $("motivo").innerHTML = motivo(r.claridad);
+    guardarLocal();
+  });
+  $("parafraseo").oninput = e => { r.parafraseo = e.target.value; guardarLocal(); };
+  $("confuso").oninput = e => { r.confuso = e.target.value; guardarLocal(); };
+  const salir = paso => { r.segundos += Math.round((Date.now() - t0) / 1000); paso(); pintar(); };
+  $("atras").onclick = () => salir(() => { if (E.i > 0) E.i--; else E.paso = "ejemplo"; });
+  $("ir").onclick = () => {
+    if (!r.claridad) return $("aviso").textContent = "Indica si la frase se entiende.";
+    if (palabras(r.parafraseo) < 3) return $("aviso").textContent = "Escribe con tus palabras qué entiendes (al menos unas palabras).";
+    if (r.claridad !== OPC_CLARIDAD[0] && !r.confuso.trim()) return $("aviso").textContent = "Cuéntanos qué parte de la frase te resultó confusa.";
+    if (r.claridad === OPC_CLARIDAD[0]) r.confuso = "";
+    salir(() => { if (E.i + 1 < ITEMS.length) E.i++; else E.paso = "cierre"; });
+  };
+}
+
+function cierre() {
+  $("app").innerHTML = `<section class="pantalla tarjeta">
+    <h1>¡Terminaste las frases!</h1>
+    <p>¿Quieres comentar algo más sobre las frases o sobre el cuestionario? (opcional)</p>
+    <textarea id="comentario" placeholder="Tu comentario...">${esc(E.comentario)}</textarea>
+    <div class="aviso" id="aviso"></div>
+    <div class="acciones"><button class="secundario" id="atras">← Volver a la última frase</button><button class="principal" id="ir">Enviar respuestas</button></div>
+  </section>`;
+  $("comentario").oninput = e => { E.comentario = e.target.value; guardarLocal(); };
+  $("atras").onclick = () => { E.paso = "item"; E.i = ITEMS.length - 1; pintar(); };
+  $("ir").onclick = enviar;
+}
+
+function carga() {
+  return { id: E.id, inicio: E.inicio, fin: new Date().toISOString(), perfil: E.perfil, comentario: E.comentario,
+           respuestas: ITEMS.map(it => Object.assign({ n: it.n, item: it.item }, E.resp[it.n])) };
+}
+
+function enviar() {
+  const b = $("ir"); b.disabled = true; b.textContent = "Enviando...";
+  const datos = carga();
+  const ok = () => { E.paso = "fin"; E.enviado = true; pintar(); };
+  const falla = err => {
+    b.disabled = false; b.textContent = "Reintentar envío";
+    $("aviso").innerHTML = `No se pudo enviar (${esc(err && err.message || err)}). Revisa tu conexión y reintenta.
+      <br><button class="secundario" id="bajar">Descargar mis respuestas en un archivo</button>`;
+    $("bajar").onclick = () => descargar(datos);
+  };
+  if (window.google && google.script && google.script.run) {
+    google.script.run.withSuccessHandler(ok).withFailureHandler(falla).guardar(datos);
+  } else {
+    descargar(datos); ok();   // modo de prueba fuera de Google: descarga el archivo
+  }
+}
+
+function descargar(d) {
+  const filas = [["id", "inicio", "fin", "edad", "sexo", "carrera", "ciclo", "n", "item", "claridad", "parafraseo", "confuso", "segundos", "comentario"]];
+  d.respuestas.forEach(r => filas.push([d.id, d.inicio, d.fin, d.perfil.edad, d.perfil.sexo, d.perfil.carrera, d.perfil.ciclo,
+                                        r.n, r.item, r.claridad, r.parafraseo, r.confuso, r.segundos, d.comentario]));
+  const csv = "﻿" + filas.map(f => f.map(v => '"' + String(v ?? "").replace(/"/g, '""') + '"').join(";")).join("\r\n");
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv;charset=utf-8" }));
+  a.download = "entrevista_cognitiva_" + d.id + ".csv"; a.click();
+}
+
+function fin() {
+  $("app").innerHTML = `<section class="pantalla tarjeta" style="text-align:center">
+    <h1>¡Gracias por tu ayuda!</h1>
+    <p>Tus respuestas se registraron. Con ellas mejoraremos las frases del cuestionario.</p>
+    <p class="ayuda">Código de participación: ${esc(E.id)}</p>
+    <button class="secundario" id="otra">Nueva participación en este equipo</button>
+  </section>`;
+  $("otra").onclick = () => { try { localStorage.removeItem(CLAVE_LOCAL); } catch (e) {}
+    E = { id: nuevoId(), inicio: new Date().toISOString(), paso: "bienvenida", i: 0, perfil: {}, resp: {}, comentario: "" }; pintar(); };
+}
+
+pintar();
+</script>
+</body>
+</html>

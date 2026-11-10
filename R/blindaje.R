@@ -441,6 +441,60 @@
 }
 
 
+# Juez de FRONTERAS (2.12.5): lee los items SIN su dimension y dice cual mide
+# cada uno. Devuelve los que el juez asigna a otra dimension que la declarada
+# (numero, problema). Una sola llamada para toda la lista. Con menos de dos
+# dimensiones, o si la llamada falla, devuelve un data.frame vacio: el blindaje
+# sigue como antes.
+#' @keywords internal
+#' @noRd
+.juzgar_frontera_llm <- function(items_df, dimensiones, openai,
+                                 modelo = "gpt-4.1-mini") {
+  vacio <- data.frame(numero = integer(0), problema = character(0),
+                      stringsAsFactors = FALSE)
+  dims <- dimensiones
+  if (is.list(dims)) dims <- vapply(dims, function(d)
+    paste(as.character(unlist(d)), collapse = " "), character(1))
+  if (is.null(names(dims)) || length(dims) < 2L ||
+      is.null(items_df$dimension)) return(vacio)
+  if (!all(as.character(items_df$dimension) %in% names(dims))) return(vacio)
+  def <- sub("(?i)\\s*(no incluye|se manifiesta en)\\s*:.*$", "", dims, perl = TRUE)
+  def <- trimws(gsub("\\s+", " ", def))
+  n <- nrow(items_df)
+  prompt <- paste0(
+    "Un cuestionario tiene estas dimensiones:\n",
+    paste0("- ", names(dims), ifelse(nzchar(def), paste0(": ", def), ""), collapse = "\n"),
+    "\n\nPara CADA item de la lista, indica la UNICA dimension que mejor mide. ",
+    "Usa EXACTAMENTE estos nombres: ", paste0('"', names(dims), '"', collapse = ", "),
+    ".\nResponde SOLO un objeto JSON: {\"1\": \"<dimension>\", \"2\": \"<dimension>\", ...}\n\n",
+    "ITEMS:\n", paste0(seq_len(n), ". ", items_df$item, collapse = "\n"))
+  raw <- tryCatch(
+    .llamar_openai(openai, messages = list(list(role = "user", content = prompt)),
+                   modelo = modelo, max_tokens = max(800L, 40L * n), temperature = 0,
+                   razonamiento = "low"),
+    error = function(e) NULL)
+  if (is.null(raw)) return(vacio)
+  js <- tryCatch(jsonlite::fromJSON(.extraer_bloque_json(raw), simplifyVector = FALSE),
+                 error = function(e) NULL)
+  if (!is.list(js)) return(vacio)
+  norm <- function(z) tolower(trimws(gsub("\\s*\\(.*?\\)", "", gsub("_", " ", z))))
+  leida <- vapply(seq_len(n), function(i) {
+    r <- js[[as.character(i)]]
+    if (is.null(r) || !length(r)) return(NA_character_)
+    k <- match(norm(as.character(r)[1]), norm(names(dims)))
+    if (is.na(k)) NA_character_ else names(dims)[k]
+  }, character(1))
+  fuera <- which(!is.na(leida) & leida != as.character(items_df$dimension))
+  if (!length(fuera)) return(vacio)
+  data.frame(
+    numero = fuera,
+    problema = sprintf(
+      "sin ver su dimension, se lee como de \"%s\" y no de \"%s\": debe expresar lo propio de \"%s\"",
+      leida[fuera], items_df$dimension[fuera], items_df$dimension[fuera]),
+    stringsAsFactors = FALSE)
+}
+
+
 # Nucleo del blindaje: rondas de (contexto + parafrasis) -> reescritura
 # dirigida de los ofensores con .generar_items_dimension. Trabaja sobre el
 # data.frame de items + la info del concepto; devuelve list(items, reporte).
@@ -459,7 +513,13 @@
                            # item inverso reescrito por el blindaje volvia en polaridad
                            # directa. Ahora lo decide quien llama, desde el metadata.
                            incluir_inversos = FALSE,
+                           # 2.12.5: juez de fronteras entre dimensiones
+                           fronteras = TRUE,
                            max_rondas = 3L, verbose = TRUE) {
+
+  dims_escala <- if (is.list(info_concepto$dimensiones) ||
+                     is.character(info_concepto$dimensiones))
+    info_concepto$dimensiones else NULL
 
   # Las instrucciones de ESTILO (como escribir) van SOLO a los prompts de
   # regeneracion, NUNCA a los jueces: si el juez de contexto recibe criterios
@@ -545,6 +605,14 @@
         problema = "registro abstracto o tecnico: usa palabras cotidianas de la poblacion, no de un documento institucional",
         stringsAsFactors = FALSE))
     }
+    # 2.12.5: items que, leidos sin su dimension, se asignan a otra
+    n_frontera <- 0L
+    if (isTRUE(fronteras) && !is.null(dims_escala)) {
+      fr <- .juzgar_frontera_llm(items_df, dims_escala, openai, modelo_jueces)
+      fr <- fr[!(fr$numero %in% ctx$numero), , drop = FALSE]
+      n_frontera <- nrow(fr)
+      if (n_frontera) ctx <- rbind(ctx, fr)
+    }
     par <- .juzgar_parafrasis_llm(items_df, openai, modelo_jueces, idioma)
     if (!is.null(par_cos)) {
       clave_p <- if (nrow(par)) paste(pmin(par$item1, par$item2),
@@ -568,6 +636,7 @@
                    paste0("fuera de contexto (", razon_ctx, ")"))
     reporte[[ronda]] <- list(n_parafrasis = length(idx_par),
                              n_contexto = length(idx_ctx),
+                             n_frontera = n_frontera,
                              detalle_parafrasis = par,
                              detalle_contexto = ctx)
     if (!length(ofensores)) {
@@ -620,6 +689,8 @@
           # v2.9.29: respetar la escala. Estaba fijo en FALSE, asi que un item
           # inverso reescrito por el blindaje volvia en polaridad directa.
           incluir_inversos = isTRUE(incluir_inversos),
+          otras_dimensiones = dims_escala,
+          items_otras = items_df$item[items_df$dimension != dim_i],
           instruccion_extra = extra_i), error = function(e) NULL)
         if (is.null(cand) || !nrow(cand)) next
         txt <- trimws(cand$item[1])
@@ -641,6 +712,13 @@
           data.frame(item = txt, dimension = dim_i), poblacion,
           openai, modelo_jueces, idioma)
         if (nrow(ctx_cand) > 0) { rechazados <- unique(c(rechazados, txt)); next }
+        # 2.12.5: el candidato tampoco puede leerse como de otra dimension
+        if (isTRUE(fronteras) && !is.null(dims_escala) &&
+            nrow(.juzgar_frontera_llm(
+              data.frame(item = txt, dimension = dim_i, stringsAsFactors = FALSE),
+              dims_escala, openai, modelo_jueces)) > 0) {
+          rechazados <- unique(c(rechazados, txt)); next
+        }
         if (.es_gemelo_candidato(txt, items_df[-i, , drop = FALSE],
                                  openai, modelo_jueces)) {
           rechazados <- unique(c(rechazados, txt)); next
@@ -689,6 +767,8 @@
         max_palabras = max_palabras,
         # v2.9.29: idem (ver nota de arriba)
         incluir_inversos = isTRUE(incluir_inversos),
+        otras_dimensiones = dims_escala,
+        items_otras = items_df$item[items_df$dimension != dim_i],
         instruccion_extra = extra_i), error = function(e) NULL)
       if (is.null(cand) || !nrow(cand)) next
       txt <- trimws(cand$item[1])

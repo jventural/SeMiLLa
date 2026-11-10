@@ -1141,7 +1141,10 @@ balance_optimizacion <- function(g0, g1) .balance_optimizacion(g0, g1)
         max_palabras = rango_palabras[2],
         incluir_inversos = isTRUE(es_inverso),
         instruccion_extra = extra,
-        faceta_objetivo = faceta_objetivo
+        faceta_objetivo = faceta_objetivo,
+        # 2.12.5: el reemplazo tambien ve las otras dimensiones
+        otras_dimensiones = x$concepto$dimensiones,
+        items_otras = x$items$item[x$items$dimension != dim_nombre]
       ),
       error = function(e) NULL
     )

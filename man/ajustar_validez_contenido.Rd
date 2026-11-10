@@ -14,6 +14,8 @@ ajustar_validez_contenido(
   n_jueces = 10,
   modelo = "gpt-4.1-mini",
   umbral_redundancia = 0.7,
+  motivos = c("validez", "negacion", "temporal", "jerga"),
+  verificar_nivel = TRUE,
   verbose = TRUE
 )
 }
@@ -42,13 +44,29 @@ la midieran.}
 
 \item{umbral_redundancia}{Similitud maxima aceptada con otro item.}
 
+\item{motivos}{Razones por las que un item se reescribe: \code{"validez"}
+(V bajo \code{umbral}), \code{"negacion"} (negacion encubierta en una
+escala sin inversos), \code{"temporal"} (supone tiempo en la carrera, p. ej.
+"cada ciclo") y \code{"jerga"} (registro abstracto). Por defecto, todas.
+Con \code{c("negacion", "temporal")} se corrigen solo defectos de
+redaccion sin tocar el resto de una escala ya elegida.}
+
+\item{verificar_nivel}{Si \code{TRUE} (por defecto), en las dimensiones que
+no son conductuales cada candidato pasa por un control de nivel con el LLM:
+se descarta si describe una conducta, habito, tarea o tramite, o si
+depende de la institucion o de otras personas, y se pide otro. Sin este
+control, el ajuste repuso en Dominio del entorno los items de tareas que
+se habian retirado a proposito (2026-11-01).}
+
 \item{verbose}{Si \code{TRUE}, informa el progreso.}
 }
 \value{
 Lista de clase \code{semilla_ajuste_contenido} con \code{escala}
 (objeto \code{semilla} ajustado), \code{validez_contenido} (la ultima
 medicion) y \code{registro} (un \code{data.frame} con cada reemplazo, su V
-antes y despues, y si se revirtio).
+antes y despues medidas en la misma tanda, si se revirtio y una
+\code{nota}: el motivo, o el candidato descartado por quedar fuera de
+nivel).
 }
 \description{
 Reescribe con el LLM los items cuya V de Aiken promedio queda bajo
@@ -56,6 +74,14 @@ Reescribe con el LLM los items cuya V de Aiken promedio queda bajo
 encubierta), vuelve a medir la validez de contenido con los jueces
 simulados y revierte cada reemplazo cuya V no mejora. Complementa a
 \code{\link{converger_escala}}, que optimiza sobre todo la estructura.
+}
+\details{
+El item viejo y el reescrito se juzgan en la misma tanda de jueces.
+Si el item se reescribio por validez, el reemplazo se acepta solo si su V
+minima supera a la del item viejo; si se reescribio por redaccion, basta
+con que no la empeore. Las facetas de \code{x$concepto$caracteristicas}
+con forma de tarea en una dimension no conductual generan un aviso y no se
+usan como guia.
 }
 \seealso{
 \code{\link{converger_escala}}, \code{\link{validez_contenido}}

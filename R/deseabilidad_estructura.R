@@ -840,9 +840,16 @@ simular_estructura <- function(x, deseabilidad = NULL, similitud = NULL,
 
 #' @keywords internal
 .mapa_fusion <- function(phi_pares, umbral = 0.70, des_por_dim = NULL,
-                         umbral_halo = 0.80, tol_halo = 0.10) {
+                         umbral_halo = 0.80, tol_halo = 0.10,
+                         phi_estimado = NULL, min_phi_halo = NULL) {
   K <- nrow(phi_pares)
   dims <- rownames(phi_pares)
+  # 2.12.5: con phi_estimado y min_phi_halo, el halo solo une un par si su phi
+  # estimada llega a min_phi_halo (ver compuerta_pre_aplicacion(halo_exige_phi)).
+  phi_e <- NULL
+  if (!is.null(phi_estimado) && !is.null(min_phi_halo) && is.matrix(phi_estimado) &&
+      !is.null(rownames(phi_estimado)) && all(dims %in% rownames(phi_estimado)))
+    phi_e <- abs(phi_estimado[dims, dims])
   des <- if (!is.null(des_por_dim)) {
     d <- as.numeric(des_por_dim)
     names(d) <- names(des_por_dim)
@@ -856,6 +863,8 @@ simular_estructura <- function(x, deseabilidad = NULL, similitud = NULL,
     une_halo <- !is.null(des) && !is.na(des[i]) && !is.na(des[j]) &&
       des[i] >= umbral_halo && des[j] >= umbral_halo &&
       abs(des[i] - des[j]) < tol_halo
+    if (une_halo && !is.null(phi_e))
+      une_halo <- is.finite(phi_e[i, j]) && phi_e[i, j] >= min_phi_halo
     if (une_phi || une_halo) {
       padre[raiz(j)] <- raiz(i)
       causa[i, j] <- causa[j, i] <-

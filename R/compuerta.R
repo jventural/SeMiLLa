@@ -94,6 +94,31 @@
 #'   siempre; \code{"estimado"} simula con ella. Medido el 09-10-2026 en 9
 #'   escalas reales: la phi estimada se acerca mas a la real, pero usarla en la
 #'   simulacion empeoro el acierto de la compuerta frente a la realidad.
+#' @param phi_objetivo Banda objetivo de la correlacion entre dimensiones,
+#'   \code{c(minimo, maximo)}, EN LA ESCALA DE LA PHI ESTIMADA (por defecto
+#'   \code{c(0.25, 0.45)}). Cada par se clasifica como \code{"dentro"},
+#'   \code{"alta"} (podrian no separarse) o \code{"baja"} (apenas se
+#'   relacionan) en \code{$relacion_dimensiones}, y los pares fuera de la banda
+#'   suman una accion recomendada. La estimacion ordena bien los pares pero
+#'   esta comprimida: medido el 10-11-2026 contra 72 pares reales (9 escalas,
+#'   n = 1500), los pares con correlacion real de .70 o mas recibieron
+#'   estimaciones de .30 a .70. Por eso los cortes no son .30 y .70: una
+#'   estimacion mayor que .45 detecto los pares reales de .70 o mas con
+#'   sensibilidad .71 y especificidad .95, y una menor que .25 detecto los de
+#'   menos de .30 con .85 y .92. No cambia el veredicto: orienta, no
+#'   pronostica. \code{NULL} la desactiva. Requiere la phi estimada (clave de
+#'   OpenRouter).
+#' @param halo_exige_phi \code{NULL} (por defecto) o un numero entre 0 y 1. Con
+#'   un numero, el mapa de fusion solo une por "halo local" dos dimensiones
+#'   igual de deseables si ademas su phi estimada llega a ese valor. Sirve en
+#'   constructos donde todo es deseable, en los que el halo anticipa un solo
+#'   factor casi siempre. No esta validado contra escalas reales: uselo como
+#'   analisis de sensibilidad.
+#' @param pertenencia Si \code{TRUE} (por defecto), el eje de asignacion suma
+#'   una segunda lectura con \code{\link{probabilidad_pertenencia}}: los items
+#'   a los que los lectores de texto dan menos de .50 en su dimension y asignan
+#'   a otra se informan como items puente (\code{$items_puente}) y dejan el eje
+#'   en advertencia.
 #' @param seed Semilla. Alimenta \code{set.seed()} de la simulacion y, desde
 #'   2.9.15, tambien la opcion \code{SeMiLLa.seed} que \code{.llamar_openai()}
 #'   envia a la API. Ojo: el seed de OpenAI es best-effort y no garantiza
@@ -128,6 +153,13 @@
 #'   \item \code{banda_estructura}: lista con las probabilidades re-simuladas
 #'         (\code{probs}, \code{mediana}, \code{min}, \code{max},
 #'         \code{n_rep_banda}), o \code{NULL}.
+#'   \item \code{phi_estimado}: matriz de la correlacion estimada por par de
+#'         dimensiones (o \code{NULL}); \code{relacion_dimensiones}: data.frame
+#'         con cada par frente a \code{phi_objetivo} (\code{dimension_a},
+#'         \code{dimension_b}, \code{phi_estimado}, \code{estado}), o \code{NULL}.
+#'   \item \code{pertenencia}: resultado de
+#'         \code{\link{probabilidad_pertenencia}} (o \code{NULL}) e
+#'         \code{items_puente}: posiciones de los items puente (o \code{NULL}).
 #'   \item \code{parametros}: lista con los umbrales, \code{n}, \code{n_rep},
 #'         \code{n_banda} y la fecha.
 #' }
@@ -161,6 +193,9 @@ compuerta_pre_aplicacion <- function(x,
                                      seed          = NULL,
                                      verbose       = TRUE,
                                      phi_simulacion = c("supuesto", "estimado"),
+                                     phi_objetivo  = c(0.25, 0.45),
+                                     halo_exige_phi = NULL,
+                                     pertenencia   = TRUE,
                                      ...) {
   phi_simulacion <- match.arg(phi_simulacion)
 
@@ -286,6 +321,43 @@ compuerta_pre_aplicacion <- function(x,
     if (verbose) cat("  ", detalles[4], "\n", sep = "")
   }
 
+  # 2.12.5: SEGUNDA LECTURA de la asignacion, por el texto. El coseno compara el
+  # item con el promedio de los items de cada dimension; los lectores de texto
+  # (Jev con OpenRouter, mas el modelo de juicio) leen el item contra las
+  # DEFINICIONES. Medido el 09-10-2026 en 9 escalas reales: AUC .77 frente a .61
+  # del clustering de embeddings. Un item al que los lectores dan menos de .50
+  # en su dimension y asignan a otra es un "item puente". Solo avisa
+  # (advertencia): el riesgo lo sigue decidiendo el coseno, cuya especificidad
+  # esta medida.
+  pert <- NULL; puente <- integer(0)
+  if (isTRUE(pertenencia) && length(unique(x$items$dimension)) >= 2L) {
+    pert <- tryCatch(probabilidad_pertenencia(x, api_key, modelo = modelo, verbose = FALSE),
+                     error = function(e) NULL)
+    if (!is.null(pert))
+      puente <- which(!is.na(pert$prob_pertenencia) & pert$prob_pertenencia < 0.50 &
+                      as.character(pert$dimension_probable) != as.character(pert$dimension))
+  }
+  if (length(puente)) {
+    ya_cos <- if (!is.null(asig) && !is.null(asig$items)) which(asig$items$mal_asignado) else integer(0)
+    txt_p <- sprintf("%d item(s) puente segun la lectura del texto (%d coinciden con el coseno)",
+                     length(puente), length(intersect(puente, ya_cos)))
+    if (estados[4] == "ok") {
+      estados[4]  <- "advertencia"
+      detalles[4] <- txt_p
+    } else detalles[4] <- paste0(detalles[4], "; ", txt_p)
+    acciones <- c(acciones, sprintf(
+      paste0("Reescribir %d item(s) puente: leidos sin su dimension se asignan a otra ",
+             "(ver $pertenencia). Deben expresar lo propio de su dimension, no lo que ",
+             "comparte con la vecina."), length(puente)))
+    if (verbose) {
+      cat("  ", .color_amarillo(txt_p), "\n", sep = "")
+      for (i in utils::head(puente, 5))
+        cat(sprintf("    - [%s -> %s] p = %.2f | %s\n", pert$dimension[i],
+                    pert$dimension_probable[i], pert$prob_pertenencia[i],
+                    substr(pert$item[i], 1, 60)))
+    }
+  }
+
   # ---------------------------------------------------------------------------
   # LOS JUECES LLM EN UNA SOLA TANDA (16-10-2026)
   # ---------------------------------------------------------------------------
@@ -300,7 +372,7 @@ compuerta_pre_aplicacion <- function(x,
   quiere_phi <- is.null(list(...)$phi_teorico) && .decision_disponible(api_key)
   if (!.cache_enabled() && nrow(x$items) >= 2) {
     pl_des <- .plan_deseabilidad(x, poblacion = poblacion, n_pasadas = n_pasadas)
-    pp_phi <- if (quiere_phi) .prompts_phi(x) else NULL
+    pp_phi <- if (quiere_phi) .prompts_phi(x, poblacion = poblacion) else NULL
     n_gem  <- max(1L, as.integer(n_pasadas_gemelos))
     seed_api <- getOption("SeMiLLa.seed", NULL)
     lotes <- list(
@@ -545,7 +617,8 @@ compuerta_pre_aplicacion <- function(x,
   dots <- list(...)
   phi_estimado <- NULL
   if (is.null(dots$phi_teorico) && .decision_disponible(api_key)) {
-    phi_estimado <- tryCatch(.estimar_phi_pares(x, api_key, modelo, resp_juez = pre$phi),
+    phi_estimado <- tryCatch(.estimar_phi_pares(x, api_key, modelo, resp_juez = pre$phi,
+                                                poblacion = poblacion),
                              error = function(e) NULL)
     if (!is.null(phi_estimado) && identical(phi_simulacion, "estimado")) {
       dots$phi_teorico <- phi_estimado
@@ -554,6 +627,55 @@ compuerta_pre_aplicacion <- function(x,
                        "\n", sep = "")
     }
   }
+  # ---------------------------------------------------------------------------
+  # BANDA OBJETIVO DE LA RELACION ENTRE DIMENSIONES (2.12.5)
+  # ---------------------------------------------------------------------------
+  # La phi estimada por par se devolvia en $phi_estimado y nadie la leia: ni el
+  # semaforo ni las acciones. Es la unica lectura de MAGNITUD que tiene la
+  # compuerta (la phi simulada es el supuesto de entrada devuelto con ruido).
+  # Ahora cada par se compara con una banda objetivo: por encima, las dos
+  # dimensiones corren riesgo de no separarse; por debajo, apenas se relacionan.
+  # Da ACCIONES, no veredicto: la estimacion orienta (r = .85 con la real en 72
+  # pares) y simular con ella empeoro el acierto de la compuerta (09-10-2026).
+  #
+  # Los cortes estan en la escala de la ESTIMACION, que esta comprimida. Medido
+  # el 10-11-2026 sobre esos 72 pares (9 escalas, n = 1500): la estimacion
+  # ordena bien (AUC .94 para "real >= .70" y .95 para "real < .30"), pero los
+  # 14 pares reales de .70 o mas recibieron entre .30 y .70 (ninguno paso de
+  # .70, tampoco con las anclas nuevas). Con el corte en .65 solo se detectaba
+  # 1 de 14. Barrido:
+  #    alta > .45 -> sensibilidad .71, especificidad .95   <- elegido
+  #    alta > .50 -> sensibilidad .29, especificidad .98
+  #    baja < .25 -> sensibilidad .85, especificidad .92   <- elegido
+  #    baja < .30 -> sensibilidad .91, especificidad .72
+  # Calibrado en la misma muestra en que se mide (escalas en ingles, adultos):
+  # son cortes de partida, no validados fuera de ese banco.
+  relacion_dims <- .banda_phi(phi_estimado, phi_objetivo)
+  if (!is.null(relacion_dims)) {
+    obj <- attr(relacion_dims, "objetivo")
+    listar <- function(df) paste(sprintf("%s ~ %s (%.2f)", df$dimension_a,
+                                         df$dimension_b, df$phi_estimado), collapse = "; ")
+    altas <- relacion_dims[relacion_dims$estado == "alta", , drop = FALSE]
+    bajas <- relacion_dims[relacion_dims$estado == "baja", , drop = FALSE]
+    if (nrow(altas)) acciones <- c(acciones, sprintf(
+      paste0("Relacion entre dimensiones POR ENCIMA de la banda objetivo (%.2f-%.2f): %s. ",
+             "Podrian no separarse: precisar la frontera entre sus definiciones (que ",
+             "incluye y que no incluye cada una), reescribir los items puente o ",
+             "pre-registrar el modelo que las une."),
+      obj[1], obj[2], listar(altas)))
+    if (nrow(bajas)) acciones <- c(acciones, sprintf(
+      paste0("Relacion entre dimensiones POR DEBAJO de la banda objetivo (%.2f-%.2f): %s. ",
+             "Apenas se relacionarian: verificar que pertenecen al mismo constructo, o ",
+             "reportar subescalas sin puntaje total."),
+      obj[1], obj[2], listar(bajas)))
+    if (verbose) {
+      cat(sprintf("  Relacion entre dimensiones (phi estimada por par; banda objetivo %.2f-%.2f): ",
+                  obj[1], obj[2]),
+          sum(relacion_dims$estado == "dentro"), " par(es) dentro, ", nrow(altas),
+          " por encima, ", nrow(bajas), " por debajo\n", sep = "")
+    }
+  }
+
   .simular <- function(..., .dots = dots) do.call(simular_estructura, c(list(...), .dots))
 
   # 16-10-2026: UN solo cluster para toda la compuerta. Cada simular_estructura()
@@ -705,7 +827,12 @@ compuerta_pre_aplicacion <- function(x,
     # tambien es problema (caso VP: Apertura casi ortogonal al resto): las
     # subescalas no se relacionan, el puntaje total pierde sentido y el
     # constructo como unidad queda en duda.
-    if (!is.na(estructura$phi_med) && abs(estructura$phi_med) < 0.15 &&
+    # 2.12.5: esta regla lee la phi SIMULADA, que es el supuesto de entrada
+    # (.50) devuelto con ruido: solo podia dispararse si quien llama suponia
+    # una phi baja. Cuando hay phi estimada por par, la banda objetivo de arriba
+    # hace este trabajo con los pares concretos y esta regla no se usa.
+    if (is.null(relacion_dims) &&
+        !is.na(estructura$phi_med) && abs(estructura$phi_med) < 0.15 &&
         estados[3] == "ok") {
       estados[3]  <- "advertencia"
       detalles[3] <- paste0(detalles[3],
@@ -726,6 +853,23 @@ compuerta_pre_aplicacion <- function(x,
   # ir a campo con la hipotesis B declarada, no descubrirla a posteriori.
   estructura_alternativa <- NULL
   mapa <- if (!is.null(estructura)) estructura$mapa_fusion else NULL
+  # 2.12.5 (opcional, apagado por defecto): la ruta de "halo local" une dos
+  # dimensiones solo por ser ambas deseables (>= .80, diferencia < .10). En un
+  # constructo donde todo es deseable (bienestar, virtudes) eso anticipa un
+  # factor casi siempre. Con halo_exige_phi = <umbral>, el halo solo une un par
+  # si ademas su phi ESTIMADA llega a ese umbral. No esta validado contra el
+  # banco de escalas reales: por eso no es el comportamiento por defecto.
+  if (!is.null(mapa) && !is.null(halo_exige_phi) && !is.null(phi_estimado) &&
+      !is.null(estructura$phi_pares) && !is.null(deseab)) {
+    dims_m <- rownames(estructura$phi_pares)
+    des_dim <- tapply(as.numeric(deseab$deseabilidad),
+                      as.character(x$items$dimension), mean)[dims_m]
+    mapa2 <- tryCatch(.mapa_fusion(
+      estructura$phi_pares, umbral = estructura$umbral_fusion %||% 0.65,
+      des_por_dim = des_dim, phi_estimado = phi_estimado,
+      min_phi_halo = as.numeric(halo_exige_phi)), error = function(e) NULL)
+    if (!is.null(mapa2)) { mapa <- mapa2; estructura$mapa_fusion <- mapa2 }
+  }
   if (!is.null(mapa) && isTRUE(mapa$hay_fusion)) {
     estructura_alternativa <- do.call(rbind, lapply(
       seq_along(mapa$grupos), function(gi) {
@@ -972,6 +1116,11 @@ compuerta_pre_aplicacion <- function(x,
 
   out <- list(
     phi_estimado = phi_estimado,
+    # 2.12.5: cada par de dimensiones frente a la banda objetivo (NULL sin phi
+    # estimada) y la lectura de pertenencia por item (NULL si no corrio)
+    relacion_dimensiones = relacion_dims,
+    pertenencia  = pert,
+    items_puente = if (length(puente)) puente else NULL,
     # veredicto: se conserva el vocabulario antiguo porque converger_escala(),
     # optimizar_para_campo() y el asistente ramifican sobre estas cadenas.
     # Lo que se muestra al usuario es 'escenario'.
@@ -1000,6 +1149,7 @@ compuerta_pre_aplicacion <- function(x,
     # banda: NULL si n_banda = 0 o si el juez no dejo pasadas utilizables
     banda_estructura = if (exists("banda", inherits = FALSE)) banda else NULL,
     parametros   = list(phi_simulacion = phi_simulacion,
+                        phi_objetivo = phi_objetivo, halo_exige_phi = halo_exige_phi,
                         umbral_sem = umbral_sem, umbral_faceta = umbral_faceta,
                         n = n, n_rep = n_rep, n_banda = n_banda,
                         fecha = format(Sys.Date()))
@@ -1095,6 +1245,21 @@ print.semilla_compuerta <- function(x, ...) {
                   substr(colnames(pp)[ij[q,2]], 1, 28), v[q], marca))
     }
     if (length(o) > 6) cat("    ... y ", length(o) - 6, " par(es) mas\n", sep = "")
+  }
+  # 2.12.5: la phi ESTIMADA por par frente a la banda objetivo
+  rd <- x$relacion_dimensiones
+  if (is.data.frame(rd) && nrow(rd) > 0) {
+    obj <- attr(rd, "objetivo") %||% x$parametros$phi_objetivo
+    cat(sprintf("  RELACION ENTRE DIMENSIONES (phi estimada; banda objetivo %.2f-%.2f):\n",
+                obj[1], obj[2]))
+    for (q in seq_len(min(6L, nrow(rd)))) {
+      nota <- switch(rd$estado[q], alta = " <- por encima: podrian no separarse",
+                     baja = " <- por debajo: apenas se relacionan", "")
+      cat(sprintf("    %-28s ~ %-28s %.2f%s\n", substr(rd$dimension_a[q], 1, 28),
+                  substr(rd$dimension_b[q], 1, 28), rd$phi_estimado[q], nota))
+    }
+    if (nrow(rd) > 6) cat("    ... y ", nrow(rd) - 6, " par(es) mas (",
+                          sum(rd$estado[-(1:6)] == "baja"), " por debajo)\n", sep = "")
   }
   if (!is.null(x$escenario_detalle) && !is.na(x$escenario_detalle))
     cat("    ", x$escenario_detalle, "\n", sep = "")

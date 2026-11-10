@@ -196,3 +196,37 @@ campo fallan (ECR, DD, RIASEC): el error caro. Por eso la correlacion
 estimada se informa pero no decide, y la compuerta usa a Haiku como juez.
 Con 9 escalas, la diferencia entre 0,65 y 0,575 es una sola escala; la
 compuerta sigue siendo una orientacion previa, no un pronostico.
+
+## 10. Ítems más precisos y dimensiones que no se confunden (2.12.5, 10-11-2026)
+
+Revisión del generador y de la compuerta. Lo que cambió y lo que se midió:
+
+- **El generador escribía cada dimensión sin ver las demás.** Ahora el prompt lleva las
+  otras dimensiones, sus definiciones y los ítems ya escritos para ellas, y el blindaje
+  suma un juez que lee los ítems sin su dimensión. Prueba con la entrada de la v4 de
+  bienestar psicológico académico (36 ítems, 6 dimensiones, mismas instrucciones, GPT-6
+  Luna + Haiku), dos semillas por versión, todo medido con los mismos instrumentos:
+
+| | Generador anterior (2026 / 2027) | Con fronteras (2026 / 2027) |
+|---|---|---|
+| Ítems que se parecen más a otra dimensión (coseno) | 1 / 1 | 0 / 0 |
+| Ítems puente según los lectores de texto | 1 / 0 | 0 / 0 |
+| Probabilidad media de pertenencia | 0,922 / 0,913 | 0,936 / 0,955 |
+| V de Aiken media (10 jueces) | 0,767 / 0,793 | 0,802 / 0,789 |
+| Ítems con V menor que 0,70 | 8 / 7 | 2 / 6 |
+
+  Son dos corridas por versión: la dirección es favorable, la magnitud no está establecida.
+
+- **Correlación estimada por par.** Anclas hasta "0,90 o más", hasta 8 ítems repartidos por
+  dimensión y la población en la pregunta. Contra los 72 pares reales (9 escalas, n = 1500):
+  error medio 0,155 antes y 0,145 ahora; r 0,84 y 0,85. El máximo estimado siguió en 0,70:
+  los lectores ordenan bien los pares (AUC 0,94 para "real de 0,70 o más") pero comprimen
+  la escala.
+- **Banda objetivo en la compuerta** (`phi_objetivo = c(0.25, 0.45)`, en la escala de la
+  estimación): mayor que 0,45 detecta los pares reales de 0,70 o más con sensibilidad 0,71 y
+  especificidad 0,95; menor que 0,25 detecta los de menos de 0,30 con 0,85 y 0,92. Cortes
+  calibrados en esa misma muestra. Da acciones, no veredicto.
+- **`converger_escala()`** mandaba a reescribir el 15 % de los ítems en cada vuelta por un
+  corte que era solo un cuantil: en la v4 final marcaba 6 ítems y ahora 0.
+- **`probabilidad_pertenencia()`** perdía al lector de juicio sin aviso con 36 ítems y 6
+  dimensiones (respuesta cortada por `max_tokens`).

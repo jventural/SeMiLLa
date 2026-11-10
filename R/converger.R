@@ -228,7 +228,12 @@ converger_escala <- function(x,
         deseabilidad_otras    = .desea_otras_dim(desea, x$items, j),
         # Si el item no se marco por redundancia, el reemplazo solo debe no
         # empeorarla (ver .reemplazar_item_dirigido).
-        no_empeorar = !grepl("faceta|parafrasis|unicidad", mk$motivo[r])),
+        no_empeorar = !grepl("faceta|parafrasis|unicidad", mk$motivo[r]),
+        # 2.12.1: el reemplazo conserva la faceta del item que sale, como en
+        # ajustar_validez_contenido(); sin ella volvia al nucleo y creaba gemelos.
+        # Si el motivo es una faceta repetida, el item debe cambiar de faceta.
+        faceta_objetivo = if ("caracteristica" %in% names(x$items) &&
+                              !grepl("faceta", mk$motivo[r])) x$items$caracteristica[j]),
         error = function(e) {
           if (verbose) cat(sprintf("    I%-3d error: %s\n", j, conditionMessage(e)))
           NULL
@@ -397,12 +402,40 @@ converger_escala <- function(x,
   p <- nrow(x$items)
   marcados <- data.frame(idx = integer(0), motivo = character(0),
                          fuente = character(0), stringsAsFactors = FALSE)
+  # 'motivo' puede ser uno para todos o uno por item (2.12.5: antes el motivo
+  # de deseabilidad y el de validez llevaban el numero del PRIMER item marcado
+  # para todos, y ese texto es el que recibe el modelo al reescribir).
   add <- function(idx, motivo, fuente) {
-    idx <- unique(idx[!is.na(idx) & idx >= 1 & idx <= p])
-    if (!length(idx)) return(invisible())
-    marcados <<- rbind(marcados, data.frame(idx = idx, motivo = motivo,
+    motivo <- rep_len(motivo, length(idx))
+    ok <- !is.na(idx) & idx >= 1 & idx <= p & !duplicated(idx)
+    if (!any(ok)) return(invisible())
+    marcados <<- rbind(marcados, data.frame(idx = idx[ok], motivo = motivo[ok],
                                             fuente = fuente,
                                             stringsAsFactors = FALSE))
+  }
+
+  # 2.12.5: la asignacion no llegaba al bucle. Un item que se parece mas a otra
+  # dimension, que queda en la frontera o que los lectores de texto asignan a
+  # otra (item puente) se reescribe hacia lo propio de su dimension.
+  asg <- g$asignacion$items
+  if (is.data.frame(asg) && nrow(asg) == p) {
+    k <- which(asg$mal_asignado)
+    add(k, sprintf("se parece mas a la dimension \"%s\" que a la suya (\"%s\"): debe expresar lo propio de la suya",
+                   asg$dim_mas_cercana[k], asg$dimension[k]), "asignacion")
+  }
+  pz <- g$pertenencia
+  # La frontera del coseno sola no basta para reescribir (en escalas limpias
+  # esos margenes son casi siempre falsos positivos; ver asignacion.R): solo se
+  # marca si los lectores de texto tambien dudan (probabilidad < .60).
+  if (is.data.frame(asg) && nrow(asg) == p && is.data.frame(pz) && nrow(pz) == p) {
+    k <- which(asg$frontera & !is.na(pz$prob_pertenencia) & pz$prob_pertenencia < 0.60)
+    add(k, sprintf("queda en la frontera con la dimension \"%s\": precisar lo que es propio de \"%s\"",
+                   asg$dim_mas_cercana[k], asg$dimension[k]), "asignacion")
+  }
+  if (is.data.frame(pz) && nrow(pz) == p && length(g$items_puente)) {
+    k <- g$items_puente
+    add(k, sprintf("leido sin su dimension se asigna a \"%s\" y no a \"%s\": debe expresar lo propio de la suya",
+                   pz$dimension_probable[k], pz$dimension[k]), "asignacion")
   }
 
   # Escala pedida sin inversos: una negacion o contraste encubierto se reescribe
@@ -438,7 +471,7 @@ converger_escala <- function(x,
       md <- stats::median(d[k]); fuera <- k[abs(d[k] - md) > 0.20]
       if (length(fuera))
         add(fuera, sprintf("deseabilidad lejos de la mediana de su dimension (%.2f vs %.2f)",
-                           d[fuera][1], md), "deseabilidad")
+                           d[fuera], md), "deseabilidad")
     }
   }
 
@@ -455,7 +488,7 @@ converger_escala <- function(x,
                      (!is.na(va$IC_inf) & va$IC_inf < umbral_ic))
       if (length(malos))
         add(va$numero[malos],
-            sprintf("validez de contenido baja (V = %.2f)", va$V_promedio[malos][1]),
+            sprintf("validez de contenido baja (V = %.2f)", va$V_promedio[malos]),
             "aiken")
     }
   }
@@ -463,8 +496,13 @@ converger_escala <- function(x,
   disc <- reloj("discriminacion semantica", tryCatch(
     discriminacion_semantica(x, verbose = FALSE), error = function(e) NULL))
   if (!is.null(disc) && "unicidad" %in% names(disc)) {
+    # 2.12.5: el corte era SOLO el cuantil 15, asi que toda escala, por limpia
+    # que estuviera, mandaba a reescribir el 15 % de sus items en cada vuelta.
+    # Ahora el item tiene que estar ademas en la categoria "baja" de
+    # discriminacion_semantica() (unicidad <= .30: se parece en promedio .70 o
+    # mas a los de su dimension).
     q <- stats::quantile(disc$unicidad, 0.15, na.rm = TRUE)
-    bajos <- which(disc$unicidad <= q)
+    bajos <- which(disc$unicidad <= q & disc$unicidad <= 0.30)
     if (length(bajos))
       add(bajos, "unicidad baja: no se distingue del resto de la escala",
           "discriminacion")
@@ -473,7 +511,11 @@ converger_escala <- function(x,
   if (nrow(marcados) > 0) {
     ag <- stats::aggregate(motivo ~ idx, data = marcados,
                            FUN = function(v) paste(unique(v), collapse = " + "))
-    marcados <- ag[order(ag$idx), , drop = FALSE]
+    # 2.12.5: primero los items con mas motivos. El bucle reescribe como mucho
+    # el 40 % de la escala por vuelta y cortaba por numero de item, asi que las
+    # ultimas dimensiones se quedaban sin turno.
+    n_mot <- lengths(strsplit(ag$motivo, " + ", fixed = TRUE))
+    marcados <- ag[order(-n_mot, ag$idx), , drop = FALSE]
   }
   list(compuerta = g, aiken = cv, discriminacion = disc, marcados = marcados,
        score = .score_convergencia(g, cv))

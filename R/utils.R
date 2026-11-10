@@ -1152,7 +1152,17 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
                                      #   cada iteracion, no se congelan al entrar.
                                      faceta_objetivo = NULL,
                                      items_contexto = NULL,
-                                     moldes_prohibidos = NULL) {
+                                     moldes_prohibidos = NULL,
+                                     # 2.12.5 ------------------------------------------------------
+                                     # otras_dimensiones : vector con nombre (dimension -> definicion)
+                                     #   de las DEMAS dimensiones de la escala. Hasta 2.12.4 cada
+                                     #   dimension se escribia sin saber que existian las otras, y
+                                     #   el item puente solo se detectaba despues.
+                                     # items_otras : items ya escritos para otras dimensiones.
+                                     otras_dimensiones = NULL,
+                                     items_otras = NULL) {
+
+  fronteras_texto <- .texto_fronteras(dimension, otras_dimensiones, items_otras)
 
   # Instrucciones de idioma
   instrucciones_idioma <- switch(
@@ -1478,6 +1488,7 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
     caract_texto, "\n\n",
     faceta_texto,      # v2.9.29: que faceta NO se puede perder
     asignacion_texto,  # 2026-10-15: un indicador por item
+    fronteras_texto,   # 2.12.5: las otras dimensiones de la escala
     instrucciones_idioma, "\n",
     poblacion_texto,
     contexto_texto,    # v2.9.29: que items ya existen, desde el primer intento
@@ -1535,6 +1546,50 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
   })
 
   return(resultado)
+}
+
+
+# Bloque de FRONTERAS del prompt del generador (2.12.5). Le dice al modelo que
+# otras dimensiones tiene la escala y que items ya se escribieron para ellas,
+# para que el item nuevo se pueda asignar a su dimension y a ninguna otra.
+# Las dimensiones de un mismo constructo comparten ambito (poblacion, contexto),
+# y eso esta bien: lo que no deben compartir es el contenido que define a cada
+# una. Devuelve "" si no hay otras dimensiones.
+#' @keywords internal
+#' @noRd
+.texto_fronteras <- function(dimension, otras_dimensiones = NULL, items_otras = NULL,
+                             max_def = 350L, max_items = 24L) {
+  otras <- otras_dimensiones
+  if (is.list(otras)) otras <- vapply(otras, function(d)
+    paste(as.character(unlist(d)), collapse = " "), character(1))
+  if (!is.null(names(otras))) otras <- otras[names(otras) != dimension]
+  otras <- otras[!is.na(otras)]
+  if (!length(otras) || is.null(names(otras))) return("")
+  # Solo la definicion: el "No incluye" y los indicadores de OTRA dimension
+  # suelen nombrar el contenido de esta y confunden la frontera.
+  def <- sub("(?i)\\s*(no incluye|se manifiesta en)\\s*:.*$", "", otras, perl = TRUE)
+  def <- trimws(gsub("\\s+", " ", def))
+  largo <- nchar(def) > max_def
+  def[largo] <- paste0(substr(def[largo], 1, max_def), "...")
+  items_otras <- unique(as.character(items_otras))
+  items_otras <- items_otras[!is.na(items_otras) & nzchar(items_otras)]
+  if (length(items_otras) > max_items)
+    items_otras <- items_otras[round(seq(1, length(items_otras), length.out = max_items))]
+  paste0(
+    "\nFRONTERAS CON LAS OTRAS DIMENSIONES (critico): la escala tiene ademas estas ",
+    "dimensiones, que se miden con OTROS items:\n",
+    paste0("- ", names(otras), ifelse(nzchar(def), paste0(": ", def), ""), collapse = "\n"), "\n",
+    "Cada item debe pertenecer a \"", dimension, "\" y a ninguna otra: quien lea SOLO el ",
+    "item, sin saber de que dimension viene, debe poder asignarlo a \"", dimension, "\".\n",
+    "- NO escribas items cuyo contenido central sea el de otra dimension, ni items que ",
+    "mezclen esta dimension con otra.\n",
+    "- Las dimensiones son parte del mismo constructo: el item puede compartir el ambito ",
+    "(la poblacion, el contexto), pero NO lo que define a otra dimension.\n",
+    if (length(items_otras)) paste0(
+      "ITEMS YA ESCRITOS PARA LAS OTRAS DIMENSIONES (no repitas su contenido ni su ",
+      "plantilla de frase):\n", paste0("- \"", items_otras, "\"", collapse = "\n"), "\n")
+    else "",
+    "\n")
 }
 
 

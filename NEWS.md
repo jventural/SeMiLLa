@@ -1,3 +1,151 @@
+# SeMiLLa 2.12.5 (2026-11-10)
+
+## Ítems más precisos y dimensiones relacionadas, pero no fundidas
+
+Revisión del generador y de la compuerta con una pregunta: qué impide que cada ítem mida
+solo su dimensión y que las dimensiones queden relacionadas sin confundirse.
+
+* **Fronteras en el generador.** Cada dimensión se escribía sin saber que existían las
+  demás. Ahora el prompt de `generar_escala()` y de todos los reemplazos (`blindar_escala()`,
+  `refinar_escala()`, `converger_escala()`, `optimizar_para_campo()`, `reemplazar_item()`)
+  lleva un bloque con las otras dimensiones, sus definiciones y los ítems ya escritos para
+  ellas (`.texto_fronteras()`).
+* **Juez de fronteras en el blindaje.** Un juez lee los ítems sin su dimensión y dice cuál
+  mide cada uno; los que asigna a otra se reescriben, y un candidato que se lee como de otra
+  dimensión se rechaza. El reporte del blindaje suma `n_frontera`.
+* **`generar_escala()` pasaba el blindaje sin `incluir_inversos`**: con ítems inversos
+  pedidos, el blindaje los trataba como negaciones en una escala directa y los reescribía
+  en sentido directo. Corregido.
+* **Correlación entre dimensiones estimada por par** (`.estimar_phi_pares()`):
+  * la escala de anclas terminaba en "muy fuerte (.70 o más)" y no distinguía un par de .70
+    de uno de .90; ahora llega a "miden prácticamente lo mismo (.90 o más)". La escala
+    anterior queda con `options(SeMiLLa.anclas_phi = "8")`;
+  * se mostraban los 4 primeros ítems de cada dimensión; ahora hasta 8, repartidos a lo
+    largo de la dimensión;
+  * la pregunta decía "adultos" para cualquier escala; ahora usa la población.
+* **`compuerta_pre_aplicacion(phi_objetivo = c(0.25, 0.45))`**: cada par de dimensiones se
+  compara con una banda objetivo y se devuelve en `$relacion_dimensiones` ("dentro", "alta",
+  "baja"). Los pares fuera de la banda suman una acción recomendada y se imprimen. No cambia
+  el veredicto: la estimación orienta, no pronostica. Los cortes están en la escala de la
+  estimación, que está comprimida: contra 72 pares reales (9 escalas, n = 1500), una
+  estimación mayor que .45 detectó los pares reales de .70 o más con sensibilidad .71 y
+  especificidad .95, y una menor que .25 detectó los de menos de .30 con .85 y .92. Con las
+  anclas y los ítems nuevos el error medio pasó de .155 a .145 (r de .84 a .85); el máximo
+  estimado siguió en .70.
+* **El aviso de "dimensiones casi ortogonales"** leía la phi simulada, que es el supuesto de
+  entrada devuelto con ruido. Con phi estimada, ese trabajo lo hace la banda objetivo.
+* **`compuerta_pre_aplicacion(halo_exige_phi = NULL)`** (opcional, apagado): con un umbral,
+  el mapa de fusión solo une por halo dos dimensiones igual de deseables si además su phi
+  estimada llega a ese valor. Pensado para constructos donde todo es deseable. Sin validar
+  contra escalas reales: es un análisis de sensibilidad.
+* **`probabilidad_pertenencia()`**: con 36 ítems y 6 dimensiones la respuesta del lector de
+  juicio se cortaba por `max_tokens` y ese lector se perdía sin aviso; el presupuesto ahora
+  crece con el número de dimensiones.
+* **Segunda lectura de la asignación** (`pertenencia = TRUE`): la compuerta suma
+  `probabilidad_pertenencia()` al eje de asignación. Los ítems con menos de .50 en su
+  dimensión y asignados a otra son ítems puente (`$items_puente`, `$pertenencia`) y dejan
+  el eje en advertencia; el riesgo lo sigue decidiendo el coseno.
+* **`converger_escala()`**:
+  * marcaba siempre el 15 % de ítems con menor unicidad (el corte era solo un cuantil); ahora
+    el ítem debe estar además en la categoría "baja" (unicidad de .30 o menos);
+  * el motivo de deseabilidad y el de validez llevaban el número del primer ítem marcado para
+    todos; ahora cada ítem lleva el suyo;
+  * los ítems mal asignados, los ítems puente y los de frontera en que los lectores también
+    dudan no llegaban al bucle; ahora se reescriben con ese motivo;
+  * el tope del 40 % por vuelta cortaba por número de ítem; ahora van primero los ítems con
+    más motivos.
+
+# SeMiLLa 2.12.4 (2026-11-03)
+
+## Afinar ítems uno por uno, con los mismos controles que una escala entera
+
+Caso: la tercera versión de la escala de bienestar psicológico académico (02-11-2026) se
+afinó con scripts sueltos: reemplazar tres ítems tras revisarlos contra Ryff, repetir la
+tanda de Dominio del entorno, vigilar la primera palabra, volver a juzgar ediciones del autor
+y armar el formulario de entrevista cognitiva. Ese flujo pasa a ser parte del paquete.
+
+* **`reemplazar_item()`**: genera candidatos para la dimensión del ítem (más los que proponga
+  el autor), los pasa por el control de nivel, los juzga con el resto de la escala y con el
+  ítem saliente en varias tandas, calcula su parecido con cada ítem y con cada dimensión, y
+  elige el de mayor V mínima media entre los que pasan. Descarta los que se parecen más a
+  otra dimensión que a la suya, los casi duplicados, los parecidos a redacciones ya
+  descartadas y los que repiten la primera palabra de otro ítem (salvo los manuales).
+* **Control de nivel ampliado** (`.nivel_item_llm()`, también en
+  `ajustar_validez_contenido()`): además de conductas, tareas y dependencia de terceros,
+  marca lo que la dimensión "No incluye", los actos cognitivos donde la dimensión pide una
+  vivencia ("Reconozco mis fortalezas") y el valor de la tarea en vez de la vivencia ("mis
+  cursos son útiles"), y si el ítem encaja mejor en otra dimensión de la escala. Devuelve el
+  `criterio` que falló.
+* **`validez_contenido_repetida()`**: varias tandas de jueces con semillas distintas; por
+  ítem, V mínima media, peor y rango, y `inestable` si el rango pasa de .15. Caso: un ítem
+  tuvo V mínima .73 en una tanda y .53 en otra.
+* **`registrar_descartados()` / `leer_descartados()`**: lista persistente (CSV) de
+  redacciones rechazadas. `reemplazar_item()` no las repite, avisa al generador y, si recibe
+  la ruta, agrega el ítem saliente y los candidatos rechazados. Caso: SeMiLLa volvió a elegir
+  "Manejo con soltura los asuntos cotidianos...", ya descartada.
+* **`auditar_ediciones()`**: lista los ítems editados a mano, nuevos y retirados entre dos
+  versiones; con `api_key`, les aplica el control de nivel y los juzga junto a su versión
+  anterior en la misma tanda (`empeora`).
+* **`variedad_redaccion()`** (sin API): primeras palabras repetidas y marcos sintácticos
+  repetidos ("más allá de", "a pesar de", "como estudiante" y cualquier secuencia de tres
+  palabras que aparezca en tres ítems o más).
+* **`lector_simulado()`**: lectores LLM de la población leen cada ítem, dicen si se entiende,
+  lo parafrasean y señalan la palabra difícil; otro llamado juzga si cada parafraseo es fiel.
+  Sirve para llegar a la entrevista cognitiva con menos ítems problemáticos.
+* **`formulario_entrevista_cognitiva()`**: arma el formulario web (Google Apps Script:
+  `Index.html`, `Codigo.gs`, instrucciones) usado en la escala de bienestar académico, con
+  sondas de claridad, parafraseo y parte difícil, avance guardado y sin envíos duplicados.
+  **`leer_entrevista_cognitiva()`** resume la hoja de respuestas por ítem, juzga la
+  fidelidad de los parafraseos (con `api_key`) y redacta un `motivo` para
+  `reemplazar_item()`.
+* 13 pruebas nuevas (`test-afinar-items.R`, sin API).
+
+# SeMiLLa 2.12.3 (2026-11-02)
+
+## El ajuste por validez de contenido ya no repone lo que se retiro
+
+Caso: en la escala de bienestar psicologico academico se rehicieron los items
+de Dominio del entorno porque describian tareas (tramites, horario, lugar de
+estudio) y no el sentido de dominio. `ajustar_validez_contenido()` reescribio
+dos de los nuevos y volvio a "Ajusto mi espacio de estudio..." y a un item que
+dependia de la universidad. Tres causas y tres cambios:
+
+* **Misma tanda de jueces.** La V del item viejo venia de otra corrida y la
+  del nuevo de una tanda aparte: el cambio se mezclaba con el ruido de los
+  jueces. Ahora el viejo y el nuevo se juzgan juntos (`.validez_pareada()`).
+  Si el item se reescribio por validez, el nuevo se acepta solo si su V
+  minima SUPERA a la del viejo (un empate revierte); si se reescribio por
+  redaccion (negacion, tiempo, jerga), basta con que no la empeore.
+* **Control de nivel** (argumento nuevo `verificar_nivel = TRUE`). En las
+  dimensiones que no son conductuales, cada candidato pasa por un control con
+  el LLM (`.nivel_item_llm()`): se descarta si describe una conducta, habito,
+  tarea o tramite, o si su respuesta depende de la institucion o de otras
+  personas, y se pide otro con ese motivo (hasta 2 intentos). Si ninguno
+  pasa, el item queda como estaba y el `registro` lo anota en la columna nueva
+  `nota`.
+* **Facetas viejas.** Si las facetas de una dimension no conductual
+  (`x$concepto$caracteristicas` o la columna `caracteristica`) tienen forma de
+  tarea ("Organiza el tiempo...", "Gestiona los tramites..."), la funcion
+  avisa y no las pasa al generador.
+* Cinco pruebas nuevas (con `local_mocked_bindings`, sin API).
+
+# SeMiLLa 2.12.2 (2026-10-26)
+
+## Corregir solo defectos de redaccion en una escala ya elegida
+
+* `ajustar_validez_contenido()` gana el argumento `motivos` (`"validez"`,
+  `"negacion"`, `"temporal"`, `"jerga"`; por defecto, todos). Con
+  `motivos = c("negacion", "temporal")` se reescriben solo los items con
+  negacion encubierta o que suponen tiempo en la carrera, sin tocar el resto.
+  Caso: la v4 de bienestar psicologico academico, elegida por su compuerta,
+  conservaba "Cada ciclo...", "...desde que inicie la carrera" y "...no
+  definen mi valor"; el ajuste completo habria reescrito 20 items.
+* La negacion y el supuesto de tiempo marcaban el item pero no llegaban al
+  motivo que recibe el generador, que leia "validez de contenido baja" y podia
+  repetir el defecto. `.motivo_contenido()` ahora los nombra y pide la
+  correccion.
+* Dos pruebas nuevas.
+
 # SeMiLLa 2.12.1 (2026-10-26)
 
 ## La compuerta veia la similitud de items que ya no estaban
@@ -14,6 +162,10 @@
   rehace y avisa. Los resultados de compuertas corridas sobre objetos
   ajustados con 2.12.0 deben repetirse.
 * Funcion interna `.sincronizar_similitud()` y dos pruebas nuevas.
+* `converger_escala()` pasa al reemplazo la faceta (`caracteristica`) del item
+  que sale, como ya hacia `ajustar_validez_contenido()`, salvo cuando el motivo
+  es justamente una faceta repetida. Sin ella, el reemplazo podia volver al
+  nucleo de la dimension y crear gemelos.
 
 # SeMiLLa 2.12.0 (2026-10-09)
 ## Compuerta mas rapida, mismo resultado (2026-10-16)

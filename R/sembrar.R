@@ -430,7 +430,10 @@ generar_escala <- function(concepto,
       evitar_cuantificadores = evitar_cuantificadores,
       max_palabras = max_palabras,
       incluir_inversos = incluir_inversos,
-      instruccion_extra = instrucciones_estilo
+      instruccion_extra = instrucciones_estilo,
+      # 2.12.5: cada dimension se escribe viendo las demas y lo ya escrito
+      otras_dimensiones = info_concepto$dimensiones,
+      items_otras = if (nrow(todos_items) > 0) todos_items$item else NULL
     )
 
     if (!is.null(items_dim) && nrow(items_dim) > 0) {
@@ -492,6 +495,9 @@ generar_escala <- function(concepto,
       contexto_prohibido = contexto_prohibido,
       instrucciones_estilo = instrucciones_estilo,
       modelo_jueces = modelo_jueces,
+      # 2.12.5: no se pasaba, y el blindaje (que por defecto asume escala
+      # directa) reescribia en sentido directo los items inversos pedidos.
+      incluir_inversos = incluir_inversos,
       verbose = verbose)
     todos_items <- bl$items
     # Los reemplazos tambien pasan la auditoria de longitud
@@ -1580,6 +1586,9 @@ refinar_escala <- function(escala,
           faceta_objetivo   = faceta_orig,
           items_contexto    = items_misma_dim,
           moldes_prohibidos = moldes_saturados,
+          # 2.12.5: el reemplazo tambien ve las otras dimensiones
+          otras_dimensiones = escala_actual$concepto$dimensiones,
+          items_otras = items_actuales$item[items_actuales$dimension != dim_nombre],
           # Sin esto el refinamiento puede reconstruir la misma plantilla que la
           # compuerta acababa de podar: el consenso empirico premia justamente
           # los items parecidos entre si.

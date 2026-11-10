@@ -95,32 +95,51 @@
 # (AFC con n = 1500 en 9 escalas): suponer 0,47 para todos los pares erraba en
 # promedio 0,248; Jev erro 0,154, Haiku 0,130 y su promedio 0,135 (r = 0,83
 # con el phi real). Jev dio la misma estimacion en dos corridas (r = 0,998).
+# 2.12.5: la escala terminaba en "muy fuerte (.70 o mas)" = 0,72, asi que la
+# estimacion no podia distinguir un par de .70 de uno de .90, que es justo el
+# tramo donde dos dimensiones dejan de separarse (PM policial: .92 real). Se
+# abren dos anclas mas. Las ocho anteriores quedan en .SeMiLLa_anclas_phi_8 por
+# si hay que reproducir una corrida de 2.12.0-2.12.4
+# (options(SeMiLLa.anclas_phi = "8")).
 .ANCLAS_PHI <- c("sin relacion (cerca de 0)", "muy debil (cerca de .10)", "debil (cerca de .20)",
                  "moderada-baja (cerca de .30)", "moderada (cerca de .40)",
                  "moderada-alta (cerca de .50)", "fuerte (cerca de .60)",
-                 "muy fuerte (.70 o mas)")
-.VALORES_PHI <- c(0, 0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.72)
+                 "muy fuerte (cerca de .70)",
+                 "casi no se distinguen (cerca de .80)",
+                 "miden practicamente lo mismo (.90 o mas)")
+.VALORES_PHI <- c(0, 0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.70, 0.80, 0.92)
+.ANCLAS_PHI_8 <- c(.ANCLAS_PHI[1:7], "muy fuerte (.70 o mas)")
+.VALORES_PHI_8 <- c(0, 0.10, 0.20, 0.30, 0.40, 0.50, 0.60, 0.72)
+
+#' @keywords internal
+#' @noRd
+.anclas_phi <- function() {
+  if (identical(as.character(getOption("SeMiLLa.anclas_phi", "10")), "8"))
+    list(anclas = .ANCLAS_PHI_8, valores = .VALORES_PHI_8)
+  else list(anclas = .ANCLAS_PHI, valores = .VALORES_PHI)
+}
 
 # Devuelve la matriz K x K de |phi| estimada (diagonal 1), con las dimensiones
 # en el orden de unique(x$items$dimension). NULL si ningun lector respondio.
 #' @keywords internal
 #' @noRd
-.estimar_phi_pares <- function(x, api_key, modelo = "gpt-4.1-mini", n_ejemplos = 4L,
-                               resp_juez = NULL) {
-  pp <- .prompts_phi(x, n_ejemplos)
+.estimar_phi_pares <- function(x, api_key, modelo = "gpt-4.1-mini", n_ejemplos = 8L,
+                               resp_juez = NULL, poblacion = NULL) {
+  pp <- .prompts_phi(x, n_ejemplos, poblacion = poblacion)
   if (is.null(pp)) return(NULL)
   dims <- pp$dims; K <- length(dims); pares <- pp$pares; enunciado <- pp$enunciado
   est <- list()
+  ap <- .anclas_phi()
 
   if (.decision_disponible(api_key)) {
     preg <- stats::setNames(lapply(pares, function(pr) list(
-      type = "score", criteria = as.list(.ANCLAS_PHI), instructions = enunciado(pr))),
+      type = "score", criteria = as.list(ap$anclas), instructions = enunciado(pr))),
       paste0("p", seq_along(pares)))
     r <- .llamar_decisiones(preg, list(task = "Estimar la correlacion latente entre dimensiones"), api_key)
     if (!is.null(r)) est$jev <- vapply(seq_along(pares), function(k) {
       a <- r[[paste0("p", k)]]
       if (is.null(a$probabilities)) NA_real_ else
-        sum(.probs_decision(a, as.character(seq_along(.VALORES_PHI) - 1L)) * .VALORES_PHI)
+        sum(.probs_decision(a, as.character(seq_along(ap$valores) - 1L)) * ap$valores)
     }, numeric(1))
   }
   # El modelo de juicio (Haiku con OpenRouter), un par por llamada en paralelo.
@@ -151,23 +170,61 @@
 # una sola dimension.
 #' @keywords internal
 #' @noRd
-.prompts_phi <- function(x, n_ejemplos = 4L) {
+.prompts_phi <- function(x, n_ejemplos = 8L, poblacion = NULL) {
   dims <- unique(as.character(x$items$dimension)); K <- length(dims)
   if (K < 2L) return(NULL)
   defs <- x$concepto$dimensiones
+  # 2.12.5: hasta 2.12.4 se mostraban los 4 PRIMEROS items de cada dimension.
+  # Con un indicador por item, eso era siempre las mismas 4 facetas. Ahora van
+  # todos si caben en n_ejemplos, y si no, repartidos a lo largo de la dimension.
   describir <- function(d) {
-    ej <- utils::head(x$items$item[x$items$dimension == d], n_ejemplos)
+    todos <- x$items$item[x$items$dimension == d]
+    ej <- if (length(todos) <= n_ejemplos) todos else
+      todos[unique(round(seq(1, length(todos), length.out = n_ejemplos)))]
     def <- if (is.list(defs) && is.character(defs[[d]])) paste0(" (", defs[[d]], ")") else ""
     paste0("\"", gsub("_", " ", d), "\"", def, ". Items de ejemplo: ", paste(ej, collapse = " | "))
   }
   pares <- utils::combn(K, 2, simplify = FALSE)
+  # 2.12.5: la pregunta decia "adultos" para cualquier escala.
+  poblacion <- poblacion %||% x$metadata$poblacion
+  # Solo la primera oracion: la poblacion puede traer pegadas instrucciones de
+  # contexto ("... (18 a 25 anos). PROHIBIDO mencionar ...").
+  quienes <- if (is.character(poblacion) && length(poblacion) == 1L && nzchar(trimws(poblacion)))
+    substr(trimws(sub("\\.\\s.*$", "", trimws(poblacion))), 1, 160) else "adultos"
+  quienes <- sub("\\.$", "", quienes)
   enunciado <- function(pr) paste0(
-    "En una muestra grande de adultos, que tan fuerte seria la correlacion entre los puntajes de ",
+    "En una muestra grande de ", quienes,
+    ", que tan fuerte seria la correlacion entre los puntajes de ",
     "estas dos dimensiones de un cuestionario (fuerza absoluta, sin importar el signo)?\n",
     "Dimension A: ", describir(dims[pr[1]]), "\nDimension B: ", describir(dims[pr[2]]))
   prompts <- vapply(pares, function(pr) paste0(enunciado(pr),
     "\nResponde SOLO un objeto JSON {\"r\": <numero entre 0 y 1>}."), character(1))
   list(dims = dims, pares = pares, enunciado = enunciado, prompts = prompts)
+}
+
+# Banda objetivo de la correlacion entre dimensiones (2.12.5). Clasifica cada
+# par de la matriz estimada: "alta" (por encima de la banda: riesgo de que no se
+# separen), "baja" (por debajo: apenas se relacionan) o "dentro". La estimacion
+# orienta, no pronostica (r = .83 con la real en 72 pares): por eso la banda da
+# acciones y no entra al veredicto.
+#' @keywords internal
+#' @noRd
+.banda_phi <- function(Phi, objetivo = c(0.25, 0.45)) {
+  if (is.null(Phi) || !is.matrix(Phi) || nrow(Phi) < 2L || is.null(objetivo)) return(NULL)
+  objetivo <- sort(as.numeric(objetivo))
+  if (length(objetivo) != 2L || any(!is.finite(objetivo))) return(NULL)
+  ij <- which(upper.tri(Phi), arr.ind = TRUE)
+  v <- abs(Phi[upper.tri(Phi)])
+  dims <- rownames(Phi) %||% paste0("D", seq_len(nrow(Phi)))
+  out <- data.frame(
+    dimension_a = dims[ij[, 1]], dimension_b = dims[ij[, 2]],
+    phi_estimado = round(v, 3),
+    estado = ifelse(v > objetivo[2], "alta", ifelse(v < objetivo[1], "baja", "dentro")),
+    stringsAsFactors = FALSE)
+  out <- out[order(-out$phi_estimado), , drop = FALSE]
+  rownames(out) <- NULL
+  attr(out, "objetivo") <- objetivo
+  out
 }
 
 # Una matriz de correlaciones estimada par a par puede no ser definida

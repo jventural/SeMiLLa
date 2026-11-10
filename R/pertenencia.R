@@ -163,7 +163,12 @@ probabilidad_pertenencia <- function(x, api_key, ensemble = NULL, modelo = "gpt-
   # Clasificar es un juicio: razonamiento "low" para que responda el modelo de
   # juicio de la sesion (Haiku con OpenRouter).
   txt <- .llamar_openai(openai, list(list(role = "user", content = prompt)), modelo = modelo,
-                        max_tokens = max(2000L, 60L * length(textos)), temperature = 0,
+                        # 2.12.5: 60 tokens por item no alcanzaban con 6 dimensiones de
+                        # nombre largo (36 items: respuesta cortada, lector perdido sin
+                        # aviso). El presupuesto crece con el numero de dimensiones.
+                        max_tokens = max(2000L, as.integer(length(textos) *
+                                                           (20L + 16L * length(dims)))),
+                        temperature = 0,
                         razonamiento = "low")
   js <- jsonlite::fromJSON(.extraer_json_llm(txt), simplifyVector = FALSE)
   norm <- function(z) tolower(trimws(gsub("\\s*\\(.*?\\)", "", gsub("_", " ", z))))

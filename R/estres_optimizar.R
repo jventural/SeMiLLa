@@ -116,7 +116,9 @@
         idioma = idioma, poblacion = poblacion, modelo = modelo,
         items_evitar = esc_new$items$item, complejidad_linguistica = complej,
         tipo_escala_respuesta = tiporesp, max_palabras = maxpal,
-        incluir_inversos = FALSE, instruccion_extra = extra),
+        incluir_inversos = FALSE, instruccion_extra = extra,
+        otras_dimensiones = dims_def,
+        items_otras = esc_new$items$item[esc_new$items$dimension != dim_nombre]),
         error = function(e) NULL)
       if (!is.null(nuevo) && nrow(nuevo) >= 1) {
         txt <- trimws(nuevo$item[1])
