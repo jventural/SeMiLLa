@@ -1,10 +1,25 @@
+## Resubmission
+
+This is a resubmission of SeMiLLa (new package; the previous submission was
+version 2.12.0). In response to the review by Leonore Hochhauser:
+
+* The Aiken reference in the Description field now has the year in
+  parentheses: Aiken (1985) <doi:10.1177/0013164485451012>. All three
+  references follow the form authors (year) <doi:...>.
+* `options(warn = -1)` was removed from the internal CFA helper; the
+  warnings of `lavaan::cfa()` are now silenced with `suppressWarnings()`
+  around each call. No function changes `options(warn)` any more.
+
+The version was raised to 2.12.6 because it also includes improvements made
+after 2.12.0 (listed in NEWS.md).
+
 ## Submission summary
 
-New submission of SeMiLLa (version 2.12.0). The package drafts psychometric
-scale items with Large Language Models and audits them before any data are
-collected: semantic separability of the items by ensemble clustering of text
-embeddings, a simulation-based pre-administration gate, and content validity
-rated by simulated LLM judges (Aiken's V).
+The package drafts psychometric scale items with Large Language Models and
+audits them before any data are collected: semantic separability of the
+items by ensemble clustering of text embeddings, a simulation-based
+pre-administration gate, and content validity rated by simulated LLM judges
+(Aiken's V).
 
 ## Test environments
 
@@ -17,9 +32,6 @@ rated by simulated LLM judges (Aiken's V).
 0 errors | 0 warnings | 1 note
 
 * New submission.
-
-The local note "unable to verify current time" comes from the offline check
-environment.
 
 ## Notes for the reviewers
 

@@ -1967,11 +1967,7 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
   usar_datos_simulados <- toupper(estimador) %in% estimadores_robustos
 
   tryCatch({
-    # Suprimir warnings de lavaan durante la estimacion
-    old_warn <- getOption("warn")
-    options(warn = -1)
-    on.exit(options(warn = old_warn), add = TRUE)
-
+    # Los warnings de lavaan se suprimen con suppressWarnings() en cada ajuste
     if (usar_datos_simulados) {
       if (verbose) {
         cat("    > Simulando datos para estimador ", estimador, " (n=", n_obs, ")...\n", sep = "")
@@ -1984,7 +1980,7 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
       datos_sim <- as.data.frame(datos_sim)
       names(datos_sim) <- colnames(cor_matrix)
 
-      fit <- lavaan::cfa(
+      fit <- suppressWarnings(lavaan::cfa(
         model = modelo_sintaxis,
         data = datos_sim,
         estimator = estimador,
@@ -1992,9 +1988,9 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
         orthogonal = ortogonal,
         check.post = FALSE,  # Evita warning de matriz no positiva
         warn = FALSE
-      )
+      ))
     } else {
-      fit <- lavaan::cfa(
+      fit <- suppressWarnings(lavaan::cfa(
         model = modelo_sintaxis,
         sample.cov = cor_matrix,
         sample.nobs = n_obs,
@@ -2003,11 +1999,8 @@ crear_plantilla_escala <- function(archivo, ejemplo = TRUE) {
         orthogonal = ortogonal,
         check.post = FALSE,
         warn = FALSE
-      )
+      ))
     }
-
-    # Restaurar warnings
-    options(warn = old_warn)
 
     # Extraer indices de ajuste
     ajuste_raw <- lavaan::fitmeasures(fit, c("chisq", "df", "pvalue",

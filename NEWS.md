@@ -1,3 +1,13 @@
+# SeMiLLa 2.12.6 (2026-11-11)
+
+## Observaciones de CRAN a la 2.12.0
+
+* La referencia de Aiken en el campo Description de DESCRIPTION queda con el año entre
+  paréntesis: `Aiken (1985) <doi:10.1177/0013164485451012>`.
+* El ajuste del AFC interno (en `R/utils.R`) ya no cambia `options(warn = -1)`: los avisos
+  de `lavaan::cfa()` se silencian con `suppressWarnings()` en cada llamada.
+* Este reenvío incluye además las mejoras de 2.12.1 a 2.12.5 descritas abajo.
+
 # SeMiLLa 2.12.5 (2026-11-10)
 
 ## Ítems más precisos y dimensiones relacionadas, pero no fundidas
